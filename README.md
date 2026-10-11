@@ -93,3 +93,5 @@ Quest mechanics, delivery evidence and alternative checks: [QUESTS.md](QUESTS.md
 Optional artwork, local uploads and separately configured generation: [ARTWORK.md](ARTWORK.md).
 
 Class progression, combat casting and verification limits: [CLASS_AND_COMBAT.md](CLASS_AND_COMBAT.md).
+
+General physical scene actions and their present limits: [ENVIRONMENT_INTERACTIONS_DESIGN.md](ENVIRONMENT_INTERACTIONS_DESIGN.md). Ordinary noncombat narration can open a multi-speaker scene conversation with interruption, player intervention and accepted/rejected proposals. The story, character/inventory, map and tasks are separate views; journal/party/settlement/art use More.

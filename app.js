@@ -41,7 +41,10 @@ async function askMaster(input) {
 }
 function showSection(section) {
   currentSection = section;
-  for (const name of ['story','map','quests','journal','people','town']) $(`#${name}View`).hidden = name !== section;
+  for (const name of ['story','map','quests','journal','people','town','character']) $(`#${name}View`).hidden = name !== section;
+  const story=section==='story';$('.scene-heading').hidden=!story;$('.scene-art-toolbar').hidden=true;$('#sceneArt').hidden=!story||!artAsset(currentView,'scene',currentView.scene.id);$('#combatBar').hidden=!story||!currentView.combat;
+  $('#sectionMenu').open=false;
+  document.querySelector('.compact-hero a').textContent=T(section==='character'?'Вернуться к истории →':'Лист персонажа →');
   document.querySelectorAll('[data-view]').forEach(button => button.classList.toggle('active', button.dataset.view === section));
 }
 function showSheet(name) {
@@ -62,7 +65,9 @@ function render(view) {
   $('#timeBadge').textContent = `День ${view.campaign.day} · ${Math.floor(minutes/60).toString().padStart(2,'0')}:${(minutes%60).toString().padStart(2,'0')}`;
   $('#combatBadge').hidden = !view.combat;
   $('#aiButton').textContent = view.provider.configured ? `AI: ${view.provider.model || view.provider.id}` : 'Подключить AI';
-  renderHero(view); renderMessages(view); renderActions(view);renderSceneObjects(view); renderMap(view); renderQuests(view); renderJournal(view); renderPeople(view); renderCombat(view);renderTown(view);renderArt(view);
+  renderHero(view); renderMessages(view); renderActions(view);renderSceneObjects(view);renderPhysicalProps(view); renderMap(view); renderQuests(view); renderJournal(view); renderPeople(view);renderParty(view); renderCombat(view);renderTown(view);renderArt(view);
+  const conversation=view.dialogueSummary;$('#openSceneDialogue').hidden=!(conversation?.source==='scene'&&conversation.status!=='stale'&&conversation.sceneId===view.scene.id&&(conversation.remaining||conversation.spokenCount));
+  $('#openSceneDialogue').textContent=T('Разговор в сцене')+(conversation?.remaining?` · ${conversation.remaining}`:'');
   $('#retryNarration').hidden = !view.pendingNarration; showSection(currentSection); showSheet(currentSheet); localizeUi();
 }
 function renderHero(view) {
@@ -129,10 +134,11 @@ function renderSceneObjects(view){
   }).join('');
 }
 function renderActions(view) {
-  const dock=$('#actionDock'),magicOpen=dock.querySelector('details')?.open;
+  const dock=$('#actionDock'),magicOpen=dock.querySelector('.combat-magic')?.open,extraOpen=dock.querySelector('.optional-actions')?.open;
   const actions=view.actions.filter(a=>!a.id.startsWith('pickup:')),magic=view.combat?actions.filter(a=>a.id.includes('.cast_spell.')||a.id.includes('.metamagic.')):[];
-  const magicIds=new Set(magic.map(a=>a.id)),button=a=>`<button data-action="${esc(a.id)}" title="${esc(label(a.label))}">${esc(label(a.label))}</button>`;
-  dock.innerHTML=actions.filter(a=>!magicIds.has(a.id)).map(button).join('')+(magic.length?`<details class="combat-magic" ${magicOpen?'open':''}><summary>${T('Магия этого хода')} · ${magic.length}</summary><div>${magic.map(button).join('')}</div></details>`:'');
+  const extra=view.combat?[]:actions.filter(a=>!['exploration','social','travel'].includes(a.kind));
+  const secondaryIds=new Set([...magic,...extra].map(a=>a.id)),button=a=>`<button data-action="${esc(a.id)}" title="${esc(label(a.label))}">${esc(label(a.label))}</button>`;
+  dock.innerHTML=actions.filter(a=>!secondaryIds.has(a.id)).map(button).join('')+(magic.length?`<details class="combat-magic" ${magicOpen?'open':''}><summary>${T('Магия этого хода')} · ${magic.length}</summary><div>${magic.map(button).join('')}</div></details>`:'')+(extra.length?`<details class="optional-actions" ${extraOpen?'open':''}><summary>${T('Другие действия')} · ${extra.length}</summary><div>${extra.map(button).join('')}</div></details>`:'');
 }
 function renderMap(view) {
   const seen=new Set(),edges=[],places=new Map(view.locations.map(l=>[l.id,l]));
@@ -179,8 +185,16 @@ async function memoryChange(route,data) {
   try{render(await request(`memory/${route}`,{...data,campaignId:currentView.campaign.id,expectedRevision:currentView.campaign.revision,operationId:crypto.randomUUID()}));await loadJournal(true);return true;}
   catch(error){toast(error.message);return false;}finally{setBusy(false);}
 }
-function renderPeople(view) { $('#peopleList').innerHTML=view.npcs.map(n=>`<article class="world-card">${artAsset(view,'npc',n.id)?`<img class="npc-portrait" src="${esc(artAsset(view,'npc',n.id).url)}" alt="${esc(n.name)}" loading="lazy">`:''}<p class="eyebrow">${n.locationId===view.scene.id?'РЯДОМ':esc(view.locations.find(l=>l.id===n.locationId)?.name||'')}</p><h3>${esc(n.name)}</h3><p>${esc(n.role)}</p><p>${esc(n.personality)}</p><p class="relationship">Знакомство: ${n.familiarity} · Доверие: ${n.trust}</p><button class="subtle" data-npc-art="${esc(n.id)}">${T('Портрет')}</button>${n.locationId===view.scene.id?`<button data-action="talk:${esc(n.id)}" ${view.combat?'disabled':''}>Поговорить</button>`:''}</article>`).join('') || '<p class="empty">Новые лица появятся по мере знакомства с миром.</p>'; }
+function renderPeople(view) {
+  $('#peopleList').innerHTML=view.npcs.map(n=>{
+    const art=artAsset(view,'npc',n.id),body=n.body,disposition=n.disposition||view.environment?.npcs.find(p=>p.id===n.id)?.disposition;
+    const condition=body?.conditions.includes('dead')?'Погиб':body&&body.hp.current<=0?'Без сознания':null;
+    return `<article class="world-card">${art?`<img class="npc-portrait" src="${esc(art.url)}" alt="${esc(n.name)}" loading="lazy">`:''}<p class="eyebrow">${n.locationId===view.scene.id?'РЯДОМ':esc(view.locations.find(l=>l.id===n.locationId)?.name||'')}</p><h3>${esc(n.name)}</h3><p>${esc(n.role)}</p><p>${esc(n.personality)}</p>${body?`<p class="npc-state">${body.hp.current}/${body.hp.max} HP${condition?` · ${T(condition)}`:''}${disposition==='hostile'?` · ${T('Враждебен')}`:''}</p>`:''}<p class="relationship">Знакомство: ${n.familiarity} · Доверие: ${n.trust}</p><button class="subtle" data-npc-art="${esc(n.id)}">${T('Портрет')}</button>${n.locationId===view.scene.id?`<button data-action="talk:${esc(n.id)}" ${view.combat||n.canInteract===false?'disabled':''}>Поговорить</button>`:''}</article>`;
+  }).join('')||'<p class="empty">Новые лица появятся по мере знакомства с миром.</p>';
+}
 function artAsset(view,target,id){return view.images?.assets.find(a=>a.id===view.images.bindings[`${target}:${id}`]);}
+function renderPhysicalProps(view){const props=view.environment?.props||[],panel=$('#physicalProps');panel.hidden=!props.length;panel.innerHTML=`<summary>${T('Обстановка')} · ${props.length}</summary><p class="muted">${T('Опиши, что хочешь сделать с предметом.')}</p>`+props.map(p=>`<article class="scene-object"><div><h3>${esc(p.name)}</h3><p>${T(p.condition==='broken'?'Разбит':p.holderId===view.hero.id?'У героя':'В сцене')}</p></div></article>`).join('');}
+function renderParty(view){$('#partyRoster').innerHTML=view.party.map(p=>`<article class="world-card"><p class="eyebrow">${p.id===view.hero.id?T('Герой'):T('Отряд')}</p><h3>${esc(p.name)}</h3><p>${p.hp.current}/${p.hp.max} HP · ${T('Защита')} ${p.ac}</p>${p.id===view.hero.id?`<button data-view="character" data-open-character>${T('Герой и снаряжение')}</button>`:''}</article>`).join('');}
 function renderArt(view){
   const scene=artAsset(view,'scene',view.scene.id),hero=artAsset(view,'hero',view.hero.id);
   $('#sceneArt').hidden=!scene;$('#sceneArt').innerHTML=scene?`<img src="${esc(scene.url)}" alt="${esc(view.scene.name)}"><figcaption>${esc(view.scene.name)}</figcaption>`:'';
@@ -198,7 +212,7 @@ function renderImageGallery(){
   $('#imageUpload').disabled=busy;
   localizeUi($('#imageWorkshop'));
 }
-function openArt(target,targetId,title,description){if(busy||!currentView?.ready)return;imageTarget={target,targetId};$('#imageTargetTitle').textContent=title;$('#imagePrompt').value=description||title;$('#imageStatus').textContent='';$('#imageUpload').value='';$('#imageWorkshop').showModal();renderImageGallery();}
+function openArt(target,targetId,title,description){if(busy||!currentView?.ready)return;$('#sectionMenu').open=false;imageTarget={target,targetId};$('#imageTargetTitle').textContent=title;$('#imagePrompt').value=description||title;$('#imageStatus').textContent='';$('#imageUpload').value='';$('#imageWorkshop').showModal();renderImageGallery();}
 async function imageMutation(route,extra){if(busy||!imageTarget)return;setBusy(true);renderImageGallery();$('#imageStatus').textContent=T(route==='generate'?'Генератор рисует…':'Сохраняется картинка…');try{render(await request(`images/${route}`,{...extra,...imageTarget,campaignId:currentView.campaign.id,expectedRevision:currentView.campaign.revision,operationId:crypto.randomUUID()}));$('#imageStatus').textContent=T('Картинка сохранена.');}catch(error){$('#imageStatus').textContent=error.message;}finally{setBusy(false);renderImageGallery();}}
 function initArt(){
   $('#openSceneArt').addEventListener('click',()=>openArt('scene',currentView.scene.id,currentView.scene.name,currentView.scene.description));
@@ -247,6 +261,13 @@ function spellPreview(data) {
   $('#spellDraftCard').innerHTML=`<article class="spell-preview"><h3>${esc(data.spell.name)}</h3><p>${esc(data.spell.description)}</p><p>${esc(spellCaption(data.spell))} · ${T(data.spell.cost==='action'?'действие':'бонусное действие')}</p><p>${T('Цель')}: ${T(data.spell.target==='self'?'Только герой':'Существо')} · ${T('Длительность')}: ${data.spell.durationTurns?`${data.spell.durationTurns} ${T('раундов')}`:T('Мгновенно')}${data.spell.concentration?` · ${T('Концентрация')}`:''}</p>${data.spell.saveAbility?`<p>${T('Спасбросок')}: ${esc(uiLanguage==='en'?data.spell.saveAbility.toUpperCase():abilityLabels[data.spell.saveAbility])}</p>`:''}${data.spell.effects.map(e=>`<p>${esc({damage:'Урон',healing:'Лечение',temporary_hp:'Временные HP',condition:'Состояние',armor:'Защита',speed:'Скорость',resistance:'Сопротивление',utility:'Эффект',skill_bonus:'Бонус навыка',remove_condition:'Снятие состояния'}[e.type]||e.type)}: <code>${esc(e.dice||e.condition||e.feature||e.amount||e.feet||e.damageType)}</code></p>`).join('')}</article>`; localizeUi($('#spellWorkshop'));
 }
 async function init() {
+  const sceneDialogueButton=document.createElement('button');sceneDialogueButton.id='openSceneDialogue';sceneDialogueButton.className='subtle scene-dialogue-launcher';sceneDialogueButton.hidden=true;sceneDialogueButton.textContent=T('Разговор в сцене');$('#storyFeed').after(sceneDialogueButton);
+  const physicalProps=document.createElement('details');physicalProps.id='physicalProps';physicalProps.className='scene-objects physical-props';physicalProps.hidden=true;$('#sceneObjects').after(physicalProps);
+  $('#characterView').append($('#characterSheet'));
+  $('#sectionMenu>div').append($('#openSceneArt'));
+  document.querySelector('.compact-hero a').addEventListener('click',event=>{event.preventDefault();showSection(currentSection==='character'?'story':'character');});
+  document.addEventListener('click',event=>{if(!event.target.closest('#sectionMenu'))$('#sectionMenu').open=false;});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape')$('#sectionMenu').open=false;});
   initArt();
   const languageLink=document.createElement('a');languageLink.className='subtle';languageLink.href=uiLanguage==='en'?'/?lang=ru':'/?lang=en';languageLink.textContent=uiLanguage==='en'?'RU':'EN';languageLink.setAttribute('aria-label','Switch interface language');document.querySelector('.header-actions').prepend(languageLink);
   if(uiLanguage==='en') { $('#createForm [name=location]').value='The threshold of a new world'; $('#createForm [name=heroName]').placeholder='Mira'; $('#worldSubtitle').textContent=T('Мир, который начинается с твоей идеи'); }
@@ -261,6 +282,7 @@ async function init() {
   document.querySelectorAll('[data-intent-mode]').forEach(button=>button.addEventListener('click',()=>{intentMode=button.dataset.intentMode;document.querySelectorAll('[data-intent-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.intentMode===intentMode)));$('#playerIntent').placeholder=T(intentMode==='question'?'Спроси о мире, правилах или прошлых событиях…':'Что делает твой герой?');}));
   $('#intentForm').addEventListener('submit',async event=>{event.preventDefault();const input=$('#playerIntent').value.trim();if(input&&await(intentMode==='question'?askMaster(input):act({input})))$('#playerIntent').value='';});
   document.addEventListener('click',async event=>{
+    if(event.target.closest('[data-open-character]')){showSection('character');return;}
     const commerce=event.target.closest('[data-commerce]');if(commerce&&!commerce.disabled){
       const kind=commerce.dataset.commerce;const command=kind==='choice'?{type:'market_choice',marketId:commerce.dataset.market,choiceId:commerce.dataset.choice}:kind==='service'?{type:'service',marketId:commerce.dataset.market,offerId:commerce.dataset.offer}:{type:'trade',direction:kind,marketId:commerce.dataset.market,...(kind==='sell'?{itemId:commerce.dataset.sellItem}:{offerId:commerce.dataset.offer}),quantity:1};
       if(await act({command},{stay:true}))toast(currentView.messages.at(-1)?.text||T('Сделка сохранена.'));return;

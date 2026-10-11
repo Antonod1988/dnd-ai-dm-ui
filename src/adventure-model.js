@@ -6,7 +6,8 @@ const access=require('./adventure-access');
 const key = z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,59}$/);
 const short = z.string().trim().min(1).max(140);
 const paragraph = z.string().trim().min(1).max(1200);
-const nodeSchema = z.object({ id: key, name: short, description: paragraph, kind: z.enum(['settlement', 'wilderness', 'ruins', 'interior', 'road']).default('wilderness'), connectsTo: z.array(key).max(6).default([]) }).strict();
+const affordanceSchema = z.object({id:key,description:z.string().trim().min(1).max(240),materials:z.array(z.enum(['ceramic','glass','wood','metal','stone','cloth'])).min(1).max(6),maxWeightLb:z.number().min(0.1).max(200).default(5),portable:z.boolean().default(true),quantity:z.number().int().min(1).max(8).default(1)}).strict();
+const nodeSchema = z.object({ id: key, name: short, description: paragraph, kind: z.enum(['settlement', 'wilderness', 'ruins', 'interior', 'road']).default('wilderness'), connectsTo: z.array(key).max(6).default([]),affordances:z.array(affordanceSchema).max(4).default([]) }).strict();
 const npcSchema = z.object({ id: key, name: short, role: z.string().max(240), personality: z.string().max(400).default(''), locationId: key }).strict();
 const itemSchema = z.object({ id: key, name: short, description: z.string().max(600), locationId: key, kind: z.enum(['quest', 'tool', 'consumable', 'weapon']).default('quest'),focus:loot.focusSchema.optional(),rarity:loot.raritySchema.optional(),access:access.schema.optional() }).strict();
 const objectiveSchema = z.object({ text: z.string().min(1).max(240), kind: z.enum(['visit', 'talk', 'check', 'victory', 'acquire','deliver']), targetId: key.optional(),recipientId:key.optional(),alternativeTargetIds:z.array(key).max(3).optional() }).strict().superRefine((o,ctx)=>{
@@ -36,7 +37,21 @@ function validateReferences(patch, current) {
   const unique = records => { const ids = records.map(r => r.id); if (new Set(ids).size !== ids.length) throw new Error('Duplicate world record id'); };
   for (const records of [patch.locations || [], patch.npcs || [], patch.items || [], patch.quests || [], patch.checks || []]) unique(records);
   if (patch.startLocationId && !locations.has(patch.startLocationId)) throw new Error('Unknown starting location');
-  for (const location of patch.locations || []) for (const id of location.connectsTo) if (!locations.has(id) || id === location.id) throw new Error('Invalid map link');
+  for (const location of patch.locations || []) {
+    for (const id of location.connectsTo) if (!locations.has(id) || id === location.id) throw new Error('Invalid map link');
+    unique(location.affordances||[]);
+  }
+  let cueCount=0;
+  for(const addition of patch.sceneAffordances||[]){
+    const location=(current.locations||[]).find(l=>l.id===addition.locationId);
+    if(!location||addition.locationId!==current.currentLocationId)throw new Error('New physical cues must anchor the existing current scene');
+    const evidence=[location.name,location.description,...(current.npcs||[]).filter(n=>n.locationId===location.id).map(n=>n.role)].join('\n').toLowerCase();
+    if(!evidence.includes(addition.sourceText.toLowerCase()))throw new Error('Physical cue source is not established in this scene');
+    unique(addition.cues);cueCount+=addition.cues.length;
+    if(cueCount>3)throw new Error('Too many new physical cues');
+    const existing=location.affordances||[];
+    if(existing.length+addition.cues.length>6||addition.cues.some(c=>existing.some(a=>a.id===c.id)))throw new Error('Physical cues are additive and bounded; existing anchors cannot be rewritten');
+  }
   for (const npc of patch.npcs || []) if (!locations.has(npc.locationId)) throw new Error('Unknown NPC location');
   for (const item of patch.items || []) if (!locations.has(item.locationId)) throw new Error('Unknown object location');
   for (const check of patch.checks || []) if (!locations.has(check.locationId) || (check.npcId && (!npcs.has(check.npcId)||npcRecords.get(check.npcId).locationId!==check.locationId))) throw new Error('Unknown lore-check anchor');
@@ -56,7 +71,7 @@ function validateReferences(patch, current) {
     }
   }
 }
-const developmentSchema = z.object({ locations: z.array(nodeSchema).max(3).default([]), npcs: z.array(npcSchema).max(3).default([]), items: z.array(itemSchema).max(3).default([]), quests: z.array(questSchema).max(2).default([]), checks: z.array(loreSchema).max(3).default([]),markets:z.array(economy.marketSchema).max(2).default([]) }).strict();
+const developmentSchema = z.object({ locations: z.array(nodeSchema).max(3).default([]), npcs: z.array(npcSchema).max(3).default([]), items: z.array(itemSchema).max(3).default([]), quests: z.array(questSchema).max(2).default([]), checks: z.array(loreSchema).max(3).default([]),markets:z.array(economy.marketSchema).max(2).default([]),sceneAffordances:z.array(z.object({locationId:key,sourceText:z.string().trim().min(3).max(240),cues:z.array(affordanceSchema).min(1).max(3)}).strict()).max(1).default([]) }).strict();
 function validateDevelopments(draft, adventure) {
   const patch = developmentSchema.parse(draft || {}); validateReferences(patch, adventure);
   return patch;
@@ -116,6 +131,7 @@ function applyDevelopments(adventure, draft) {
   for (const quest of patch.quests) if (!adventure.quests.some(q => q.id === quest.id)) adventure.quests.push(makeQuest(quest));
   for (const check of patch.checks) if (!adventure.loreDefinitions.some(c => c.id === check.id)) adventure.loreDefinitions.push(check);
   adventure.marketDefinitions||=[];for(const market of patch.markets)if(!adventure.marketDefinitions.some(m=>m.id===market.id))adventure.marketDefinitions.push(market);
+  for(const addition of patch.sceneAffordances)adventure.locations.find(l=>l.id===addition.locationId).affordances=[...(adventure.locations.find(l=>l.id===addition.locationId).affordances||[]),...addition.cues];
   return patch;
 }
 function fallbackSeed(input) {

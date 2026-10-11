@@ -1,7 +1,39 @@
 const measuredAi=require('./adventure-usage');
+const dialogue=require('./dialogue');
+const crypto=require('node:crypto');
+const clip=(value,max)=>String(value||'').slice(0,max);
+const SCENE_DIALOGUE_RULES='When characters are talking or responding to a social player intent, include optional lines:[{speakerId,text,interruptsSpeakerId?,proposal?:{actionId,label}}] in this SAME response. narration frames the scene; lines carry the actual character speech without repeating it in narration. At most 5 lines, each at most 650 characters. Use only exact dialogue.actors ids; never speak for the human player. Give present characters distinct motives and reactions. interruptsSpeakerId may mark an interruption of another supplied speaker; it is presentation, not an action. Proposals use only exact dialogue.actions ids and are invitations pending player acceptance. Never execute a proposal or describe future planned replies as already heard. No extra speaker requests are made.';
+function scenePacket(state,meta,actions,targetId) {
+  const humanIds=new Set(state.party.members.filter(m=>m.kind==='player'||m.id===state.party.heroId).map(m=>m.id));
+  const actors=[{id:'dm',name:meta.language==='en'?'Dungeon Master':'Мастер',kind:'dm',role:'Narrator'}];
+  const cannotSpeak=body=>body&&(typeof body.hp==='number'?body.hp:body.hp?.current)<=0||body?.conditions?.some(c=>['dead','unconscious','incapacitated','stunned','paralyzed','petrified'].includes(c));
+  const companions=state.party.members.filter(m=>m.kind==='ally'&&!cannotSpeak(m));
+  const bodies=new Map((meta.environment?.npcStates||[]).map(record=>[record.npcId,record.body]));
+  const npcs=meta.npcs.filter(n=>n.locationId===meta.currentLocationId&&!n.hidden&&!cannotSpeak(bodies.get(n.id))).sort((a,b)=>Number(b.id===targetId)-Number(a.id===targetId));
+  let detailChars=0;
+  for(const person of [...companions,...npcs]) {
+    if(humanIds.has(person.id)||['dm','player'].includes(person.id)||actors.some(a=>a.id===person.id))continue;
+    const actor={id:person.id,name:clip(person.name,80),kind:person.kind==='ally'?'companion':'npc'};
+    const role=clip(person.role||person.className,140),personality=clip(person.personality,240);
+    if(actors.length<=6&&detailChars+role.length+personality.length<=2400){actor.role=role;actor.personality=personality;detailChars+=role.length+personality.length;}
+    actors.push(actor);
+  }
+  return {sceneId:meta.currentLocationId,actors,actions:actions.filter(a=>a.id.length<=120).slice(0,20).map(a=>({id:a.id,label:clip(a.label,100)}))};
+}
+function validateSceneDialogue(lines,packet,turn) {
+  if(lines===undefined||Array.isArray(lines)&&lines.length===0)return null;
+  if(!packet)throw new Error('Dialogue is unavailable in this scene');
+  return dialogue.createDialogue({lines},packet.actors,packet.actions.map(a=>a.id),turn,{sceneId:packet.sceneId,source:'scene'});
+}
+function installSceneDialogue(meta,queue,framing) {
+  if(!queue)return;
+  const master=queue.actors.find(a=>a.id==='dm');
+  queue.spoken.push({id:`line-${crypto.randomUUID()}`,speakerId:'dm',speakerName:master.name,text:framing,kind:'framing'});
+  meta.dialogue=queue;
+}
 function feedback(error,report){
   const issues=error.issues?.slice(0,6).map(i=>({path:i.path.join('.'),code:i.code,message:i.message.slice(0,180)}));
-  return {reason:issues?undefined:String(error.message).slice(0,300),issues,rejectedText:error.draftText?.slice(0,4000),rejectedNarration:report?.narration?.slice?.(0,900),rejectedDevelopments:report?.developments?JSON.stringify(report.developments).slice(0,3000):undefined};
+  return {reason:issues?undefined:String(error.message).slice(0,300),issues,rejectedText:error.draftText?.slice(0,4000),rejectedNarration:report?.narration?.slice?.(0,900),rejectedLines:report?.lines?JSON.stringify(report.lines).slice(0,2500):undefined,rejectedDevelopments:report?.developments?JSON.stringify(report.developments).slice(0,3000):undefined};
 }
 async function generate(adventure,payload,fallback,validate,{task='adventure_narration',resolved=true}={}){
   let first,generated=false;
@@ -15,4 +47,4 @@ async function generate(adventure,payload,fallback,validate,{task='adventure_nar
     }catch(second){second.correction=repaired?feedback(second,repaired):{...correction,repairError:String(second.message).slice(0,200)};throw second;}
   }
 }
-module.exports={generate,feedback};
+module.exports={generate,feedback,scenePacket,validateSceneDialogue,installSceneDialogue,SCENE_DIALOGUE_RULES};

@@ -15,7 +15,7 @@ function excerpt(record,query,scene,size=500) {
 
 function contextFor(state,adventure,query='') {
   const location=adventure.locations.find(l=>l.id===adventure.currentLocationId);
-  const scene={id:location.id,title:clip(location.name,140),location:clip(location.name,140),summary:clip(location.description,650)};
+  const scene={id:location.id,title:clip(location.name,140),location:clip(location.name,140),summary:clip(location.description,650),affordances:(location.affordances||[]).map((a,index)=>({a,index,score:relevance({...a,text:a.description},query,{id:location.id,title:location.name})})).sort((a,b)=>b.score-a.score||a.index-b.index).slice(0,4).map(({a})=>({...a,remaining:Math.max(0,(a.quantity||1)-(adventure.environment?.props||[]).filter(p=>p.anchorId===a.id&&(p.originLocationId||p.locationId)===location.id).length)}))};
   const hero=state.party.members.find(m=>m.id===state.party.heroId);
   const pending=adventure.quests.filter(q=>['active','accepted','offered'].includes(q.status));
   const ranked=pending.map((q,index)=>({q,index,score:relevance(q,query,scene)*8+(q.status==='active'?12:0)}))
@@ -32,14 +32,16 @@ function contextFor(state,adventure,query='') {
     survival:adventure.survival.enabled?{foodDays:adventure.survival.foodDays,waterDays:adventure.survival.waterDays,hungerDays:adventure.survival.hungerDays}:undefined,
     combat:state.combat?{round:state.combat.round,actorId:state.combat.participants[state.combat.turnIndex]?.id,turnBudget:state.combat.turnBudget,
       participants:state.combat.participants.slice(0,10).map(p=>({id:p.id,name:clip(p.name,80),kind:p.kind,hp:p.hp,conditions:p.conditions}))}:undefined,
-    bookmarks:[],quests:[],checks:[],objects:[],questIndex:[],questHistory:[],activeFacts:[],recollections:[],npcs:[],inventory:[],createdSpells:[],nearbyPlaces:[],recentDialogue:[],recentEvents:[],markets:[],transactions:[],
+    bookmarks:[],quests:[],checks:[],objects:[],sceneProps:[],questIndex:[],questHistory:[],activeFacts:[],recollections:[],npcs:[],inventory:[],createdSpells:[],nearbyPlaces:[],recentDialogue:[],recentEvents:[],markets:[],transactions:[],
     omitted:{quests:pending.length,facts:state.facts.length,notes:(adventure.notes||[]).length,archive:(adventure.archive||[]).length}};
-  const budgets={bookmarks:2800,quests:3200,checks:1600,objects:1100,questIndex:1400,questHistory:1000,activeFacts:2000,recollections:2000,npcs:1200,inventory:900,createdSpells:1400,nearbyPlaces:1000,recentDialogue:1200,recentEvents:1000,markets:1600,transactions:600};
+  const budgets={bookmarks:2800,quests:3200,checks:1600,objects:1100,sceneProps:1600,questIndex:1400,questHistory:1000,activeFacts:2000,recollections:2000,npcs:1500,inventory:900,createdSpells:1400,nearbyPlaces:1000,recentDialogue:1200,recentEvents:1000,markets:1600,transactions:600};
   const append=(key,value)=>{
     packet[key].push(value);
     if(JSON.stringify(packet[key]).length>budgets[key]||JSON.stringify(packet).length>MAX_CHARS){packet[key].pop();return false;}
     return true;
   };
+  const props=(adventure.environment?.props||[]).filter(p=>(p.locationId===location.id||p.holderId===hero.id)&&p.visibility==='visible').map((p,index)=>({p,index,score:relevance({...p,text:[p.name,...(p.aliases||[])].join(' ')},query,scene)*8+(p.holderId===hero.id?3:0)})).sort((a,b)=>b.score-a.score||a.index-b.index);
+  for(const {p} of props.slice(0,8))append('sceneProps',{id:p.id,name:clip(p.name,100),aliases:p.aliases,locationId:p.locationId,anchorId:p.anchorId,material:p.material,size:p.size,weightLb:p.weightLb,portable:p.portable,condition:p.condition,holderId:p.holderId,ownerNpcId:p.ownerNpcId,accessible:p.accessible,source:'established'});
   // Bookmarks and relevant active objectives get space before optional prose.
   for(const note of recall(bookmarks,query,scene,4))append('bookmarks',{id:note.id,kind:note.kind,text:excerpt(note,query,scene,650),sourceSceneId:note.sourceSceneId});
   for(const q of ranked.slice(0,6))append('quests',{id:q.id,title:clip(q.title,100),status:q.status,summary:clip(q.summary,220),
@@ -50,7 +52,7 @@ function contextFor(state,adventure,query='') {
   const access=require('./adventure-access');
   for(const raw of adventure.items.filter(i=>!i.collected&&i.locationId===location.id).slice(0,6)){const i=access.publicItem(state,adventure,raw);append('objects',{id:i.id,name:clip(i.name,100),description:clip(i.description,180),available:i.accessState.available,access:i.accessState});}
   const people=adventure.npcs.map((n,index)=>({n,index,score:relevance({...n,text:`${n.role} ${n.personality}`},query,scene)*5+(n.locationId===location.id?5:0)+(questTargets.has(n.id)?3:0)})).sort((a,b)=>b.score-a.score||a.index-b.index);
-  for(const {n} of people.slice(0,4))append('npcs',{id:n.id,name:clip(n.name,80),role:clip(n.role,140),locationId:n.locationId,location:clip(adventure.locations.find(l=>l.id===n.locationId)?.name,140),trust:n.trust,familiarity:n.familiarity});
+  for(const {n} of people.slice(0,4)){const record=adventure.environment?.npcStates?.find(r=>r.npcId===n.id);append('npcs',{id:n.id,name:clip(n.name,80),role:clip(n.role,140),locationId:n.locationId,location:clip(adventure.locations.find(l=>l.id===n.locationId)?.name,140),trust:n.trust,familiarity:n.familiarity,disposition:n.disposition||record?.disposition,body:record?{hp:record.body.hp,conditions:record.body.conditions,ac:record.body.ac,profile:record.profile}:undefined});}
   const recalled=recall(adventure.archive||[],query,scene,4).filter(m=>query.trim()&&relevance(m,query,scene)>0);
   for(const m of recalled)append('recollections',{id:m.id,turn:m.turn,speaker:clip(m.author,80),text:excerpt(m,query,scene)});
   for(const q of recall(adventure.quests.filter(q=>['completed','failed'].includes(q.status)),query,scene,2).filter(q=>relevance(q,query,scene)>0))append('questHistory',{id:q.id,title:clip(q.title,100),status:q.status,rewardClaimed:q.rewardClaimed,summary:clip(q.summary,220)});

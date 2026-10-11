@@ -13,7 +13,9 @@ The source is AGPL-3.0. This project uses an independently written dialogue queu
 - Only presented lines enter the journal/chat. Future planned replies remain uncommitted.
 - The player can intervene before the next line; unspoken lines and pending proposals are discarded, while already heard dialogue remains in history.
 - A proposal references an available game action, and remains `offered` until accepted or rejected. Accepting uses the ordinary rules path and checks whether the scene has changed. A repeated click cannot execute a proposal after it is closed.
-- The first UI version is a party-discussion panel with distinct speaker cards, Next, Intervene, Accept and Reject. Full voice playback, character portraits, cancellation during an in-flight generation and narrative turn integration remain to be developed.
+- Ordinary noncombat narration can include up to five short speaker lines in the same model response. DM framing is shown immediately; nearby eligible NPCs and actual allied companions enter a saved queue. Exact actor, scene/turn and available action IDs are validated. Hidden, dead, incapacitated and human-controlled actors cannot become invented voices.
+- The conversation window has separate speaker cards, uploaded portraits or initials, role labels and validated interruption markers. Next reveals a saved line without another AI call or world turn. Intervene cancels unspoken replies. Accept executes the ordinary action once; Reject closes the proposal. Heard lines and durable decision events remain searchable after the queue changes and SQLite reopens. Acceptance is recorded only after its operation ID is confirmed.
+- Starting another conversation is a collapsed control group; a story button reopens the current scene queue without generation. Voice playback, automatic timing, immediate model response to intervention and in-flight cancellation remain open. Narrative dialogue currently runs outside combat.
 - The next model request includes only the current scene, relevant memory and a short conversation window. No autonomous endless multi-agent loop runs in the background.
 
 ## Cooperative play feasibility
@@ -39,3 +41,9 @@ Primary references: [WebSocket server/broadcast documentation](https://github.co
 ## Optional external agents
 
 An external agent can be another DM/helper/companion controller, but all agents share the same role/actor ownership and validated command boundary. Give an agent a bounded context packet and permitted action schemas, not direct database access or host credentials. Capture request usage, permit cancellation, and require human approval for party commitments. The default remains one model handling several roles; distinct external agents are opt-in.
+
+## Verified checkpoint, 2026-10-12
+
+Full suite: 184 passing tests, syntax checks for 67 JavaScript files and isolated smoke. Scene dialogue tests cover valid voices, stale identities, queued versus heard memory, actual proposals once, durable decisions and reopening, using controlled AI fixtures.
+
+Live GPT-6-Luna generated a bar conversation: Lada interrupted Mara; the player rejected inspection and intervened, cancelling Tovin's unspoken reply. Next/rejection/intervention consumed no world turn or AI call. A later accepted inspection executed the real action, turn 2 to 3. Durable decision journaling was added after those live clicks and verified separately offline; earlier history is not retroactively rewritten. The full bar scenario recorded seven requests, including world creation, freeform intent, narration and explicit councils.

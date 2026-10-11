@@ -79,7 +79,7 @@ async function route(req, res, serialize) {
     if(url.pathname==='/api/adventure/memory/note')return sendJson(res,200,await serialize(()=>memory.addNote(body)));
     if(url.pathname==='/api/adventure/memory/pin')return sendJson(res,200,await serialize(()=>memory.pin(body)));
     const council=require('./adventure-discussion');
-    const councilRoutes={'/api/adventure/discussion/start':()=>council.start(body.campaignId,body.topic),'/api/adventure/discussion/next':()=>council.next(body.campaignId),'/api/adventure/discussion/intervene':()=>council.intervene(body.campaignId,body.text),'/api/adventure/discussion/decide':()=>council.decide(body.campaignId,body.proposalId,body.decision)};
+    const councilRoutes={'/api/adventure/discussion/start':()=>council.start(body.campaignId,body.topic),'/api/adventure/discussion/next':()=>council.next(body.campaignId,body.dialogueId),'/api/adventure/discussion/intervene':()=>council.intervene(body.campaignId,body.text,body.dialogueId),'/api/adventure/discussion/decide':()=>council.decide(body.campaignId,body.proposalId,body.decision,body.dialogueId)};
     if(councilRoutes[url.pathname])return sendJson(res,200,await serialize(councilRoutes[url.pathname]));
     const discussion = require('./discussion-service');
     const discussionRoutes = { '/api/discussion/start': () => discussion.start(body.topic), '/api/discussion/next': () => discussion.advance(), '/api/discussion/intervene': () => discussion.interrupt(body.text), '/api/discussion/decide': () => discussion.decide(body.proposalId, body.decision) };

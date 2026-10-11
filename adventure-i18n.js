@@ -1,6 +1,12 @@
 // UI labels are translated locally. Story content is generated in the campaign's language.
 const uiLanguage = new URLSearchParams(location.search).get('lang') === 'en' ? 'en' : 'ru';
 const englishLabels = {
+  'Герой':'Hero','Ещё':'More','Отряд':'Party','Отряд и персонажи':'Party and characters','Участники приключения и знакомые в этом мире.':'Adventure participants and people in this world.','Участники приключения':'Adventure participants','Знакомые в мире':'People in the world','Герой и снаряжение':'Hero and equipment','Состояние, вещи, магия и броски — отдельно от истории.':'Condition, items, magic and rolls, separate from the story.',
+  'Разговор в сцене':'Scene conversation',
+  'Вернуться к истории →':'Back to the story →',
+  'Другие действия':'Other actions',
+  'Обстановка':'Environment','Опиши, что хочешь сделать с предметом.':'Describe what you want to do with an object.','Разбит':'Broken','У героя':'Held by the hero','В сцене':'In the scene','Враждебен':'Hostile','Без сознания':'Unconscious','Погиб':'Dead',
+  'Начать другой разговор':'Start another conversation',
   'Нет доступной цели или ресурса для этого заклинания.':'No available target or resource for this spell.','Магия этого хода':'Spells available this turn',
   'реакция':'reaction',
   'Картинка сцены':'Scene artwork','Портрет героя':'Hero portrait','Портрет':'Portrait','Закрыть галерею':'Close gallery','Свои картинки сохраняются локально. Загрузка и выбор не расходуют AI и не двигают время.':'Your pictures are saved locally. Uploading and choosing artwork use no AI and do not advance time.','Загрузить картинку':'Upload artwork','Убрать привязку':'Unlink artwork','Генерация по желанию':'Optional generation','Образ картинки':'Image idea','Сгенерировать одну картинку':'Generate one image','До 5 МБ на картинку':'Up to 5 MB per picture','Выбрано':'Selected','Картинок пока нет. Загрузи первую.':'No pictures yet. Upload your first.','Отдельный запрос к провайдеру картинок; возможна оплата по его тарифам.':'A separate request to your image provider; its charges may apply.','Генератор не настроен. Свои картинки доступны без него.':'Image generation is not configured. You can still upload your own pictures.','Генератор рисует…':'Generating artwork…','Сохраняется картинка…':'Saving artwork…','Картинка сохранена.':'Artwork saved.','Нужна PNG, JPEG или WebP до 5 МБ.':'Choose PNG, JPEG or WebP up to 5 MB.','Слишком большое разрешение картинки.':'Image resolution is too large.','Не удалось прочитать картинку.':'Could not read the picture.',

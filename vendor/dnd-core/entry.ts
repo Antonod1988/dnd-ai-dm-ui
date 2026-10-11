@@ -18,3 +18,6 @@ export { sideDefeated, effectiveArmorClass } from './src/core/rules/combat.js';
 export { cleanRemovedEffectConditions } from './src/core/rules/effects.js';
 export { longRest } from './src/core/rules/rests.js';
 export { rollStateAbilityCheck, abilityCheckRollLogs } from './src/core/narrative/scene-checks.js';
+export { resolveAttack, characterToCombatant, setCombatDistanceBand } from './src/core/rules/combat.js';
+export { spendObjectInteraction } from './src/core/rulesets/srd5e2014/action-economy.js';
+export { isCharmedBySource } from './src/core/rules/conditions.js';

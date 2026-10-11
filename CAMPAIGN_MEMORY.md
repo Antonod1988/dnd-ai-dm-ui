@@ -49,3 +49,9 @@ Valid narration uses one request. An invalid structured intent, narration or wor
 Feedback is bounded to six issues, short messages and a truncated rejected draft. This is exceptional schema repair, not a periodic summary or a second request after every turn. Counts reported by the provider include correction requests that were persisted; unsuccessful initial world creation still has no campaign record.
 
 A synthetic registry with a 600-method chain retains access proof and selects the relevant late approach within the same context limit. Lookups use bounded indexes and keep the saved source unchanged. This is an offline fixture, not 600 real provider requests.
+
+## Scene conversations and physical aftermath — 2026-10-12
+
+Only heard lines enter history/context. Unspoken replies cancelled by intervention cannot become memories. Accepted/rejected proposals have separate durable dialogue_decision events with speaker, source scene/turn and action/proposal IDs, surviving later councils and SQLite reopen. Acceptance requires the actual operation ID. These rules are covered with controlled fixtures.
+
+Physical props and NPC bodies persist separately; context selects relevant nearby objects/conditions/HP/hostility in a bounded block, within the same total 12,000-character packet. The live bar aftermath and inspection selected 4,754 characters. Seven recorded calls cover creation, intent, narration and explicit discussion; Next, rejection and intervention added none. This is not a complete account bill.

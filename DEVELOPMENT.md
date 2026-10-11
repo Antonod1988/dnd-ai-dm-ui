@@ -109,3 +109,13 @@ Remaining work includes a broader live adventure audit (combat, death and progre
 
 - Live Luna «Шкаф под парусами»: a concealed find stayed closed after Investigation 21/25. A natural player idea created a new History method (6/15, failure), and the old inventory method later succeeded at 22/5. Only then did «Медный язычок ветра» and its pickup appear. Return/delivery completed the task once with 125 XP and one saved NPC possession. The final context was 4,578 characters; the persisted provider counter recorded 13 calls, 35,651 input and 3,837 output tokens. Valid ordinary turns still use one narration request; freeform intent uses an additional request, with at most one correction per failed stage.
 - The find panel is collapsible to leave space for narration, stays within the narrow layout, and the story follows its end on resizing unless the player has scrolled away. Hidden/collected names, legal IDs that match object keys, and pickup during combat have explicit guards/tests.
+
+### Scene interaction, dialogue and focused UI checkpoint — 2026-10-12
+
+The story no longer carries the whole character/inventory sidebar. Hero, map and quests are separate views; journal, party, settlement and art use More. Noncombat extras and new-discussion tools are collapsed. Speaker cards use identities, portraits/initials and validated interruption notes.
+
+Same-response scene narration queues eligible NPC/allied voices. Heard speech and accepted/rejected decisions are durable; future lines are not memories. Next/reject/intervene use no AI request or world turn. Accepted proposals execute a confirmed ordinary operation once. Offline coverage includes replacement queues and database reopening.
+
+Free input compiles bounded atomic physical plans. Grounded finite scene sources lazily produce mundane props; take/drop/throw/strike/physical checks resolve through actual costs and rolls, persisting prop identity and NPC body/hostility. No anonymous encounter may replace a known NPC. Full persistent NPC battles, profile tiers, cross-domain weapons/spells and social restitution remain open.
+
+184 tests, syntax for 67 JS files, isolated smoke and diff checks pass. Live Luna resolved a mug throw as a real miss (5 vs AC10), broke the mug, changed Mara's trust by -20 and refused reusing the broken object. Three voices, interruption, intervention and proposal rejection/acceptance were exercised. The accepted inspection advanced turn 2 to 3; final context 4,754 characters and seven recorded requests. Durable decision journaling was added afterwards and tested offline. See the dedicated design and verification documents for limitations.

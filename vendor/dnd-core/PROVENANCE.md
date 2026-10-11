@@ -24,3 +24,5 @@ The adapter additionally exports existing incapacitation and reaction-spending h
 This work includes material from the System Reference Document 5.1 (SRD 5.1) by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License available at https://creativecommons.org/licenses/by/4.0/legalcode.
 
 The SRD text has been represented as executable rules and structured game content. Original compatible content and application code remain under their respective MIT licenses. This project is unofficial and does not include an endorsement by Wizards of the Coast.
+
+The environment adapter additionally exports the existing resolveAttack, characterToCombatant, setCombatDistanceBand, spendObjectInteraction and isCharmedBySource helpers without changing their upstream behavior. Lazy props, finite anchors and persistent adapter NPC bodies are original application code in src/environment-interactions.js; the independently written dialogue queue does not import OpenMAIC AGPL code.
