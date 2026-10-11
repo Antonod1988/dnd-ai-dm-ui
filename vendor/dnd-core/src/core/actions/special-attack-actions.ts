@@ -181,21 +181,21 @@ export function resolveMartialArtsComboAction({
   const actorCharacter = state.party.members.find((member) => member.id === (actor.sourceCharacterId ?? actor.id));
   const attack = actor.attacks.find((item) => item.id === action.attackId);
   if (!actorCharacter || !attack || !canUseSrdMartialArtsBonusAttack(actorCharacter, actor, attack, action.targetId, combat)) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: "Martial Arts is not available for this attack." };
   }
   if (!combat.turnBudget) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: "Combat turn budget is unavailable." };
   }
   const spentAction = spendAction(combat.turnBudget, "attack");
   if (!spentAction.ok) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: spentAction.message };
   }
   const spentBonus = spendBonusAction(spentAction.budget, "martial_arts");
   if (!spentBonus.ok) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: spentBonus.message };
   }
 
@@ -263,25 +263,25 @@ export function resolveFlurryOfBlowsComboAction({
   const actorCharacter = state.party.members.find((member) => member.id === (actor.sourceCharacterId ?? actor.id));
   const attack = actor.attacks.find((item) => item.id === action.attackId);
   if (!actorCharacter || !attack || !canUseSrdFlurryOfBlows(actorCharacter, actor, attack, action.targetId, combat)) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: "Flurry of Blows is not available for this attack." };
   }
   if (openHandRider && !canUseSrdOpenHandTechnique(actorCharacter)) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: "Open Hand Technique is not available for this monk." };
   }
   if (!combat.turnBudget) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: "Combat turn budget is unavailable." };
   }
   const spentAction = spendAction(combat.turnBudget, "attack");
   if (!spentAction.ok) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: spentAction.message };
   }
   const spentBonus = spendBonusAction(spentAction.budget, "flurry_of_blows");
   if (!spentBonus.ok) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: spentBonus.message };
   }
 
@@ -289,7 +289,7 @@ export function resolveFlurryOfBlowsComboAction({
   try {
     spentKiCharacter = spendSrdKi(actorCharacter);
   } catch (error) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: error instanceof Error ? error.message : String(error) };
   }
 
@@ -550,7 +550,7 @@ export function resolveBerserkerFrenzyAttackAction({
   const actorCharacter = state.party.members.find((member) => member.id === (actor.sourceCharacterId ?? actor.id));
   const attack = actor.attacks.find((item) => item.id === action.attackId);
   if (!actorCharacter || !attack || !canUseSrdBerserkerFrenzyAttack(actorCharacter, actor, attack, action.targetId, combat)) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: "Berserker Frenzy is not available for this attack." };
   }
   const equipmentCheck = canUseSrdAttackWithEquipment(actorCharacter, attack);
@@ -563,12 +563,12 @@ export function resolveBerserkerFrenzyAttackAction({
     };
   }
   if (!combat.turnBudget) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: "Combat turn budget is unavailable." };
   }
   const spentBonus = spendBonusAction(combat.turnBudget, "berserker_frenzy");
   if (!spentBonus.ok) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: spentBonus.message };
   }
 
@@ -629,7 +629,7 @@ export function resolveExtraAttackAction({
   const actorCharacter = state.party.members.find((member) => member.id === (actor.sourceCharacterId ?? actor.id));
   const attack = actor.attacks.find((item) => item.id === action.attackId);
   if (!actorCharacter || !attack || !canUseSrdExtraAttack(actorCharacter, attack)) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: "Extra Attack is not available for this attack." };
   }
   const equipmentCheck = canUseSrdAttackWithEquipment(actorCharacter, attack);
@@ -642,16 +642,16 @@ export function resolveExtraAttackAction({
     };
   }
   if (!hasAmmunitionForAttack(actorCharacter.inventory, attack)) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: `${action.attackId} requires ammunition.` };
   }
   if (!combat.turnBudget) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: "Combat turn budget is unavailable." };
   }
   const spent = spendAction(combat.turnBudget, "attack");
   if (!spent.ok) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: spent.message };
   }
 
@@ -758,7 +758,7 @@ export function resolveDivineSmiteAttackAction({
   const actorCharacter = state.party.members.find((member) => member.id === (actor.sourceCharacterId ?? actor.id));
   const attack = actor.attacks.find((item) => item.id === action.attackId);
   if (!target || !actorCharacter || !attack || !canUseSrdDivineSmite(actorCharacter, attack)) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: "Divine Smite is not available for this attack." };
   }
   const equipmentCheck = canUseSrdAttackWithEquipment(actorCharacter, attack);
@@ -771,12 +771,12 @@ export function resolveDivineSmiteAttackAction({
     };
   }
   if (!combat.turnBudget) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: "Combat turn budget is unavailable." };
   }
   const spent = spendAction(combat.turnBudget, "attack");
   if (!spent.ok) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: spent.message };
   }
 
@@ -912,7 +912,7 @@ export function resolveStunningStrikeAttackAction({
   const actorCharacter = state.party.members.find((member) => member.id === (actor.sourceCharacterId ?? actor.id));
   const attack = actor.attacks.find((item) => item.id === action.attackId);
   if (!target || !actorCharacter || !attack || !canUseSrdStunningStrike(actorCharacter, attack, combat)) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: "Stunning Strike is not available for this attack." };
   }
   const equipmentCheck = canUseSrdAttackWithEquipment(actorCharacter, attack);
@@ -925,12 +925,12 @@ export function resolveStunningStrikeAttackAction({
     };
   }
   if (!combat.turnBudget) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: "Combat turn budget is unavailable." };
   }
   const spent = spendAction(combat.turnBudget, "attack");
   if (!spent.ok) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: spent.message };
   }
 
@@ -961,7 +961,7 @@ export function resolveStunningStrikeAttackAction({
     try {
       spentKiCharacter = spendSrdKi(actorCharacter);
     } catch (error) {
-      return { handled: true, ok: false, state: { ...state, combat }, 
+      return { handled: true, ok: false, state: { ...state, combat },
       message: error instanceof Error ? error.message : String(error) };
     }
     const dc = srdKiSaveDc(spentKiCharacter);
@@ -1048,7 +1048,7 @@ function prepareSneakAttackAction(
   const actorCharacter = state.party.members.find((member) => member.id === (actor.sourceCharacterId ?? actor.id));
   const attack = actor.attacks.find((item) => item.id === action.attackId);
   if (!actorCharacter || !attack || !canUseSrdSneakAttack(actorCharacter, actor, attack, action.targetId, combat)) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: "Sneak Attack is not available for this attack." };
   }
   return {
@@ -1074,7 +1074,7 @@ function prepareHunterColossusSlayerAction(
   const actorCharacter = state.party.members.find((member) => member.id === (actor.sourceCharacterId ?? actor.id));
   const attack = actor.attacks.find((item) => item.id === action.attackId);
   if (!actorCharacter || !attack || !canUseSrdHunterColossusSlayer(actorCharacter, attack, action.targetId, combat)) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: "Hunter Colossus Slayer is not available for this attack." };
   }
   return {
@@ -1100,11 +1100,11 @@ function prepareRecklessAttackAction(
   const actorCharacter = state.party.members.find((member) => member.id === (actor.sourceCharacterId ?? actor.id));
   const attack = actor.attacks.find((item) => item.id === action.attackId);
   if (!actorCharacter || !attack || !canUseSrdRecklessAttack(actorCharacter, attack)) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: "Reckless Attack is not available for this attack." };
   }
   if (!hasAvailableAction(combat.turnBudget)) {
-    return { handled: true, ok: false, state: { ...state, combat }, 
+    return { handled: true, ok: false, state: { ...state, combat },
       message: "Action already spent this turn." };
   }
   const recklessCombat = updateCombatantTactics(combat, actor.id, (tactics) => ({ ...tactics, reckless: true }));
@@ -1139,11 +1139,11 @@ function spendAmmunitionForAttack(
   state: GameState,
   actorCharacter: Character,
   attack: Pick<AttackAction, "id" | "range">
-): { ok: true; state: GameState; ammunitionItemId?: string; removedAttackIds: string[] } | { ok: false; 
+): { ok: true; state: GameState; ammunitionItemId?: string; removedAttackIds: string[] } | { ok: false;
       message: string } {
   const ammunition = spendSrdAttackAmmunition(actorCharacter, attack);
   if (!ammunition.ok) {
-    return { ok: false, 
+    return { ok: false,
       message: (ammunition as any).message };
   }
   if (!ammunition.ammunitionItemId) {

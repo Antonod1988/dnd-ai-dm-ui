@@ -7,6 +7,7 @@ Only `src/core/` and its MIT license were imported with `git archive`. Uncommitt
 Changes in this project are isolated in the application adapter. `entry.ts` and `scripts/build-rules.js` compile the source into an ESM module; built output is not committed.
 
 One storage fix is applied in the snapshot: `state/store.ts` writes the SQLite export to a temporary file and renames it, avoiding a partially overwritten database after interruption.
+Trailing spaces in four upstream TypeScript files have also been normalized; no rules logic was changed by that formatting step.
 
 ## SRD attribution
 

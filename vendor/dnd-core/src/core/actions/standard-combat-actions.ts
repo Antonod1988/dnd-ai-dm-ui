@@ -162,36 +162,36 @@ function resolveFieldScoutSearch(params: {
 }): GeneratedFeatTurnActionResult {
   const actor = params.combat.participants.find((participant) => participant.id === params.actorId);
   if (!actor) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: `Combatant not found: ${params.actorId}` };
   }
   if (isActionIncapacitated(actor)) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: `${actor.name} cannot act while incapacitated.` };
   }
   const actorCharacter = params.state.party.members.find((member) => member.id === (actor.sourceCharacterId ?? actor.id));
   if (!actorCharacter || !hasGeneratedFeatPreset(actorCharacter, "field_scout")) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: `${actor.name} does not have the Field Scout feat.` };
   }
   if (!params.combat.turnBudget) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: "No turn budget is active." };
   }
   const spent = spendBonusAction(params.combat.turnBudget, "Field Scout Search");
   if (!spent.ok) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: spent.message };
   }
 
   const baseCombat = { ...params.combat, turnBudget: spent.budget };
   const target = findCombatEnemy(baseCombat, actor, params.targetId);
   if (params.targetId && !target) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: `Field Scout target not found or not hostile: ${params.targetId}.` };
   }
   if (target && combatCover(baseCombat, actor.id, target.id) === "total") {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: `${actor.name} cannot study ${target.name} through total cover.` };
   }
 
@@ -226,34 +226,34 @@ function resolveBattlefieldCommanderHelp(params: {
 }): GeneratedFeatTurnActionResult {
   const actor = params.combat.participants.find((participant) => participant.id === params.actorId);
   if (!actor) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: `Combatant not found: ${params.actorId}` };
   }
   if (isActionIncapacitated(actor)) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: `${actor.name} cannot act while incapacitated.` };
   }
   const actorCharacter = params.state.party.members.find((member) => member.id === (actor.sourceCharacterId ?? actor.id));
   if (!actorCharacter || !hasGeneratedFeatPreset(actorCharacter, "battlefield_commander")) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: `${actor.name} does not have the Battlefield Commander feat.` };
   }
   if (!params.combat.turnBudget) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: "No turn budget is active." };
   }
   const target = findCombatEnemy(params.combat, actor, params.targetId);
   if (!target) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: `Battlefield Commander target not found or not hostile: ${params.targetId ?? "none"}.` };
   }
   if (combatDistanceBand(params.combat, actor.id, target.id) !== "engaged") {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: `${actor.name} must be engaged with ${target.name} to coordinate Help against them.` };
   }
   const spent = spendBonusAction(params.combat.turnBudget, "Battlefield Commander Help");
   if (!spent.ok) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: spent.message };
   }
   const helpedCombat = addPendingCombatHelp(
@@ -281,25 +281,25 @@ function resolveSkirmisherFootwork(params: {
 }): GeneratedFeatTurnActionResult {
   const actor = params.combat.participants.find((participant) => participant.id === params.actorId);
   if (!actor) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: `Combatant not found: ${params.actorId}` };
   }
   if (isActionIncapacitated(actor)) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: `${actor.name} cannot act while incapacitated.` };
   }
   const actorCharacter = params.state.party.members.find((member) => member.id === (actor.sourceCharacterId ?? actor.id));
   if (!actorCharacter || !hasGeneratedFeatPreset(actorCharacter, "skirmisher_footwork")) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: `${actor.name} does not have the Skirmisher Footwork feat.` };
   }
   if (!params.combat.turnBudget) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: "No turn budget is active." };
   }
   const spent = spendBonusAction(params.combat.turnBudget, "Skirmisher Footwork");
   if (!spent.ok) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: spent.message };
   }
   const message = `${actor.name} uses Skirmisher Footwork as a bonus action. Disengage prevents opportunity attacks this turn.`;
@@ -324,29 +324,29 @@ function resolveShadowStalkerHide(params: {
 }): GeneratedFeatTurnActionResult {
   const actor = params.combat.participants.find((participant) => participant.id === params.actorId);
   if (!actor) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: `Combatant not found: ${params.actorId}` };
   }
   if (isActionIncapacitated(actor)) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: `${actor.name} cannot act while incapacitated.` };
   }
   if (actor.tactics?.hidden) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: `${actor.name} is already hidden.` };
   }
   const actorCharacter = params.state.party.members.find((member) => member.id === (actor.sourceCharacterId ?? actor.id));
   if (!actorCharacter || !hasGeneratedFeatPreset(actorCharacter, "shadow_stalker")) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: `${actor.name} does not have the Shadow Stalker feat.` };
   }
   if (!params.combat.turnBudget) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: "No turn budget is active." };
   }
   const spent = spendBonusAction(params.combat.turnBudget, "Shadow Stalker Hide");
   if (!spent.ok) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: spent.message };
   }
 
@@ -377,39 +377,39 @@ function resolveShieldBearerGuard(params: {
 }): GeneratedFeatTurnActionResult {
   const actor = params.combat.participants.find((participant) => participant.id === params.actorId);
   if (!actor) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: `Combatant not found: ${params.actorId}` };
   }
   if (isActionIncapacitated(actor) || isDefeated(actor)) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: `${actor.name} cannot guard while incapacitated or defeated.` };
   }
   const actorCharacter = params.state.party.members.find((member) => member.id === (actor.sourceCharacterId ?? actor.id));
   if (!actorCharacter || !hasGeneratedFeatPreset(actorCharacter, "shield_bearer")) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: `${actor.name} does not have the Shield Bearer feat.` };
   }
   if (!params.combat.turnBudget) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: "No turn budget is active." };
   }
   const target = params.combat.participants.find((participant) => participant.id === params.targetId);
   if (!target || target.id === actor.id || areHostileCombatants(actor, target) || isDefeated(target)) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: `Shield Bearer target not found or not an active ally: ${params.targetId ?? "none"}.` };
   }
   const distance = combatDistanceBand(params.combat, actor.id, target.id);
   if (distance === "out_of_range") {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: `${actor.name} is too far from ${target.name} to guard them.` };
   }
   if (target.activeEffects?.some((effect) => effect.featureId === "feat_shield_bearer_guard" && effect.sourceId === actor.id)) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: `${target.name} is already guarded by ${actor.name}.` };
   }
   const spent = spendReaction(params.combat.turnBudget, "Shield Bearer Guard");
   if (!spent.ok) {
-    return { handled: true, ok: false, combat: params.combat, 
+    return { handled: true, ok: false, combat: params.combat,
       message: spent.message };
   }
 
@@ -438,7 +438,7 @@ export const standardCombatActionHandlers: readonly StandardCombatActionHandler[
     actionKind: "attack",
     resolve: ({ state, combat, actor, primaryId, secondaryId, rng }) => {
       if (!primaryId || !secondaryId) {
-        return { handled: true, ok: false, combat, 
+        return { handled: true, ok: false, combat,
       message: "Attack requires an actionId like combat.attack.<attackId>.<targetId>." };
       }
       const attack = actor.attacks.find((item) => item.id === primaryId);
@@ -446,7 +446,7 @@ export const standardCombatActionHandlers: readonly StandardCombatActionHandler[
       if (attack && actorCharacter) {
         const equipmentCheck = canUseSrdAttackWithEquipment(actorCharacter, attack);
         if (!equipmentCheck.ok) {
-          return { handled: true, ok: false, combat, 
+          return { handled: true, ok: false, combat,
       message: equipmentCheck.message ?? `Cannot use ${primaryId} with current equipment.` };
         }
       }
@@ -457,7 +457,7 @@ export const standardCombatActionHandlers: readonly StandardCombatActionHandler[
       if (attack && actorCharacter) {
         const ammunition = spendSrdAttackAmmunition(actorCharacter, attack);
         if (ammunition.ok === false) {
-          return { handled: true, ok: false, combat, 
+          return { handled: true, ok: false, combat,
       message: ammunition.message };
         }
         ammunitionItemId = ammunition.ammunitionItemId;
@@ -659,11 +659,11 @@ export const standardCombatActionHandlers: readonly StandardCombatActionHandler[
       let nextCombat = combat;
       const target = findCombatEnemy(nextCombat, actor, primaryId);
       if (primaryId && !target) {
-        return { handled: true, ok: false, combat, 
+        return { handled: true, ok: false, combat,
       message: `Search target not found or not hostile: ${primaryId}.` };
       }
       if (target && combatCover(combat, actor.id, target.id) === "total") {
-        return { handled: true, ok: false, combat, 
+        return { handled: true, ok: false, combat,
       message: `${actor.name} cannot study ${target.name} through total cover.` };
       }
       const actorCharacter = state.party.members.find((member) => member.id === (actor.sourceCharacterId ?? actor.id));
@@ -694,11 +694,11 @@ export const standardCombatActionHandlers: readonly StandardCombatActionHandler[
     resolve: ({ combat, actor, primaryId }) => {
       const target = findCombatEnemy(combat, actor, primaryId);
       if (!target) {
-        return { handled: true, ok: false, combat, 
+        return { handled: true, ok: false, combat,
       message: "Help requires an engaged hostile target." };
       }
       if (combatDistanceBand(combat, actor.id, target.id) !== "engaged") {
-        return { handled: true, ok: false, combat, 
+        return { handled: true, ok: false, combat,
       message: `${actor.name} must be engaged with ${target.name} to use Help against them.` };
       }
       return {
@@ -719,15 +719,15 @@ export const standardCombatActionHandlers: readonly StandardCombatActionHandler[
     resolve: ({ state, combat, actor, primaryId, rng }) => {
       const target = findCombatEnemy(combat, actor, primaryId);
       if (!target) {
-        return { handled: true, ok: false, combat, 
+        return { handled: true, ok: false, combat,
       message: "Grapple requires a living enemy target." };
       }
       if (combatDistanceBand(combat, actor.id, target.id) !== "engaged") {
-        return { handled: true, ok: false, combat, 
+        return { handled: true, ok: false, combat,
       message: `${actor.name} must be engaged with ${target.name} to grapple.` };
       }
       if (target.conditionImmunities?.includes("grappled")) {
-        return { handled: true, ok: false, combat, 
+        return { handled: true, ok: false, combat,
       message: `${target.name} cannot be grappled.` };
       }
       const actorCharacter = state.party.members.find((member) => member.id === (actor.sourceCharacterId ?? actor.id));
@@ -766,7 +766,7 @@ export const standardCombatActionHandlers: readonly StandardCombatActionHandler[
     actionKind: "escape_grapple",
     resolve: ({ state, combat, actor, rng }) => {
       if (!actor.conditions.includes("grappled")) {
-        return { handled: true, ok: false, combat, 
+        return { handled: true, ok: false, combat,
       message: `${actor.name} is not grappled.` };
       }
       const actorCharacter = state.party.members.find((member) => member.id === (actor.sourceCharacterId ?? actor.id));
@@ -804,20 +804,20 @@ export const standardCombatActionHandlers: readonly StandardCombatActionHandler[
     actionKind: "grappler_pin",
     resolve: ({ state, combat, actor, primaryId, rng }) => {
       if (!hasSrdGrapplerFeat(actor)) {
-        return { handled: true, ok: false, combat, 
+        return { handled: true, ok: false, combat,
       message: `${actor.name} does not have the Grappler feat.` };
       }
       const target = findCombatEnemy(combat, actor, primaryId);
       if (!target) {
-        return { handled: true, ok: false, combat, 
+        return { handled: true, ok: false, combat,
       message: "Grappler pin requires a living enemy target." };
       }
       if (!isGrappledBy(target, actor.id)) {
-        return { handled: true, ok: false, combat, 
+        return { handled: true, ok: false, combat,
       message: `${actor.name} must already be grappling ${target.name} to pin them.` };
       }
       if (target.conditions.includes("restrained")) {
-        return { handled: true, ok: false, combat, 
+        return { handled: true, ok: false, combat,
       message: `${target.name} is already restrained.` };
       }
       const actorCharacter = state.party.members.find((member) => member.id === (actor.sourceCharacterId ?? actor.id));
@@ -1063,15 +1063,15 @@ function resolveShove(
 ): StandardCombatActionHandlerResult {
   const target = findCombatEnemy(combat, actor, primaryId);
   if (!target) {
-    return { handled: true, ok: false, combat, 
+    return { handled: true, ok: false, combat,
       message: "Shove requires a living enemy target." };
   }
   if (combatDistanceBand(combat, actor.id, target.id) !== "engaged") {
-    return { handled: true, ok: false, combat, 
+    return { handled: true, ok: false, combat,
       message: `${actor.name} must be engaged with ${target.name} to shove.` };
   }
   if (actionKind === "shove_prone" && target.conditionImmunities?.includes("prone")) {
-    return { handled: true, ok: false, combat, 
+    return { handled: true, ok: false, combat,
       message: `${target.name} cannot be knocked prone.` };
   }
   const actorCharacter = state.party.members.find((member) => member.id === (actor.sourceCharacterId ?? actor.id));

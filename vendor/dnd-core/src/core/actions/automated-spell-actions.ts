@@ -1031,7 +1031,7 @@ export function resolveAutomatedSrdCombatSpellCast(params: {
   carefulSpellProtectedTargetIds?: string[];
 }): AutomatedSrdCombatSpellCastResult {
   if (!params.combat.turnBudget) {
-    return { ok: false, combat: params.combat, 
+    return { ok: false, combat: params.combat,
       message: "Combat turn budget is not available." };
   }
 
@@ -1046,7 +1046,7 @@ export function resolveAutomatedSrdCombatSpellCast(params: {
     };
   }
   if (isActionIncapacitated(actor)) {
-    return { ok: false, combat: params.combat, 
+    return { ok: false, combat: params.combat,
       message: `${actor.name} cannot cast while incapacitated.` };
   }
 
@@ -1067,7 +1067,7 @@ export function resolveAutomatedSrdCombatSpellCast(params: {
       : combatBeforeCast.participants.find((participant) => participant.id === params.targetId) ?? targetCombatant;
   const actionCost = params.actionCost ?? "action";
   const spent = params.spentBudget
-    ? { ok: true as const, budget: params.spentBudget, 
+    ? { ok: true as const, budget: params.spentBudget,
       message: `Action spent: ${params.spellId}.` }
     : actionCost === "reaction"
       ? spendReaction(combatBeforeCast.turnBudget!, params.spellId)
@@ -1075,7 +1075,7 @@ export function resolveAutomatedSrdCombatSpellCast(params: {
         ? spendBonusAction(combatBeforeCast.turnBudget!, params.spellId)
         : spendAction(combatBeforeCast.turnBudget!, "cast_spell");
   if (!spent.ok) {
-    return { ok: false, combat: combatBeforeCast, 
+    return { ok: false, combat: combatBeforeCast,
       message: spent.message };
   }
 
@@ -1272,7 +1272,7 @@ export function resolveAutomatedSrdCombatSpellTurnAction(params: {
     suppressReadiedReactions: parsed.metamagic === "subtle_spell"
   });
   if (!prepared.ok) {
-    return { handled: true, ok: false, combat: prepared.combat, 
+    return { handled: true, ok: false, combat: prepared.combat,
       message: "message" in prepared ? prepared.message : "Spell preparation failed." };
   }
   if (prepared.interrupted) {
@@ -1344,21 +1344,21 @@ function prepareAutomatedSrdSpellTurnWithReadyInterrupt(
   options: { suppressReadiedReactions?: boolean } = {}
 ):
   | { ok: true; interrupted?: false; combat: CombatState; actor: Combatant; spentBudget: TurnBudget; rollLogs: RollLogEntry[] }
-  | { ok: true; interrupted: true; combat: CombatState; actor: Combatant; spentBudget: TurnBudget; 
+  | { ok: true; interrupted: true; combat: CombatState; actor: Combatant; spentBudget: TurnBudget;
       message: string; rollLogs: RollLogEntry[] }
-  | { ok: false; combat: CombatState; 
+  | { ok: false; combat: CombatState;
       message: string } {
   if (!combat.turnBudget) {
-    return { ok: false, combat, 
+    return { ok: false, combat,
       message: "Combat turn budget is not available." };
   }
   const actor = combat.participants.find((participant) => participant.id === actorId);
   if (!actor) {
-    return { ok: false, combat, 
+    return { ok: false, combat,
       message: "Caster or spell target was not found." };
   }
   if (isActionIncapacitated(actor)) {
-    return { ok: false, combat, 
+    return { ok: false, combat,
       message: `${actor.name} cannot cast while incapacitated.` };
   }
   const spent =
@@ -1368,7 +1368,7 @@ function prepareAutomatedSrdSpellTurnWithReadyInterrupt(
         ? spendBonusAction(combat.turnBudget, spellId)
         : spendAction(combat.turnBudget, "cast_spell");
   if (!spent.ok) {
-    return { ok: false, combat, 
+    return { ok: false, combat,
       message: spent.message };
   }
   if (options.suppressReadiedReactions) {

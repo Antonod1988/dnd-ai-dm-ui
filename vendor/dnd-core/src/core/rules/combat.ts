@@ -1,18 +1,18 @@
 ﻿import { addModifierToExpression, doubleDiceExpression, rollExpression, type Rng, SystemRng } from "../dice.js";
-import { 
-  applyCondition, 
-  hasAnyCondition, 
-  effectiveHitPointMaximum, 
-  exhaustionLevel, 
-  hasNoMovement, 
-  isAutomaticSavingThrowFailure, 
-  isActionIncapacitated, 
-  isCharmedBySource, 
-  isFrightenedOfSource, 
-  movementFeetForConditions, 
-  normalizeDefeatConditions, 
-  removeCondition, 
-  removeExpiredTimedConditionInstances, 
+import {
+  applyCondition,
+  hasAnyCondition,
+  effectiveHitPointMaximum,
+  exhaustionLevel,
+  hasNoMovement,
+  isAutomaticSavingThrowFailure,
+  isActionIncapacitated,
+  isCharmedBySource,
+  isFrightenedOfSource,
+  movementFeetForConditions,
+  normalizeDefeatConditions,
+  removeCondition,
+  removeExpiredTimedConditionInstances,
   syncConditionInstancesWithConditions,
   savingThrowModeForConditions,
   applyConditionInstance
@@ -40,18 +40,18 @@ import {
   activeArmorClassBonus,
   consumeSavingThrowEffectBonuses
 } from "./effects.js";
-import { 
-  abilityModifier, 
-  rollAbilityCheck, 
-  rollSavingThrow, 
-  defaultRules, 
-  hasSrdDangerSense, 
-  hasSrdDeflectMissiles, 
+import {
+  abilityModifier,
+  rollAbilityCheck,
+  rollSavingThrow,
+  defaultRules,
+  hasSrdDangerSense,
+  hasSrdDeflectMissiles,
   hasSrdFeralInstinct,
   hasSrdIndomitable,
-  jackOfAllTradesBonus, 
+  jackOfAllTradesBonus,
   srdRemarkableAthleteBonus,
-  srdDeflectMissilesReductionBonus, 
+  srdDeflectMissilesReductionBonus,
   srdCriticalHitMinimum,
   srdAuraOfProtectionBonus,
   hasSrdAuraOfCourage,
@@ -4037,22 +4037,22 @@ export function beginTurn(combat: CombatState, turnIndex: number, rng?: Rng): Co
     const repeated = actorId
         ? resolveTargetTurnStartRepeatSaves(combat, actorId, turnRng)
         : { combat, results: [] };
-    
+
     const timed = expireTimedConditionInstances(repeated.combat, repeated.combat.round, turnIndex);
-    
-    const expired = actorId 
-        ? removeTurnStartExpiredEffects(timed.combat, actorId) 
+
+    const expired = actorId
+        ? removeTurnStartExpiredEffects(timed.combat, actorId)
         : { combat: timed.combat, removedEffectLabels: [] };
-        
-    const helpExpiredCombat = actorId 
-        ? removePendingCombatHelpFromSource(expired.combat, actorId) 
+
+    const helpExpiredCombat = actorId
+        ? removePendingCombatHelpFromSource(expired.combat, actorId)
         : expired.combat;
-        
+
     const actor = helpExpiredCombat.participants.find(p => p.id === actorId);
     let updatedActor = actor;
     let regenerationLog: CombatLogEntry | undefined;
     let temporaryHitPointLog: CombatLogEntry | undefined;
-    
+
     if (actor && actor.ai?.traits?.includes("regeneration") && actor.hp.current > 0 && actor.hp.current < actor.hp.max) {
         const blockedTypes = actor.tactics?.regenerationBlockedDamageTypes ?? [];
         if (blockedTypes.some(isRegenerationBlockingDamageType)) {
@@ -4083,7 +4083,7 @@ export function beginTurn(combat: CombatState, turnIndex: number, rng?: Rng): Co
     const temporaryHitPoints = applyTargetTurnStartTemporaryHitPoints(updatedActor, helpExpiredCombat.round);
     updatedActor = temporaryHitPoints.actor;
     temporaryHitPointLog = temporaryHitPoints.log;
-    
+
     const next = {
         ...helpExpiredCombat,
         participants: helpExpiredCombat.participants.map((participant, index) => {
@@ -4119,10 +4119,10 @@ export function beginTurn(combat: CombatState, turnIndex: number, rng?: Rng): Co
             return p;
         })
     };
-    
+
     const repeatLogs = actorId ? repeated.results.map((result) => repeatSaveLog(combat, actor, result)) : [];
     const timedLogs = timed.events.map((event) => timedConditionExpiryLog(combat, event));
-    
+
     const expiryLogs = expired.removedEffectLabels.map(label => ({
         id: newId("combat_log"),
         ts: nowIso(),

@@ -100,7 +100,7 @@ function createChatgptAuth({ store = createAuthStore(), fetchImpl = fetch, verif
       const account = active();
       return { connected: enabled(account), identityOnly: Boolean(account?.access_token && !enabled(account)), activeId: data.activeId,
         accounts: data.accounts.map(a => ({ id: a.id, label: a.email || a.name || 'ChatGPT', registration: a.client_id.slice(-6), connected: Boolean(a.access_token) })),
-        model: account?.model || '', models: modelsFor === account?.id ? models : [], pending: Boolean(pending && pending.expires > Date.now()), error: lastError };
+        model: account?.model || '', models: modelsFor === account?.id ? models : [], usage, pending: Boolean(pending && pending.expires > Date.now()), error: lastError };
     },
     isEnabled() { return enabled(active()); },
     modelLabel() { const id = active()?.model || ''; return models.find(m => m.id === id)?.name || id; },

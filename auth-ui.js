@@ -22,6 +22,9 @@
     loading = true;
     try {
       snapshot = await request('status');
+      document.querySelector('#authUsage').textContent = snapshot.usage
+        ? `Последний запрос: ${snapshot.usage.inputTokens ?? '—'} входных и ${snapshot.usage.outputTokens ?? '—'} выходных токенов. Данные провайдера; это не сумма за всю игровую сессию.`
+        : 'Расход последнего запроса появится после ответа AI, если провайдер вернёт счётчики.';
       const previous = accounts.value;
       accounts.replaceChildren(...snapshot.accounts.map(a => option(a.id, `${a.label} · ${a.registration}${a.connected ? '' : ' · нужен вход'}`)), option('', 'Добавить аккаунт / рабочее пространство'));
       accounts.value = snapshot.activeId || previous || '';
