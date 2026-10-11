@@ -55,3 +55,7 @@ A synthetic registry with a 600-method chain retains access proof and selects th
 Only heard lines enter history/context. Unspoken replies cancelled by intervention cannot become memories. Accepted/rejected proposals have separate durable dialogue_decision events with speaker, source scene/turn and action/proposal IDs, surviving later councils and SQLite reopen. Acceptance requires the actual operation ID. These rules are covered with controlled fixtures.
 
 Physical props and NPC bodies persist separately; context selects relevant nearby objects/conditions/HP/hostility in a bounded block, within the same total 12,000-character packet. The live bar aftermath and inspection selected 4,754 characters. Seven recorded calls cover creation, intent, narration and explicit discussion; Next, rejection and intervention added none. This is not a complete account bill.
+
+## Persistent NPC battle aftermath — 2026-10-12
+
+Exact NPC HP/conditions persist when combat ends, including a killing blow that previously would lose enemy participants. Compact NPC context includes the declared profile and actual stored body. Separate NPC-combat start/end events do not masquerade as a location-victory quest proof. The existing total context bound stays 12,000 characters. Timed NPC effects expire by world time; hero rest never resets NPC wounds.

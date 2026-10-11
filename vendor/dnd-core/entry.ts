@@ -21,3 +21,5 @@ export { rollStateAbilityCheck, abilityCheckRollLogs } from './src/core/narrativ
 export { resolveAttack, characterToCombatant, setCombatDistanceBand } from './src/core/rules/combat.js';
 export { spendObjectInteraction } from './src/core/rulesets/srd5e2014/action-economy.js';
 export { isCharmedBySource } from './src/core/rules/conditions.js';
+export { startCombat, runAutomaticTurns } from './src/core/rules/combat.js';
+export { hasPendingDeathSaves, focusNextDeathSaveTurn } from './src/core/rules/combat.js';

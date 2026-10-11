@@ -5,7 +5,7 @@ function elapsedSeconds(command, beforeCombat, afterCombat, outcome = {}) {
   if (beforeCombat) {
     return afterCombat ? Math.max(0, afterCombat.round - beforeCombat.round) * 6 : 6;
   }
-  if (command.type === 'combat') return 0;
+  if (['combat','npc_combat'].includes(command.type)) return 0;
   if (command.type === 'travel') return 3600;
   if (command.type === 'rest') return command.kind === 'long' ? 28800 : 3600;
   if(['attune_item','unattune_item'].includes(command.type))return 3600;
@@ -39,4 +39,14 @@ async function expireExplorationEffects(state, previousEffects, seconds) {
   return [...new Set(removedLabels)];
 }
 
-module.exports = { elapsedSeconds, expireExplorationEffects };
+async function expireNpcEffects(adventure, previousEffects, seconds) {
+  const records=adventure.environment?.npcStates||[];
+  if(!records.length)return [];
+  // Use the same expiry and condition-instance cleanup as party creatures.
+  // NPC bodies keep their injuries, permanent conditions and unexpired effects.
+  const projected={party:{members:records.map(n=>n.body)}};
+  const expired=await expireExplorationEffects(projected,previousEffects,seconds);
+  records.forEach((record,index)=>{record.body=projected.party.members[index];});
+  return expired;
+}
+module.exports = { elapsedSeconds, expireExplorationEffects, expireNpcEffects };

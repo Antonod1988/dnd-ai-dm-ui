@@ -504,8 +504,15 @@ export function syncPartyFromCombat(state: GameState): GameState {
   if (!state.combat) {
     return state;
   }
+  // The adapter must retain exact persistent NPC bodies when finishCombatTurn
+  // removes the terminal combat. Ordinary upstream encounters do not use this hook.
+  const boundNpcSnapshot = state.combat.environment.id.startsWith("npc_encounter:")
+    ? JSON.stringify({ combatId: state.combat.id, environmentId: state.combat.environment.id,
+        participants: state.combat.participants.filter((participant) => participant.kind === "enemy").slice(0, 6) })
+    : undefined;
   return {
     ...state,
+    ...(boundNpcSnapshot ? { flags: { ...state.flags, ui_bound_npc_combat_snapshot: boundNpcSnapshot } } : {}),
     party: {
       ...state.party,
       members: state.party.members.map((member) => {

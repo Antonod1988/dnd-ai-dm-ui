@@ -188,7 +188,7 @@ async function memoryChange(route,data) {
 function renderPeople(view) {
   $('#peopleList').innerHTML=view.npcs.map(n=>{
     const art=artAsset(view,'npc',n.id),body=n.body,disposition=n.disposition||view.environment?.npcs.find(p=>p.id===n.id)?.disposition;
-    const condition=body?.conditions.includes('dead')?'Погиб':body&&body.hp.current<=0?'Без сознания':null;
+    const condition=body?.conditions.includes('dead')?'Нет в живых':body&&body.hp.current<=0?'Без сознания':null;
     return `<article class="world-card">${art?`<img class="npc-portrait" src="${esc(art.url)}" alt="${esc(n.name)}" loading="lazy">`:''}<p class="eyebrow">${n.locationId===view.scene.id?'РЯДОМ':esc(view.locations.find(l=>l.id===n.locationId)?.name||'')}</p><h3>${esc(n.name)}</h3><p>${esc(n.role)}</p><p>${esc(n.personality)}</p>${body?`<p class="npc-state">${body.hp.current}/${body.hp.max} HP${condition?` · ${T(condition)}`:''}${disposition==='hostile'?` · ${T('Враждебен')}`:''}</p>`:''}<p class="relationship">Знакомство: ${n.familiarity} · Доверие: ${n.trust}</p><button class="subtle" data-npc-art="${esc(n.id)}">${T('Портрет')}</button>${n.locationId===view.scene.id?`<button data-action="talk:${esc(n.id)}" ${view.combat||n.canInteract===false?'disabled':''}>Поговорить</button>`:''}</article>`;
   }).join('')||'<p class="empty">Новые лица появятся по мере знакомства с миром.</p>';
 }

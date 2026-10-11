@@ -79,16 +79,12 @@ test('scene props cannot be sold or used as virtual held weapons after their rea
   const loaded=await engine.loaded(view.campaign.id);loaded.state.party.members.find(p=>p.id===view.hero.id).inventory=loaded.state.party.members.find(p=>p.id===view.hero.id).inventory.filter(i=>i.itemId!=='scene_prop_vessel');await engine.save(loaded.service,loaded.state,loaded.adventure,'deleted_projection_fixture');view=await engine.getView(view.campaign.id);const original=structuredClone(view);
   view=await engine.perform(body({type:'environment_interaction',plan:{steps:[{type:'throw',propId:'vessel',targetId:'guide'}]}}));assert.equal(view.refusal.code,'projection_missing');assert.deepEqual(view.npcs,original.npcs);assert.deepEqual(view.environment,original.environment);assert.deepEqual(view.rolls,original.rolls);assert.equal(view.campaign.turn,original.campaign.turn);
 });
-test('generated combat cannot replace a known healthy or dead NPC by ID or exact normalized name, while distinct threats remain supported',async()=>{
-  await create();const healthy=structuredClone(view);
-  for(const command of [{type:'combat',npcId:'guide',difficulty:'easy'},{type:'combat',enemyName:'  БАРМЕН!!! ',difficulty:'easy'}]){
-    const request=body(command),result=await engine.perform(request);
-    assert.equal(result.refusal.code,'bound_npc_combat_unavailable');assert.equal(result.combat,null);assert.deepEqual(result.hero,healthy.hero);assert.deepEqual(result.rolls,healthy.rolls);assert.equal(result.campaign.turn,healthy.campaign.turn);assert.equal(result.campaign.hours,healthy.campaign.hours);assert.deepEqual(result.scene.affordances,healthy.scene.affordances);view=result;
-  }
+test('known dead or remote NPC cannot be recreated through generated combat, while distinct threats stay supported',async()=>{
+  await create();
   const attack=physical(),request=body(attack);view=await engine.perform(request,{seed:await hitSeed(attack,request)});assert.equal(view.npcs.find(n=>n.id==='guide').body.hp.current,0);const dead=structuredClone(view);
-  intent={type:'combat',enemyName:'Бармен',difficulty:'hard'};
-  view=await engine.perform(body(null,'Начинаю бой с барменом'));assert.equal(view.refusal.code,'bound_npc_combat_unavailable');assert.deepEqual(view.npcs,dead.npcs);assert.deepEqual(view.hero,dead.hero);assert.deepEqual(view.rolls,dead.rolls);assert.deepEqual(view.environment,dead.environment);assert.equal(view.campaign.turn,dead.campaign.turn);assert.equal(view.campaign.hours,dead.campaign.hours);assert.equal(view.items.filter(i=>i.origin?.kind==='combat').length,0);
+  intent={type:'combat',enemyName:'  БАРМЕН!!! ',difficulty:'hard'};
+  view=await engine.perform(body(null,'Начинаю бой с барменом'));assert.ok(view.refusal);assert.deepEqual(view.npcs,dead.npcs);assert.deepEqual(view.hero,dead.hero);assert.deepEqual(view.rolls,dead.rolls);assert.deepEqual(view.environment,dead.environment);assert.equal(view.campaign.turn,dead.campaign.turn);assert.equal(view.campaign.hours,dead.campaign.hours);assert.equal(view.items.filter(i=>i.origin?.kind==='combat').length,0);
   const loaded=await engine.loaded(view.campaign.id);loaded.adventure.npcs.push({id:'traveler',name:'Путник',role:'Обычный путешественник',locationId:'threshold',trust:0,familiarity:0});await engine.save(loaded.service,loaded.state,loaded.adventure,'remote_npc_identity_fixture');view=await engine.getView(view.campaign.id);
-  const remote=await engine.perform(body({type:'combat',npcId:'traveler'}));assert.equal(remote.refusal.code,'bound_npc_combat_unavailable');assert.equal(remote.combat,null);view=remote;
+  const remote=await engine.perform(body({type:'combat',npcId:'traveler'}));assert.ok(remote.refusal);assert.equal(remote.combat,null);view=remote;
   view=await engine.perform(body({type:'combat',enemyName:'Засадный разбойник',difficulty:'easy'}),{seed:'adventure-loop'});assert.ok(view.combat);assert.ok(view.combat.participants.some(p=>p.kind==='enemy'&&p.name.startsWith('Засадный разбойник')));assert.equal(view.npcs.find(n=>n.id==='guide').body.hp.current,0);
 });

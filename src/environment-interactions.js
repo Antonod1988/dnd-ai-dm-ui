@@ -101,12 +101,7 @@ function spend(state, rules, kind) {
   if (!result.ok) fail('no_budget', result.message, ['Завершите ход или выберите действие с оставшимся ресурсом.']);
   state.combat.turnBudget = result.budget;
 }
-function npcBody(npc, rules) {
-  const base = rules.characterToCombatant(rules.createSrdLevelOneCharacter({ id: npc.id, name: npc.name, classId: 'fighter', raceId: 'human' }));
-  return { ...base, sourceCharacterId: undefined, kind: 'enemy', hp: { current: 4, max: 4, temp: 0 }, ac: 10,
-    abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }, proficiencyBonus: 0,
-    attacks: [], resources: [], savingThrowProficiencies: [], tactics: {}, activeEffects: [], conditions: [], conditionInstances: [] };
-}
+function npcBody(npc,rules){return require('./npc-encounters').createBody(npc,rules);}
 function targetFor(state, adventure, targetId, rules) {
   if (state.combat) {
     const target = state.combat.participants.find(p => p.id === targetId || p.sourceCharacterId === targetId);
@@ -119,7 +114,7 @@ function targetFor(state, adventure, targetId, rules) {
   let record = data.npcStates.find(n => n.npcId === npc.id);
   if (!record) {
     if (data.npcStates.length >= limits.npcs) fail('npc_limit', 'Достигнут предел сохраняемых физических профилей NPC.');
-    record = { npcId: npc.id, profile: 'bounded_civilian', disposition: 'neutral', body: npcBody(npc, rules) };
+    record = { npcId: npc.id, profile: npc.combatProfile||'civilian', disposition: 'neutral', body: npcBody(npc, rules) };
     data.npcStates.push(record);
   }
   return record.body;

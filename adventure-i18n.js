@@ -5,7 +5,7 @@ const englishLabels = {
   'Разговор в сцене':'Scene conversation',
   'Вернуться к истории →':'Back to the story →',
   'Другие действия':'Other actions',
-  'Обстановка':'Environment','Опиши, что хочешь сделать с предметом.':'Describe what you want to do with an object.','Разбит':'Broken','У героя':'Held by the hero','В сцене':'In the scene','Враждебен':'Hostile','Без сознания':'Unconscious','Погиб':'Dead',
+  'Обстановка':'Environment','Опиши, что хочешь сделать с предметом.':'Describe what you want to do with an object.','Разбит':'Broken','У героя':'Held by the hero','В сцене':'In the scene','Враждебен':'Hostile','Без сознания':'Unconscious','Погиб':'Dead','Нет в живых':'Dead',
   'Начать другой разговор':'Start another conversation',
   'Нет доступной цели или ресурса для этого заклинания.':'No available target or resource for this spell.','Магия этого хода':'Spells available this turn',
   'реакция':'reaction',
@@ -81,7 +81,7 @@ function T(value) {
     [/^Ячейки (\d+) уровня$/, 'Level $1 slots'], [/^Контекст мастера: ([\d\s,]+) символов$/, 'GM context: $1 characters'],
     [/^Пополнить припасы · (\d+) монеты$/, 'Restock supplies · $1 coins'],
     [/^Еда: (\d+) дн\. · Вода: (\d+) дн\.$/, 'Food: $1 days · Water: $2 days'],
-    [/^Знакомство: (\d+) · Доверие: (-?\d+)$/, 'Familiarity: $1 · Trust: $2'], [/^Поговорить: (.+)$/, 'Talk: $1'], [/^Пойти: (.+)$/, 'Travel: $1'], [/^Взять: (.+)$/, 'Pick up: $1'],
+    [/^Знакомство: (\d+) · Доверие: (-?\d+)$/, 'Familiarity: $1 · Trust: $2'], [/^Поговорить: (.+)$/, 'Talk: $1'], [/^Начать бой: (.+)$/, 'Start combat: $1'], [/^Пойти: (.+)$/, 'Travel: $1'], [/^Взять: (.+)$/, 'Pick up: $1'],
     [/^Раунд (\d+)$/, 'Round $1'], [/^Действие (.) · Бонус (.) · (\d+) фт\.$/, 'Action $1 · Bonus $2 · $3 ft.'], [/^При смерти · успехи (\d)\/3 · неудачи (\d)\/3$/, 'Dying · successes $1/3 · failures $2/3']
   ];
   for (const [pattern, replacement] of patterns) if (pattern.test(trimmed)) return text.replace(trimmed, trimmed.replace(pattern, replacement));
