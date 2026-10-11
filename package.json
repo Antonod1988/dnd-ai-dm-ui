@@ -5,6 +5,8 @@
   "description": "Playable alpha for a narrative-first AI-DM DnD-style RPG.",
   "main": "server.js",
   "scripts": {
+    "build:rules": "node scripts/build-rules.js",
+    "prestart": "npm run build:rules",
     "start": "node server.js",
     "dev": "node server.js",
     "check": "node scripts/check.js",
@@ -15,7 +17,12 @@
     "node": ">=20"
   },
   "dependencies": {
-    "jose": "^6.2.12"
+    "jose": "^6.2.12",
+    "sql.js": "^1.14.2",
+    "zod": "^4.6.5"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
 }

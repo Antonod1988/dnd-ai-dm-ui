@@ -41,7 +41,7 @@ async function handleTurn({ input = "", actionId = "" }) {
   const actions = getAvailableActions(state);
   let intent = actionId
     ? { kind: "actionId", actionId, confidence: "high", reason: "UI action button." }
-    : await resolveIntent(input, { ...state, memory: buildMemoryPacket(state) }, actions);
+    : await resolveIntent(input, { ...state, memory: buildMemoryPacket(state, input) }, actions);
 
   if (intent.kind === "clarify") {
     addMessage(state, "dm", "AI-ДМ", intent.question || "Уточни, что именно делает герой.");
@@ -429,6 +429,7 @@ function buildView(state) {
     provider: {
       id: aiConfig.provider,
       model: aiConfig.modelLabel,
+      usage: aiConfig.usage,
       configured: isConfigured(aiConfig)
     }
   };
@@ -452,7 +453,7 @@ function addMessage(state, type, author, text) {
     time: new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }),
     text
   });
-  state.messages = state.messages.slice(-80);
+  require('./context-memory').archiveMessages(state);
 }
 
 function pushRoll(state, roll) {

@@ -7,3 +7,4 @@ data/
 outputs/
 test-results/
 playwright-report/
+vendor/dnd-core/dist/

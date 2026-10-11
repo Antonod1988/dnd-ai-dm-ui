@@ -4,7 +4,7 @@ const path = require('node:path');
 const engine = require('./game-engine');
 const { chatgpt } = require('./chatgpt-auth');
 const rootDir = path.resolve(__dirname, '..');
-const publicFiles = new Map([['/', 'index.html'], ['/index.html', 'index.html'], ['/styles.css', 'styles.css'], ['/app.js', 'app.js'], ['/auth-ui.js', 'auth-ui.js']]);
+const publicFiles = new Map([['/', 'index.html'], ['/index.html', 'index.html'], ['/styles.css', 'styles.css'], ['/app.js', 'app.js'], ['/auth-ui.js', 'auth-ui.js'], ['/dialogue-ui.js', 'dialogue-ui.js']]);
 
 async function createAlphaServer({ port = 8788 } = {}) {
   await chatgpt.status();
@@ -56,11 +56,20 @@ async function route(req, res, serialize) {
   }
   if (req.method === 'GET' && url.pathname === '/api/auth/status') return sendJson(res, 200, await chatgpt.status());
   if (req.method === 'GET' && url.pathname === '/api/auth/models') return sendJson(res, 200, { models: await chatgpt.models() });
+  if (req.method === 'GET' && url.pathname === '/api/dnd/options') return sendJson(res, 200, await require('./srd-engine').setupOptions());
+  if (req.method === 'GET' && url.pathname === '/api/discussion/status') return sendJson(res, 200, await serialize(() => require('./discussion-service').status()));
+  if (req.method === 'GET' && url.pathname === '/api/dnd/state') return sendJson(res, 200, await serialize(() => require('./srd-engine').getState(url.searchParams.get('campaignId') || undefined)));
   if (req.method === 'POST') {
     if (!req.headers['content-type']?.startsWith('application/json')) return sendJson(res, 415, { error: 'Expected JSON' });
     let body;
     try { body = JSON.parse(await readBody(req)); } catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
     if (!body || typeof body !== 'object' || Array.isArray(body)) return sendJson(res, 400, { error: 'Expected object' });
+    const discussion = require('./discussion-service');
+    const discussionRoutes = { '/api/discussion/start': () => discussion.start(body.topic), '/api/discussion/next': () => discussion.advance(), '/api/discussion/intervene': () => discussion.interrupt(body.text), '/api/discussion/decide': () => discussion.decide(body.proposalId, body.decision) };
+    if (discussionRoutes[url.pathname]) return sendJson(res, 200, await serialize(discussionRoutes[url.pathname]));
+    if (url.pathname === '/api/dnd/new-campaign') return sendJson(res, 200, await serialize(() => require('./srd-engine').createCampaign(body)));
+    if (url.pathname === '/api/dnd/command') return sendJson(res, 200, await serialize(() => require('./srd-engine').command(body)));
+    if (url.pathname === '/api/dnd/spell/preview') return sendJson(res, 200, require('./generated-effects').validateSpell(body));
     if (url.pathname === '/api/auth/model') { await chatgpt.selectModel(body.model); return sendJson(res, 200, await chatgpt.status()); }
     if (url.pathname === '/api/auth/switch') { await chatgpt.switchAccount(body.accountId); return sendJson(res, 200, await chatgpt.status()); }
     if (url.pathname === '/api/auth/logout') { await chatgpt.signOut(); return sendJson(res, 200, await chatgpt.status()); }

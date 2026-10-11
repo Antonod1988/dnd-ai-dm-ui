@@ -63,6 +63,7 @@
         </nav>
         <div class="top-actions">
           <button class="setup-open" id="openSetup" type="button">Новая кампания</button>
+          <button class="setup-open" id="openDiscussion" type="button">Обсудить с отрядом</button>
           <button class="icon-button" title="Сохранить кампанию" aria-label="Сохранить кампанию">
             <svg><use href="#icon-save"></use></svg>
           </button>
@@ -481,7 +482,15 @@
       <p class="ai-settings-note">Запросы используют общий лимит Codex / ChatGPT Work вашего плана. <a href="https://chatgpt.com/settings/usage" target="_blank" rel="noopener noreferrer">Управление доступом и лимитами</a>.</p>
       <p class="ai-settings-note">Без подключения доступны локальные шаблоны и кнопки действий. Это прототип с упрощёнными правилами; карты и полной системы D&amp;D пока нет.</p>
     </dialog>
+    <dialog id="partyDiscussion" class="ai-settings discussion-panel">
+      <div class="ai-settings-head"><h2>Разговор у костра</h2><button id="closeDiscussion" type="button" aria-label="Закрыть обсуждение">✕</button></div>
+      <label for="discussionTopic">О чём поговорить?</label><input id="discussionTopic" type="text" maxlength="1000" placeholder="План, подозрения, отношения…">
+      <p id="discussionStatus" role="status" aria-live="polite"></p><div id="discussionLines"></div>
+      <div class="ai-settings-actions"><button id="startDiscussion" type="button">Начать обсуждение</button><button id="nextDiscussionLine" type="button" disabled>Следующая реплика</button></div>
+      <form id="discussionIntervention"><label for="interventionText">Твоя реплика</label><textarea id="interventionText" maxlength="1200" rows="2" placeholder="Вмешаться в разговор…"></textarea><button type="submit">Вмешаться</button></form>
+    </dialog>
     <script src="./app.js"></script>
     <script src="./auth-ui.js"></script>
+    <script src="./dialogue-ui.js"></script>
   </body>
 </html>

@@ -27,6 +27,7 @@ function createChatgptAuth({ store = createAuthStore(), fetchImpl = fetch, verif
   let refreshingModels;
   let modelsFor = '';
   let models = [];
+  let usage = null;
   let operation = Promise.resolve();
   const serial = fn => { const next = operation.then(fn); operation = next.catch(() => {}); return next; };
   async function load() {
@@ -103,6 +104,7 @@ function createChatgptAuth({ store = createAuthStore(), fetchImpl = fetch, verif
     },
     isEnabled() { return enabled(active()); },
     modelLabel() { const id = active()?.model || ''; return models.find(m => m.id === id)?.name || id; },
+    lastUsage() { return usage; },
     async begin(origin, accountId = '') {
       await load();
       const account = accountId ? data.accounts.find(a => a.id === accountId) : null;
@@ -187,12 +189,15 @@ function createChatgptAuth({ store = createAuthStore(), fetchImpl = fetch, verif
       const response = await fetchImpl(`${RESOURCE}/responses`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${account.access_token}` },
         body: JSON.stringify({ model: account.model, instructions: 'You are an AI Dungeon Master helper. Follow JSON contracts exactly when asked.', input: [{ role: 'user', content: JSON.stringify(payload) }], store: false, stream: true }), signal: AbortSignal.timeout(timeoutMs) });
       if (!response.ok) throw new Error(`ChatGPT HTTP ${response.status}. Проверьте вход и лимиты плана.`);
-      return readResponseStream(response.body);
+      return readResponseStream(response.body, completed => {
+        const counters = completed.usage;
+        if (counters) usage = { model: account.model, inputTokens: counters.input_tokens, outputTokens: counters.output_tokens, cachedTokens: counters.input_tokens_details?.cached_tokens || 0, reasoningTokens: counters.output_tokens_details?.reasoning_tokens || 0, reportedByProvider: true };
+      });
     }
   };
 }
 
-async function readResponseStream(body) {
+async function readResponseStream(body, onCompleted) {
   let buffer = '', text = '', completed = false;
   const decoder = new TextDecoder();
   for await (const chunk of body) {
@@ -208,6 +213,7 @@ async function readResponseStream(body) {
       if (event.type === 'response.failed' || event.type === 'error' || event.type === 'response.incomplete') throw new Error('Ответ ChatGPT не завершён. Проверьте лимиты и повторите запрос.');
       if (event.type === 'response.completed') {
         completed = true;
+        if (onCompleted) onCompleted(event.response || {});
         if (!text) text = (event.response?.output || []).flatMap(i => i.content || []).map(c => c.text || '').join('');
       }
     }

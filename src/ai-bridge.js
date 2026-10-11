@@ -12,6 +12,7 @@ function getAiConfig() {
   return {
     provider,
     modelLabel: provider === 'chatgpt' ? chatgpt.modelLabel() : '',
+    usage: provider === 'chatgpt' ? chatgpt.lastUsage() : null,
     timeoutMs,
     openai: {
       apiKey: process.env.OPENAI_API_KEY,
@@ -67,10 +68,7 @@ async function generateNarration(state, actionResult) {
     instruction: "Speak Russian. Write 1-3 compact paragraphs for the player. Preserve all engine numbers exactly. Do not invent HP, XP, items, conditions or victory. Return JSON: {\"narration\":\"...\",\"choices\":[{\"label\":\"...\",\"intent\":\"...\",\"likelyActionId\":\"...\"}]}",
     scene: state.scene,
     hero: summarizeHero(state.hero),
-    allies: state.allies,
-    enemies: state.enemies,
-    threats: state.threats,
-    journal: state.journal.slice(0, 6),
+    memory: require('./context-memory').buildContext(state, actionResult.narrationHook || ''),
     actionResult
   };
 

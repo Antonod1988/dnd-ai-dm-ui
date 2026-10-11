@@ -1049,6 +1049,13 @@ h1 {
   }
 }
 :root { color-scheme: dark; }
+.discussion-panel { width: min(740px, calc(100vw - 32px)); }
+.discussion-panel input, .discussion-panel textarea { box-sizing: border-box; width: 100%; padding: 10px; background: #171410; color: inherit; border: 1px solid #61543d; border-radius: 8px; }
+.discussion-line { padding: 14px 18px; margin: 12px 0; border: 1px solid #5b4830; border-radius: 14px 14px 14px 3px; background: #29231c; }
+.discussion-line.is-player { margin-left: 48px; border-color: #386459; background: #1e302c; }
+.discussion-line strong { color: #edc878; }
+.discussion-line p { margin: 8px 0; }
+.discussion-line button { margin-right: 8px; }
 .turn-status { margin: 0; padding: 0 24px; font-size: 13px; color: #edc878; min-height: 18px; }
 .ai-settings { width: min(560px, calc(100vw - 32px)); box-sizing: border-box; max-height: calc(100vh - 32px); overflow: auto; border: 1px solid #806634; border-radius: 14px; padding: 24px; background: #211c18; color: #f2eadc; }
 .ai-settings::backdrop { background: rgb(0 0 0 / 70%); }

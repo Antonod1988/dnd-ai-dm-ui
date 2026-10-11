@@ -7,7 +7,7 @@ const patterns = [/sk-(?:or-v1-|proj-)?[A-Za-z0-9_-]{25,}/, /gh[pousr]_[A-Za-z0-
 let failed = false;
 for (const file of files) {
   if (/^(?:data|outputs|node_modules)\//.test(file) || /^\.env(?!\.example$)/.test(file) || /accounts\.dat$|\.db$|\.log$/.test(file)) { console.error(`Private file staged: ${file}`); failed = true; continue; }
-  const data = execFileSync('git', ['show', `:${file}`], { maxBuffer: 2 * 1024 * 1024 });
+  const data = execFileSync('git', ['show', `:${file}`], { maxBuffer: 8 * 1024 * 1024 });
   if (!/\.png$/.test(file)) {
     const lines = data.toString('utf8').split(/\r?\n/);
     lines.forEach((line, index) => { if (patterns.some(p => p.test(line))) { console.error(`Possible credential: ${file}:${index + 1}`); failed = true; } });

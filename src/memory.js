@@ -6,7 +6,6 @@ function addJournal(state, text, tags = []) {
     tags,
     turn: state.campaign.turn
   });
-  state.journal = state.journal.slice(0, 30);
 }
 
 function addFact(state, text, tags = [], confidence = "confirmed") {
@@ -18,7 +17,6 @@ function addFact(state, text, tags = [], confidence = "confirmed") {
     confidence,
     turn: state.campaign.turn
   });
-  state.facts = state.facts.slice(0, 60);
 }
 
 function addRecentEvent(state, text) {
@@ -26,17 +24,11 @@ function addRecentEvent(state, text) {
   state.memory.recentEvents = state.memory.recentEvents.slice(0, 12);
 }
 
-function buildMemoryPacket(state) {
-  return {
-    recentEvents: state.memory.recentEvents.slice(0, 6),
-    activeFacts: state.facts.slice(0, 10),
-    activeJournal: state.journal.slice(0, 8),
-    npcs: [...state.allies, ...(state.generated.npcs || [])].slice(0, 8),
-    threats: [...state.enemies, ...state.threats].slice(0, 8),
-    quests: state.quests.filter((quest) => quest.status === "active").slice(0, 5),
-    chronicle: state.memory.chronicle.slice(-4),
-    worldContext: loadWorldContext(state.scene)
-  };
+function buildMemoryPacket(state, query = '') {
+  const packet = require('./context-memory').buildContext(state, query);
+  packet.worldContext = loadWorldContext(state.scene).slice(0, 3).map(record => ({ title: String(record.title || '').slice(0, 100), text: String(record.text || '').slice(0, 300) }));
+  while (JSON.stringify(packet).length > require('./context-memory').MAX_CONTEXT_CHARS && packet.worldContext.length) packet.worldContext.pop();
+  return packet;
 }
 
 module.exports = {

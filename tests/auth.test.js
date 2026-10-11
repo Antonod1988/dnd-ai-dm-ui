@@ -85,6 +85,12 @@ test('fragmented UTF-8 stream reconstructs Russian text', async () => {
   const stream = new ReadableStream({ start(controller) { for (let i = 0; i < bytes.length; i++) controller.enqueue(bytes.slice(i, i + 1)); controller.close(); } });
   assert.equal(await readResponseStream(stream), 'Привет');
 });
+test('usage metrics come from the completed provider event, not a character-count estimate', async () => {
+  let observed;
+  const response = new Response('data: {"type":"response.output_text.delta","delta":"ok"}\n\ndata: {"type":"response.completed","response":{"usage":{"input_tokens":123,"output_tokens":20}}}\n\n');
+  assert.equal(await readResponseStream(response.body, event => { observed = event.usage; }), 'ok');
+  assert.equal(observed.input_tokens, 123);
+});
 test('credential persistence protects Windows tokens and reads them back', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'dnd-auth-store-'));
   try {
