@@ -11,6 +11,7 @@ function getAiConfig() {
   const timeoutMs = Number(process.env.AI_TIMEOUT_MS || 120000);
   return {
     provider,
+    modelLabel: provider === 'chatgpt' ? chatgpt.modelLabel() : '',
     timeoutMs,
     openai: {
       apiKey: process.env.OPENAI_API_KEY,
@@ -38,7 +39,7 @@ async function resolveIntent(input, context, availableActions) {
 
   const prompt = {
     task: "resolve_player_intent",
-    instruction: "Return JSON only. Choose an exact actionId from availableActions when possible. Otherwise return abilityCheck, savingThrow, startCombat or clarify. Never narrate. Never invent mechanics.",
+    instruction: 'Return JSON only with this exact schema: {"kind":"actionId","actionId":"one exact id from availableActions","confidence":"high","reason":"brief explanation"}. If no available action fits, return {"kind":"clarify","question":"a short Russian question"}. Never narrate. Never invent mechanics or action ids.',
     input,
     scene: context.scene,
     hero: summarizeHero(context.hero),
@@ -49,10 +50,10 @@ async function resolveIntent(input, context, availableActions) {
   try {
     const text = await callConfiguredProvider(config, prompt, "intent");
     const intent = normalizeIntent(parseJsonLoose(text), availableActions);
-    if (!intent && config.provider === 'chatgpt') throw new Error('ChatGPT вернул неподдержанное действие. Повторите запрос.');
+    if (!intent && config.provider === 'chatgpt') throw Object.assign(new Error('ChatGPT вернул неподдержанное действие. Повторите запрос.'), { status: 502 });
     return intent || fallback();
   } catch (error) {
-    if (config.provider === 'chatgpt') throw error;
+    if (config.provider === 'chatgpt') throw Object.assign(error, { status: 502 });
     return fallback();
   }
 }
@@ -83,10 +84,10 @@ async function generateNarration(state, actionResult) {
       };
     }
   } catch (error) {
-    if (config.provider === 'chatgpt') throw error;
+    if (config.provider === 'chatgpt') throw Object.assign(error, { status: 502 });
     // fall through to deterministic narration
   }
-  if (config.provider === 'chatgpt') throw new Error('ChatGPT вернул некорректное повествование. Повторите запрос.');
+  if (config.provider === 'chatgpt') throw Object.assign(new Error('ChatGPT вернул некорректное повествование. Повторите запрос.'), { status: 502 });
   return fallbackNarration(state, actionResult);
 }
 
@@ -106,7 +107,7 @@ async function generateStructured(type, promptPayload, fallbackFactory) {
     if ((!draft || typeof draft !== 'object' || Array.isArray(draft)) && config.provider === 'chatgpt') throw new Error('ChatGPT вернул некорректные данные. Повторите запрос.');
     return draft || fallbackFactory();
   } catch (error) {
-    if (config.provider === 'chatgpt') throw error;
+    if (config.provider === 'chatgpt') throw Object.assign(error, { status: 502 });
     return fallbackFactory();
   }
 }
@@ -252,7 +253,7 @@ function isConfigured(config) {
 
 function normalizeIntent(parsed, availableActions) {
   if (!parsed || typeof parsed !== "object") return null;
-  if (parsed.kind === "actionId" && availableActions.some((action) => action.id === parsed.actionId)) {
+  if ((parsed.kind === 'actionId' || parsed.kind === undefined) && typeof parsed.actionId === 'string' && availableActions.some((action) => action.id === parsed.actionId)) {
     return {
       kind: "actionId",
       actionId: parsed.actionId,

@@ -47,6 +47,7 @@ const dom = {
 let currentView = null;
 let busy = false;
 let setupOptions = null;
+let journalExpanded = false;
 
 init();
 
@@ -56,14 +57,18 @@ async function init() {
 }
 
 function wireEvents() {
+  document.querySelector('#expandJournal').addEventListener('click', () => {
+    journalExpanded = !journalExpanded;
+    document.querySelector('#expandJournal').textContent = journalExpanded ? 'Свернуть' : 'Все записи';
+    renderJournal(currentView?.journal || []);
+  });
   document.querySelector('.top-actions [aria-label="Сохранить кампанию"]')?.addEventListener('click', () => { if (!busy) sendAction({ actionId: 'save' }); });
   document.querySelector('.composer [aria-label="Бросок или проверка"]')?.addEventListener('click', () => document.querySelector('[data-panel="rolls"]')?.click());
   dom.composer.addEventListener("submit", async (event) => {
     event.preventDefault();
     const input = dom.playerInput.value.trim();
     if (!input || busy) return;
-    dom.playerInput.value = "";
-    await sendAction({ input });
+    if (await sendAction({ input })) dom.playerInput.value = '';
   });
 
   document.addEventListener("click", async (event) => {
@@ -135,8 +140,10 @@ async function sendAction(payload) {
   try {
     const view = await apiPost("/action", payload);
     render(view);
+    return true;
   } catch (error) {
     appendLocalMessage("system", "UI", `Ошибка связи с сервером: ${error.message}`);
+    return false;
   } finally {
     setBusy(false);
   }
@@ -225,7 +232,7 @@ function render(view) {
   const activeEnemies = (view.enemies || []).filter((enemy) => enemy.hp > 0);
   const threats = activeEnemies.length ? activeEnemies : (view.threats || []);
 
-  dom.provider.textContent = view.provider.configured ? `AI: ${view.provider.id}` : "AI: fallback";
+  dom.provider.textContent = view.provider.configured ? `AI: ${view.provider.model || view.provider.id}` : "AI: fallback";
   dom.brandTitle.textContent = `${hero.name}: живая кампания`;
   dom.brandSub.textContent = `День ${view.campaign.day}, ${view.campaign.timeOfDay} · ${scene.location}`;
 
@@ -244,6 +251,8 @@ function render(view) {
   dom.timeValue.textContent = `День ${view.campaign.day}, ${view.campaign.timeOfDay}`;
   dom.moneyValue.textContent = formatMoney(hero.gold);
   dom.conditionValue.textContent = hero.conditions.length ? hero.conditions.join(", ") : "нет";
+  document.querySelector('#heroStatus').textContent = hero.hp <= 0 ? 'Нужна помощь' : hero.hp < hero.maxHp ? 'Ранен' : 'В строю';
+  document.querySelector('#journalCount').textContent = `${view.journal.length} записей`;
   dom.playerInput.placeholder = `Что делает ${hero.name}?`;
 
   dom.abilityGrid.innerHTML = Object.values(hero.abilities).map((ability) => `
@@ -327,7 +336,7 @@ function renderPreview(entity, fallback) {
 }
 
 function renderJournal(journal) {
-  dom.journalList.innerHTML = journal.slice(0, 8).map((entry) => `<li>${escapeHtml(entry.text)}</li>`).join("");
+  dom.journalList.innerHTML = (journalExpanded ? journal : journal.slice(0, 8)).map((entry) => `<li>${escapeHtml(entry.text)}</li>`).join("");
 }
 
 function renderPanels(view) {
@@ -389,6 +398,9 @@ function setBusy(value) {
   busy = value;
   dom.playerInput.disabled = value;
   document.body.classList.toggle("is-busy", value);
+  const sendButton = dom.composer.querySelector('.send-button');
+  sendButton.disabled = value;
+  document.querySelector('#turnStatus').textContent = value ? 'Мастер готовит ответ…' : '';
 }
 
 function icon(name) {

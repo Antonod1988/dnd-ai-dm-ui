@@ -171,7 +171,7 @@
             <section class="dashboard-card">
               <div class="dashboard-head">
                 <h3>Журнал</h3>
-                <span>3 факта</span>
+                <span id="journalCount">3 записи</span>
               </div>
               <div class="entity-row">
                 <span>Не спорить с водой вслух</span>
@@ -195,6 +195,7 @@
             </button>
           </div>
 
+          <p id="turnStatus" class="turn-status" role="status" aria-live="polite"></p>
           <form class="composer" id="composer">
             <button class="icon-button" type="button" title="Бросок / проверка" aria-label="Бросок или проверка">
               <svg><use href="#icon-dice"></use></svg>
@@ -239,7 +240,7 @@
           <section class="sheet-section">
             <div class="section-head">
               <h3>Состояние</h3>
-              <span class="status-dot">stable</span>
+              <span class="status-dot" id="heroStatus">В строю</span>
             </div>
             <dl class="state-list">
               <div>
@@ -264,7 +265,7 @@
           <section class="sheet-section">
             <div class="section-head">
               <h3>Союзники</h3>
-              <button class="tiny-button" type="button">party</button>
+              <span class="tiny-button">отряд</span>
             </div>
             <div class="entity-list" id="alliesList">
               <article class="entity-card ally">
@@ -287,7 +288,7 @@
           <section class="sheet-section">
             <div class="section-head">
               <h3>Враги и угрозы</h3>
-              <button class="tiny-button" type="button">threats</button>
+              <span class="tiny-button">угрозы</span>
             </div>
             <div class="entity-list" id="enemiesList">
               <article class="entity-card threat">
@@ -303,7 +304,7 @@
           <section class="sheet-section">
             <div class="section-head">
               <h3>Характеристики</h3>
-              <button class="tiny-button" type="button">mods</button>
+              <span class="tiny-button">модификаторы</span>
             </div>
             <div class="ability-grid">
               <div><span>STR</span><strong>8</strong><em>-1</em></div>
@@ -388,7 +389,7 @@
           <section class="sheet-section">
             <div class="section-head">
               <h3>Журнал</h3>
-              <button class="tiny-button" type="button">all</button>
+              <button class="tiny-button" id="expandJournal" type="button">Все записи</button>
             </div>
             <ol class="journal-list" id="journalList">
               <li>Ирна предупредила: не спорить с водой вслух.</li>
@@ -477,7 +478,7 @@
       <label for="chatgptModel">Модель вашего аккаунта</label>
       <select id="chatgptModel" disabled><option value="">Сначала войдите</option></select>
       <button id="reloadModels" type="button" hidden>Обновить список моделей</button>
-      <p class="ai-settings-note">Запросы используют лимиты вашего плана. <a href="https://chatgpt.com/settings/usage" target="_blank" rel="noopener noreferrer">Управление доступом и лимитами</a>.</p>
+      <p class="ai-settings-note">Запросы используют общий лимит Codex / ChatGPT Work вашего плана. <a href="https://chatgpt.com/settings/usage" target="_blank" rel="noopener noreferrer">Управление доступом и лимитами</a>.</p>
       <p class="ai-settings-note">Без подключения доступны локальные шаблоны и кнопки действий. Это прототип с упрощёнными правилами; карты и полной системы D&amp;D пока нет.</p>
     </dialog>
     <script src="./app.js"></script>

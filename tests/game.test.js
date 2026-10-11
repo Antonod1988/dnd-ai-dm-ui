@@ -99,3 +99,16 @@ test('failed ChatGPT narration does not commit partial mechanics', async () => {
   try { await assert.rejects(engine.handleTurn({ actionId: 'talk' })); assert.equal(await fs.readFile(persistence.savePath, 'utf8'), before); }
   finally { chatgpt.isEnabled = enabled; chatgpt.infer = infer; }
 });
+
+test('a validated AI action id without kind remains valid; invented ids cannot mutate mechanics', async () => {
+  await engine.resetCampaign();
+  const { chatgpt } = require('../src/chatgpt-auth'); const enabled = chatgpt.isEnabled, infer = chatgpt.infer;
+  chatgpt.isEnabled = () => true;
+  try {
+    chatgpt.infer = async payload => payload.task === 'resolve_player_intent' ? JSON.stringify({ actionId: 'talk' }) : JSON.stringify({ narration: 'Разговор состоялся.', choices: [] });
+    const next = await engine.handleTurn({ input: 'Спросить Ирну о воде' }); assert.equal(next.campaign.turn, 2); assert.equal(next.messages.at(-1).text, 'Разговор состоялся.');
+    const before = await fs.readFile(persistence.savePath, 'utf8');
+    chatgpt.infer = async () => JSON.stringify({ actionId: 'invented-action' });
+    await assert.rejects(engine.handleTurn({ input: 'Неизвестное действие' })); assert.equal(await fs.readFile(persistence.savePath, 'utf8'), before);
+  } finally { chatgpt.isEnabled = enabled; chatgpt.infer = infer; }
+});

@@ -1049,6 +1049,7 @@ h1 {
   }
 }
 :root { color-scheme: dark; }
+.turn-status { margin: 0; padding: 0 24px; font-size: 13px; color: #edc878; min-height: 18px; }
 .ai-settings { width: min(560px, calc(100vw - 32px)); box-sizing: border-box; max-height: calc(100vh - 32px); overflow: auto; border: 1px solid #806634; border-radius: 14px; padding: 24px; background: #211c18; color: #f2eadc; }
 .ai-settings::backdrop { background: rgb(0 0 0 / 70%); }
 .ai-settings-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

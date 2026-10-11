@@ -428,6 +428,7 @@ function buildView(state) {
     generated: state.generated,
     provider: {
       id: aiConfig.provider,
+      model: aiConfig.modelLabel,
       configured: isConfigured(aiConfig)
     }
   };

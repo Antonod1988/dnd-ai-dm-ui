@@ -102,6 +102,7 @@ function createChatgptAuth({ store = createAuthStore(), fetchImpl = fetch, verif
         model: account?.model || '', models: modelsFor === account?.id ? models : [], pending: Boolean(pending && pending.expires > Date.now()), error: lastError };
     },
     isEnabled() { return enabled(active()); },
+    modelLabel() { const id = active()?.model || ''; return models.find(m => m.id === id)?.name || id; },
     async begin(origin, accountId = '') {
       await load();
       const account = accountId ? data.accounts.find(a => a.id === accountId) : null;
