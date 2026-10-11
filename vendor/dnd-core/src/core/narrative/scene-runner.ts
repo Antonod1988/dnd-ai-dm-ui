@@ -5369,7 +5369,7 @@ export class SceneRunner {
               ? current.combat.environment.escape ?? []
               : current.combat.environment.defeat ?? [];
         const applied = applyConsequences(
-          { ...current, combat: undefined },
+          { ...current, flags: { ...current.flags, ui_last_combat_outcome: terminalOutcome }, combat: undefined },
           [...objectiveConsequences, ...outcomeConsequences],
           { rng }
         );
@@ -5397,7 +5397,7 @@ export class SceneRunner {
       const useEscapeOutcome =
         this.enemiesResolvedByFlight(current.combat) && (current.combat.environment.escape?.length ?? 0) > 0;
       const applied = applyConsequences(
-        { ...current, combat: undefined },
+        { ...current, flags: { ...current.flags, ui_last_combat_outcome: useEscapeOutcome ? 'retreat' : 'victory' }, combat: undefined },
         useEscapeOutcome ? current.combat.environment.escape ?? [] : current.combat.environment.victory,
         { rng }
       );
@@ -5422,7 +5422,7 @@ export class SceneRunner {
         current.combat.environment.defeat ?? [],
         { rng }
       );
-      return this.result(false, [message, "Party defeated."].join("\n"), applied.state);
+      return this.result(false, [message, "Party defeated."].join("\n"), {...applied.state,flags:{...applied.state.flags,ui_last_combat_outcome:'defeat'}});
     }
     const threatEvaluation = evaluateCombatThreats(current.combat);
     current = { ...current, combat: threatEvaluation.combat };

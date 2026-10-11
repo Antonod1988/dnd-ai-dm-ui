@@ -18,6 +18,12 @@ test('all 12 class foundations and 9 ancestry foundations build legal level-one 
     assert.ok(character.ac >= 10); assert.ok(character.inventory.length > 0);
   }
 });
+test('racial Dexterity increases change unarmored AC instead of retaining a preset value',()=>{
+  const human=core.createSrdLevelOneCharacter({classId:'wizard',raceId:'human'});
+  assert.equal(human.abilities.dex,14);assert.equal(human.ac,12);
+  const elf=core.createSrdLevelOneCharacter({classId:'wizard',raceId:'elf'});
+  assert.equal(elf.ac,10+Math.floor((elf.abilities.dex-10)/2));
+});
 test('a player-defined world starts with real SRD mechanics and persists in SQLite', async () => {
   const view = await adapter.createCampaign({ heroName: 'Мира', classId: 'wizard', raceId: 'human', worldIdea: 'Города на спинах огромных китов, летающих над облаками', location: 'Порт на синем ките' });
   assert.equal(view.campaign.rulesetId, 'srd5.1'); assert.equal(view.campaign.rules.zeroHpPolicy, 'standard5e');

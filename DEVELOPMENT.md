@@ -31,11 +31,14 @@ Latest user clarification: maximize narrative freedom in any world co-created by
 
 Rules integration and general generated effects are in progress. The complete UI, map, campaign flow, survival/social systems, optional image controls and long-session runtime audit are not yet complete. Passing the previous alpha tests does not prove this objective.
 
-## Current checkpoint
+## Current checkpoint — 2026-10-11
 
-- 40 offline tests + syntax checks + smoke pass. A live GPT-6-Luna party discussion produced separate companion lines and accepted a player intervention without a mechanical turn.
-- Independent compiled SRD core, SQLite adapter, generated-spell effects and scene-check ledger are implemented and tested. `/api/dnd/*` exists; legacy UI has not yet been switched to the rules-backed campaign shape.
-- Long history is archived locally instead of truncated. Model context is bounded and relevant older facts can be retrieved. Full quest/social canonical models still need implementation and integration.
-- Dialogue UI is live. Multiplayer feasibility is researched; remote connectivity is absent.
+- The main UI now uses one rules-backed campaign through `/api/adventure/*`: player-defined world/hero, story, map, quests, journal, people, live character sheet, spell workshop and party council. `/legacy` preserves the original alpha and its save.
+- Separate campaigns resume from SQLite. Quests have sequential objectives, recorded evidence, and a single durable reward. A failed narrative reply can be retried without repeating the resolved mechanics.
+- Optional food/water consumption and fatigue share the real inventory; buying supplies spends real coins. Numeric combat outcomes distinguish victory from retreat/defeat. Racial Dexterity contributes to armor class.
+- 55 offline tests passed, including HTTP flow, quest provenance, anti-reroll checks, narrative retry, supplies, campaign/language resume, generated spells, OAuth and 400-turn context bounds. Syntax checks and the isolated legacy smoke test also passed.
+- Real GPT-6-Luna created Russian and English original whale-city worlds. English play, quest, map and council screenshots were captured from the running UI. The selected language is stored per campaign and sent to world/narration/dialogue prompts.
+- The English demo council produced a concrete proposal that the player could accept/reject; speech itself did not spend a mechanical turn.
+- Full local history remains archived. Current scene context is about 3–4k characters in the demonstrated campaign; selection caps context at 12k characters. This is a character bound, not an exact billed-token guarantee.
 
-Immediate next work: unify the rules-backed campaign and narrative state behind the main UI, let the player supply arbitrary world/hero concepts, add validated AI world developments/quests/item/spell drafts, implement quest/event provenance and usable map/journal/character views. Preserve current alpha saves as an importable legacy campaign, not a silently overwritten save.
+Remaining work includes a broader live adventure audit (combat, death and progression), richer reputation/relationship consequences, survival/weather depth, optional image controls, and long-session runtime validation. Multiplayer is researched, not connected. The objective remains active.

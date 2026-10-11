@@ -4,7 +4,7 @@ const path = require('node:path');
 const engine = require('./game-engine');
 const { chatgpt } = require('./chatgpt-auth');
 const rootDir = path.resolve(__dirname, '..');
-const publicFiles = new Map([['/', 'index.html'], ['/index.html', 'index.html'], ['/styles.css', 'styles.css'], ['/app.js', 'app.js'], ['/auth-ui.js', 'auth-ui.js'], ['/dialogue-ui.js', 'dialogue-ui.js']]);
+const publicFiles = new Map([['/', 'index.html'], ['/index.html', 'index.html'], ['/legacy', 'legacy.html'], ['/legacy-app.js', 'legacy-app.js'], ['/styles.css', 'styles.css'], ['/adventure.css', 'adventure.css'], ['/app.js', 'app.js'], ['/adventure-i18n.js', 'adventure-i18n.js'], ['/auth-ui.js', 'auth-ui.js'], ['/dialogue-ui.js', 'dialogue-ui.js']]);
 
 async function createAlphaServer({ port = 8788 } = {}) {
   await chatgpt.status();
@@ -57,6 +57,9 @@ async function route(req, res, serialize) {
   if (req.method === 'GET' && url.pathname === '/api/auth/status') return sendJson(res, 200, await chatgpt.status());
   if (req.method === 'GET' && url.pathname === '/api/auth/models') return sendJson(res, 200, { models: await chatgpt.models() });
   if (req.method === 'GET' && url.pathname === '/api/dnd/options') return sendJson(res, 200, await require('./srd-engine').setupOptions());
+  if (req.method === 'GET' && url.pathname === '/api/adventure/setup') return sendJson(res, 200, await require('./adventure-engine').setup());
+  if (req.method === 'GET' && url.pathname === '/api/adventure/state') return sendJson(res, 200, await serialize(() => require('./adventure-engine').getView(url.searchParams.get('campaignId') || undefined)));
+  if (req.method === 'GET' && url.pathname === '/api/adventure/discussion/status') return sendJson(res, 200, await serialize(() => require('./adventure-discussion').status(url.searchParams.get('campaignId') || undefined)));
   if (req.method === 'GET' && url.pathname === '/api/discussion/status') return sendJson(res, 200, await serialize(() => require('./discussion-service').status()));
   if (req.method === 'GET' && url.pathname === '/api/dnd/state') return sendJson(res, 200, await serialize(() => require('./srd-engine').getState(url.searchParams.get('campaignId') || undefined)));
   if (req.method === 'POST') {
@@ -64,6 +67,12 @@ async function route(req, res, serialize) {
     let body;
     try { body = JSON.parse(await readBody(req)); } catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
     if (!body || typeof body !== 'object' || Array.isArray(body)) return sendJson(res, 400, { error: 'Expected object' });
+    const adventure = require('./adventure-engine');
+    const adventureRoutes = { '/api/adventure/create': () => adventure.create(body), '/api/adventure/act': () => adventure.perform(body), '/api/adventure/select': () => adventure.select(body.campaignId), '/api/adventure/narration': () => adventure.retryNarration(body.campaignId), '/api/adventure/spell/draft': () => adventure.spellDraft(body.campaignId, body.idea), '/api/adventure/spell/learn': () => adventure.learnSpell(body.campaignId, body.draft) };
+    if (adventureRoutes[url.pathname]) return sendJson(res, 200, await serialize(adventureRoutes[url.pathname]));
+    const council=require('./adventure-discussion');
+    const councilRoutes={'/api/adventure/discussion/start':()=>council.start(body.campaignId,body.topic),'/api/adventure/discussion/next':()=>council.next(body.campaignId),'/api/adventure/discussion/intervene':()=>council.intervene(body.campaignId,body.text),'/api/adventure/discussion/decide':()=>council.decide(body.campaignId,body.proposalId,body.decision)};
+    if(councilRoutes[url.pathname])return sendJson(res,200,await serialize(councilRoutes[url.pathname]));
     const discussion = require('./discussion-service');
     const discussionRoutes = { '/api/discussion/start': () => discussion.start(body.topic), '/api/discussion/next': () => discussion.advance(), '/api/discussion/intervene': () => discussion.interrupt(body.text), '/api/discussion/decide': () => discussion.decide(body.proposalId, body.decision) };
     if (discussionRoutes[url.pathname]) return sendJson(res, 200, await serialize(discussionRoutes[url.pathname]));

@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI-DM DnD RPG Alpha</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <svg class="sprite" aria-hidden="true">
+      <symbol id="icon-send" viewBox="0 0 24 24">
+        <path d="M4 12 20 4l-4 16-4-7-8-1Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+        <path d="m12 13 8-9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+      </symbol>
+      <symbol id="icon-dice" viewBox="0 0 24 24">
+        <rect x="4" y="4" width="16" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="2" />
+        <circle cx="9" cy="9" r="1.4" fill="currentColor" />
+        <circle cx="15" cy="9" r="1.4" fill="currentColor" />
+        <circle cx="12" cy="12" r="1.4" fill="currentColor" />
+        <circle cx="9" cy="15" r="1.4" fill="currentColor" />
+        <circle cx="15" cy="15" r="1.4" fill="currentColor" />
+      </symbol>
+      <symbol id="icon-scroll" viewBox="0 0 24 24">
+        <path d="M7 4h10a3 3 0 0 1 3 3v12H8a4 4 0 0 1-4-4V7a3 3 0 0 1 3-3Z" fill="none" stroke="currentColor" stroke-width="2" />
+        <path d="M8 9h7M8 13h6M8 17h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+      </symbol>
+      <symbol id="icon-sword" viewBox="0 0 24 24">
+        <path d="M14 6 20 4l-2 6-8 8-4-4 8-8Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+        <path d="m5 19 4-4M4 14l6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+      </symbol>
+      <symbol id="icon-pack" viewBox="0 0 24 24">
+        <path d="M8 7a4 4 0 0 1 8 0" fill="none" stroke="currentColor" stroke-width="2" />
+        <path d="M6 7h12l1 13H5L6 7Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+        <path d="M9 12h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+      </symbol>
+      <symbol id="icon-save" viewBox="0 0 24 24">
+        <path d="M5 4h12l2 2v14H5V4Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+        <path d="M8 4v6h8V4M8 20v-6h8v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+      </symbol>
+      <symbol id="icon-moon" viewBox="0 0 24 24">
+        <path d="M18 15.6A8 8 0 0 1 8.4 6a7 7 0 1 0 9.6 9.6Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+      </symbol>
+      <symbol id="icon-map" viewBox="0 0 24 24">
+        <path d="m4 6 5-2 6 2 5-2v14l-5 2-6-2-5 2V6Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+        <path d="M9 4v14M15 6v14" fill="none" stroke="currentColor" stroke-width="2" />
+      </symbol>
+    </svg>
+
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">d20</div>
+          <div>
+            <strong>Нимарис: живой лист</strong>
+            <span>День 25, утро · Сильверимун · храмовый берег</span>
+          </div>
+        </div>
+        <nav class="mode-tabs" aria-label="Разделы игры">
+          <button class="tab is-active" data-mode="scene">Сцена</button>
+          <button class="tab" data-mode="combat">Бой</button>
+          <button class="tab" data-mode="rest">Отдых</button>
+          <button class="tab" data-mode="journal">Журнал</button>
+        </nav>
+        <div class="top-actions">
+          <button class="setup-open" id="openSetup" type="button">Новая кампания</button>
+          <button class="setup-open" id="openDiscussion" type="button">Обсудить с отрядом</button>
+          <button class="icon-button" title="Сохранить кампанию" aria-label="Сохранить кампанию">
+            <svg><use href="#icon-save"></use></svg>
+          </button>
+          <button class="provider-pill" type="button">AI: fallback</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="chat-pane" aria-label="Повествование">
+          <div class="scene-strip">
+            <div class="scene-copy">
+              <p class="eyebrow">Текущая сцена</p>
+              <h1 id="sceneTitle">Храмовый дом у Северного берега</h1>
+              <p id="sceneSummary">Отряд готовится выйти к старому руслу Раувина. Вода здесь редко врёт первой.</p>
+            </div>
+            <div class="scene-badges" aria-label="Краткое состояние сцены">
+              <span>социальная сцена</span>
+              <span>риск: средний</span>
+              <span>время идёт</span>
+            </div>
+          </div>
+
+          <div class="action-toolbar" id="actionToolbar" aria-label="Быстрые действия">
+            <button class="action-button" data-choice="Поговорить с Ирной">
+              <svg><use href="#icon-scroll"></use></svg>
+              <span>Говорить</span>
+            </button>
+            <button class="action-button" data-choice="Осмотреть храм и чашу">
+              <svg><use href="#icon-dice"></use></svg>
+              <span>Осмотреть</span>
+            </button>
+            <button class="action-button" data-choice="Попросить совет союзников">
+              <svg><use href="#icon-pack"></use></svg>
+              <span>Союзники</span>
+            </button>
+            <button class="action-button" data-choice="Открыть журнал зацепок">
+              <svg><use href="#icon-scroll"></use></svg>
+              <span>Журнал</span>
+            </button>
+            <button class="action-button" data-choice="Подготовить заклинание">
+              <svg><use href="#icon-sword"></use></svg>
+              <span>Магия</span>
+            </button>
+            <button class="action-button" data-choice="Сохранить прогресс">
+              <svg><use href="#icon-save"></use></svg>
+              <span>Сейв</span>
+            </button>
+          </div>
+
+          <div class="message-feed" id="messageFeed">
+            <article class="message dm">
+              <div class="message-meta">
+                <span>AI-ДМ</span>
+                <time>09:10</time>
+              </div>
+              <p>Ирна Тихая Чаша кладёт перед вами узкую серебряную нить и чашу с водой. Поверхность не отражает лица, только входную дверь храма, будто кто-то уже стоит за ней снаружи.</p>
+              <p>Она говорит тихо: "Если старое русло повторит ваш голос, отвечайте коротко. Не спорьте с водой вслух".</p>
+            </article>
+
+            <article class="message system">
+              <div class="roll-line">
+                <svg><use href="#icon-dice"></use></svg>
+                <span>Insight: d20 14 + WIS 1 + proficiency 3 = 18 против DC 15</span>
+              </div>
+            </article>
+
+            <article class="message player">
+              <div class="message-meta">
+                <span>Нимарис</span>
+                <time>09:12</time>
+              </div>
+              <p>Я уточняю, что именно считается спором с водой, и можно ли использовать магию речи.</p>
+            </article>
+
+            <article class="message dm">
+              <div class="message-meta">
+                <span>AI-ДМ</span>
+                <time>09:13</time>
+              </div>
+              <p>Ирна смотрит не на вас, а на чашу. "Спор начинается там, где вы пытаетесь доказать воде, что вы настоящий". На слове "настоящий" по храмовым ступеням проходит холодная вибрация.</p>
+              <p>Подготовка завершена. До выхода к руслу остаётся меньше часа.</p>
+            </article>
+          </div>
+
+          <div class="scene-dashboard" aria-label="Сцена, союзники и угрозы">
+            <section class="dashboard-card">
+              <div class="dashboard-head">
+                <h3>Союзники</h3>
+                <span id="allyCount">2 рядом</span>
+              </div>
+              <div class="entity-row" id="allyPreview">
+                <span>Элесса Светлорун</span>
+                <strong>готова помочь</strong>
+              </div>
+            </section>
+            <section class="dashboard-card">
+              <div class="dashboard-head">
+                <h3>Враги / угрозы</h3>
+                <span id="enemyCount">0 в бою</span>
+              </div>
+              <div class="entity-row" id="enemyPreview">
+                <span>Старое русло</span>
+                <strong>скрытая опасность</strong>
+              </div>
+            </section>
+            <section class="dashboard-card">
+              <div class="dashboard-head">
+                <h3>Журнал</h3>
+                <span id="journalCount">3 записи</span>
+              </div>
+              <div class="entity-row">
+                <span>Не спорить с водой вслух</span>
+                <strong>важно</strong>
+              </div>
+            </section>
+          </div>
+
+          <div class="choice-dock" aria-label="Варианты действий">
+            <button class="choice-card" data-choice="Пойти к старому руслу сразу">
+              <svg><use href="#icon-map"></use></svg>
+              <span>Пойти к руслу</span>
+            </button>
+            <button class="choice-card" data-choice="Попросить Ирну о последнем обряде защиты">
+              <svg><use href="#icon-scroll"></use></svg>
+              <span>Попросить обряд</span>
+            </button>
+            <button class="choice-card" data-choice="Подготовить заклинания против отражений">
+              <svg><use href="#icon-sword"></use></svg>
+              <span>Подготовить магию</span>
+            </button>
+          </div>
+
+          <p id="turnStatus" class="turn-status" role="status" aria-live="polite"></p>
+          <form class="composer" id="composer">
+            <button class="icon-button" type="button" title="Бросок / проверка" aria-label="Бросок или проверка">
+              <svg><use href="#icon-dice"></use></svg>
+            </button>
+            <textarea id="playerInput" rows="1" placeholder="Что делает Нимарис?"></textarea>
+            <button class="icon-button send-button" type="submit" title="Отправить" aria-label="Отправить">
+              <svg><use href="#icon-send"></use></svg>
+            </button>
+          </form>
+        </section>
+
+        <aside class="sheet-pane" aria-label="Живой лист персонажа">
+          <section class="sheet-section hero-block">
+            <div class="portrait" aria-hidden="true">
+              <div class="portrait-sigil" id="heroSigil">N</div>
+            </div>
+            <div>
+              <h2>Нимарис</h2>
+              <p>Волшебник 5 · sage · lawful curious</p>
+            </div>
+          </section>
+
+          <section class="sheet-section stats-grid">
+            <div class="metric danger">
+              <span>HP</span>
+              <strong id="hpValue">27 / 27</strong>
+            </div>
+            <div class="metric">
+              <span>AC</span>
+              <strong id="acValue">12 / 15</strong>
+            </div>
+            <div class="metric teal">
+              <span>Init</span>
+              <strong>+6</strong>
+            </div>
+            <div class="metric gold">
+              <span>XP</span>
+              <strong>10684</strong>
+            </div>
+          </section>
+
+          <section class="sheet-section">
+            <div class="section-head">
+              <h3>Состояние</h3>
+              <span class="status-dot" id="heroStatus">В строю</span>
+            </div>
+            <dl class="state-list">
+              <div>
+                <dt>Локация</dt>
+                <dd id="locationValue">Сильверимун, храмовый дом</dd>
+              </div>
+              <div>
+                <dt>Время</dt>
+                <dd id="timeValue">День 25, утро</dd>
+              </div>
+              <div>
+                <dt>Деньги</dt>
+                <dd id="moneyValue">103 зм, 6 см, 6 мм</dd>
+              </div>
+              <div>
+                <dt>Условия</dt>
+                <dd id="conditionValue">Долгий отдых завершён</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section class="sheet-section">
+            <div class="section-head">
+              <h3>Союзники</h3>
+              <span class="tiny-button">отряд</span>
+            </div>
+            <div class="entity-list" id="alliesList">
+              <article class="entity-card ally">
+                <div>
+                  <strong>Элесса Светлорун</strong>
+                  <span>жрица · поддержка</span>
+                </div>
+                <em>рядом</em>
+              </article>
+              <article class="entity-card ally">
+                <div>
+                  <strong>Рован Тихий</strong>
+                  <span>следопыт · разведка</span>
+                </div>
+                <em>наготове</em>
+              </article>
+            </div>
+          </section>
+
+          <section class="sheet-section">
+            <div class="section-head">
+              <h3>Враги и угрозы</h3>
+              <span class="tiny-button">угрозы</span>
+            </div>
+            <div class="entity-list" id="enemiesList">
+              <article class="entity-card threat">
+                <div>
+                  <strong>Старое русло</strong>
+                  <span>аномалия · повторяет речь</span>
+                </div>
+                <em>наблюдает</em>
+              </article>
+            </div>
+          </section>
+
+          <section class="sheet-section">
+            <div class="section-head">
+              <h3>Характеристики</h3>
+              <span class="tiny-button">модификаторы</span>
+            </div>
+            <div class="ability-grid">
+              <div><span>STR</span><strong>8</strong><em>-1</em></div>
+              <div><span>DEX</span><strong>14</strong><em>+2</em></div>
+              <div><span>CON</span><strong>12</strong><em>+1</em></div>
+              <div><span>INT</span><strong>18</strong><em>+4</em></div>
+              <div><span>WIS</span><strong>13</strong><em>+1</em></div>
+              <div><span>CHA</span><strong>10</strong><em>+0</em></div>
+            </div>
+          </section>
+
+          <section class="sheet-section tabs-panel">
+            <div class="panel-tabs" aria-label="Панели листа">
+              <button class="panel-tab is-active" data-panel="inventory">
+                <svg><use href="#icon-pack"></use></svg>
+                <span>Инвентарь</span>
+              </button>
+              <button class="panel-tab" data-panel="spells">
+                <svg><use href="#icon-scroll"></use></svg>
+                <span>Заклинания</span>
+              </button>
+              <button class="panel-tab" data-panel="rolls">
+                <svg><use href="#icon-dice"></use></svg>
+                <span>Броски</span>
+              </button>
+              <button class="panel-tab" data-panel="actions">
+                <svg><use href="#icon-sword"></use></svg>
+                <span>Действия</span>
+              </button>
+              <button class="panel-tab" data-panel="notes">
+                <svg><use href="#icon-scroll"></use></svg>
+                <span>Заметки</span>
+              </button>
+            </div>
+
+            <div class="panel-content is-active" data-panel-content="inventory">
+              <ul class="compact-list">
+                <li><span>Серебряная нить</span><strong>quest</strong></li>
+                <li><span>Arcane focus</span><strong>equipped</strong></li>
+                <li><span>Healing potion</span><strong>x2</strong></li>
+                <li><span>Запечатанный образец ила</span><strong>sealed</strong></li>
+              </ul>
+            </div>
+
+            <div class="panel-content" data-panel-content="spells">
+              <ul class="compact-list">
+                <li><span>Mage Armor</span><strong>ready</strong></li>
+                <li><span>Detect Magic</span><strong>ritual</strong></li>
+                <li><span>Counterspell</span><strong>slot 3</strong></li>
+                <li><span>Misty Step</span><strong>slot 2</strong></li>
+              </ul>
+            </div>
+
+            <div class="panel-content" data-panel-content="rolls">
+              <ul class="compact-list">
+                <li><span>Insight</span><strong>18</strong></li>
+                <li><span>Arcana</span><strong>21</strong></li>
+                <li><span>Perception</span><strong>11</strong></li>
+                <li><span>Initiative</span><strong>19</strong></li>
+              </ul>
+            </div>
+
+            <div class="panel-content" data-panel-content="actions">
+              <ul class="compact-list" id="panelActionsList">
+                <li><span>Говорить с NPC</span><strong>social</strong></li>
+                <li><span>Осмотреть место</span><strong>skill</strong></li>
+                <li><span>Сотворить заклинание</span><strong>magic</strong></li>
+                <li><span>Попросить совет</span><strong>party</strong></li>
+              </ul>
+            </div>
+
+            <div class="panel-content" data-panel-content="notes">
+              <ul class="compact-list">
+                <li><span>Текущий крючок</span><strong>старое русло</strong></li>
+                <li><span>Тон сцены</span><strong>тайна</strong></li>
+                <li><span>Следующая проверка</span><strong>Arcana</strong></li>
+                <li><span>Сохранение</span><strong>auto</strong></li>
+              </ul>
+            </div>
+          </section>
+
+          <section class="sheet-section">
+            <div class="section-head">
+              <h3>Журнал</h3>
+              <button class="tiny-button" id="expandJournal" type="button">Все записи</button>
+            </div>
+            <ol class="journal-list" id="journalList">
+              <li>Ирна предупредила: не спорить с водой вслух.</li>
+              <li>Старое русло может повторять голоса и клятвы.</li>
+              <li>Отряд выходит утром с северного берега.</li>
+            </ol>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <div class="setup-overlay" id="setupOverlay" aria-hidden="true">
+      <form class="setup-card" id="setupForm">
+        <header class="setup-head">
+          <div>
+            <p class="eyebrow">Update 0.2</p>
+            <h2>Новая кампания</h2>
+          </div>
+          <button class="icon-button" id="closeSetup" type="button" aria-label="Закрыть создание кампании">×</button>
+        </header>
+
+        <div class="setup-grid">
+          <label>
+            <span>Имя героя</span>
+            <input name="heroName" type="text" maxlength="40" value="Нимарис" />
+          </label>
+          <label>
+            <span>Название кампании</span>
+            <input name="campaignTitle" type="text" maxlength="80" placeholder="создастся автоматически" />
+          </label>
+          <label>
+            <span>Происхождение</span>
+            <select name="lineageId"></select>
+          </label>
+          <label>
+            <span>Класс</span>
+            <select name="classId"></select>
+          </label>
+          <label>
+            <span>Предыстория</span>
+            <select name="backgroundId"></select>
+          </label>
+          <label>
+            <span>Регион</span>
+            <select name="regionId"></select>
+          </label>
+          <label>
+            <span>Свой регион</span>
+            <input name="customRegion" type="text" maxlength="60" placeholder="если выбран свой регион" />
+          </label>
+          <label>
+            <span>Тон</span>
+            <select name="toneId"></select>
+          </label>
+          <label class="setup-wide">
+            <span>Стартовый крючок</span>
+            <select name="hookId"></select>
+          </label>
+        </div>
+
+        <section class="setup-preview" id="setupPreview" aria-live="polite">
+          <strong>Загрузка вариантов...</strong>
+          <p>Сервер готовит пресеты героя и стартовые сцены.</p>
+        </section>
+
+        <footer class="setup-actions">
+          <button class="ghost-button" id="resetSetup" type="button">Сбросить</button>
+          <button class="start-button" type="submit">Начать кампанию</button>
+        </footer>
+      </form>
+    </div>
+
+    <dialog id="aiSettings" class="ai-settings">
+      <div class="ai-settings-head"><h2>AI-мастер</h2><button id="closeAiSettings" type="button" aria-label="Закрыть настройки AI">✕</button></div>
+      <p>Подключите свой ChatGPT. При входе разрешите приложению использовать ваш план, затем выберите модель.</p>
+      <p id="authStatus" role="status" aria-live="polite">Проверка подключения…</p>
+      <label for="chatgptAccount">Аккаунт / регистрация</label>
+      <select id="chatgptAccount"><option value="">Новый аккаунт</option></select>
+      <div class="ai-settings-actions">
+        <form action="/api/auth/start" method="post" target="chatgptSignIn" id="chatgptSignInForm">
+          <input type="hidden" name="accountId" id="signInAccountId" value="">
+          <button class="chatgpt-signin" type="submit">Continue with ChatGPT</button>
+        </form>
+        <button id="signOutChatgpt" type="button" hidden>Выйти из ChatGPT</button>
+      </div>
+      <label for="chatgptModel">Модель вашего аккаунта</label>
+      <select id="chatgptModel" disabled><option value="">Сначала войдите</option></select>
+      <button id="reloadModels" type="button" hidden>Обновить список моделей</button>
+      <p class="ai-settings-note" id="authUsage">Расход последнего запроса появится после ответа AI.</p>
+      <p class="ai-settings-note">Запросы используют общий лимит Codex / ChatGPT Work вашего плана. <a href="https://chatgpt.com/settings/usage" target="_blank" rel="noopener noreferrer">Управление доступом и лимитами</a>.</p>
+      <p class="ai-settings-note">Без подключения доступны локальные шаблоны и кнопки действий. Это прототип с упрощёнными правилами; карты и полной системы D&amp;D пока нет.</p>
+    </dialog>
+    <dialog id="partyDiscussion" class="ai-settings discussion-panel">
+      <div class="ai-settings-head"><h2>Разговор у костра</h2><button id="closeDiscussion" type="button" aria-label="Закрыть обсуждение">✕</button></div>
+      <label for="discussionTopic">О чём поговорить?</label><input id="discussionTopic" type="text" maxlength="1000" placeholder="План, подозрения, отношения…">
+      <p id="discussionStatus" role="status" aria-live="polite"></p><div id="discussionLines"></div>
+      <div class="ai-settings-actions"><button id="startDiscussion" type="button">Начать обсуждение</button><button id="nextDiscussionLine" type="button" disabled>Следующая реплика</button></div>
+      <form id="discussionIntervention"><label for="interventionText">Твоя реплика</label><textarea id="interventionText" maxlength="1200" rows="2" placeholder="Вмешаться в разговор…"></textarea><button type="submit">Вмешаться</button></form>
+    </dialog>
+    <script src="/legacy-app.js"></script>
+    <script src="./auth-ui.js"></script>
+    <script src="./dialogue-ui.js"></script>
+  </body>
+</html>

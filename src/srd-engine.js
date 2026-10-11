@@ -6,7 +6,7 @@ const sessions = new Map();
 let corePromise;
 const core = () => corePromise ||= import('../vendor/dnd-core/dist/engine.mjs');
 const text = z.string().trim().min(1).max(1200);
-const campaignInput = z.object({ heroName: z.string().trim().min(1).max(80), classId: z.string().default('wizard'), raceId: z.string().default('human'), backgroundId: z.string().default('sage'), worldIdea: text, location: z.string().max(100).default('Начало пути'), tone: z.string().max(100).default('Живое приключение') }).strict();
+const campaignInput = z.object({ heroName: z.string().trim().min(1).max(80), classId: z.string().default('wizard'), raceId: z.string().default('human'), backgroundId: z.string().default('sage'), heroConcept: z.string().max(800).optional(), language: z.enum(['ru', 'en']).default('ru'), worldIdea: text, location: z.string().max(100).default('Начало пути'), tone: z.string().max(100).default('Живое приключение') }).strict();
 
 async function session() {
   const directory = path.join(path.resolve(process.env.DND_DATA_DIR || path.join(__dirname, '..', 'data')), 'rules');
@@ -30,7 +30,7 @@ async function createCampaign(input) {
   const engine = await core(), service = await session();
   if (!engine.srdClassIds.includes(parsed.classId) || !engine.srdRaceIds.includes(parsed.raceId) || !engine.srdBackgroundIds.includes(parsed.backgroundId)) throw Object.assign(new Error('Неизвестная основа персонажа.'), { status: 400 });
   const hero = engine.createSrdLevelOneCharacter({ name: parsed.heroName, classId: parsed.classId, raceId: parsed.raceId, backgroundId: parsed.backgroundId });
-  const state = await service.startCampaign({ startingCharacter: hero, rulesetId: 'srd5.1', difficulty: 'normal', campaignMode: 'open_world', language: 'ru', heroConcept: parsed.worldIdea.slice(0, 420), openWorld: { settingName: parsed.worldIdea.slice(0, 80), region: 'Мир игрока', location: parsed.location, tone: parsed.tone, language: 'ru' } });
+  const state = await service.startCampaign({ startingCharacter: hero, rulesetId: 'srd5.1', difficulty: 'normal', campaignMode: 'open_world', language: parsed.language, heroConcept: parsed.heroConcept?.slice(0, 420), openWorld: { settingName: parsed.worldIdea.slice(0, 80), region: 'Мир игрока', location: parsed.location, tone: parsed.tone, language: parsed.language } });
   await saveMetadata(service, state, { worldIdea: parsed.worldIdea, tone: parsed.tone, createdSpells: [], events: [], questState: [], relationships: {}, reputation: {}, survival: { enabled: false }, version: 1 }, 'ui_adventure_setup');
   return view(service, state);
 }
@@ -81,7 +81,10 @@ async function command(input, { seed } = {}) {
       const spell = (metadata(state).createdSpells || []).find(s => s.id === input.spellId);
       if (!spell) error('Это заклинание ещё не существует в кампании.');
       result = await castGeneratedSpell(state, spell, { targetId: input.targetId, seed });
-      await service.store.saveGameState(result.state, { reason: `created_spell:${spell.id}` }); break;
+      await service.store.saveGameState(result.state, { reason: `created_spell:${spell.id}` });
+      const core=await import('../vendor/dnd-core/dist/engine.mjs');
+      if(result.state.combat&&core.sideDefeated(result.state.combat,'enemies'))result.state=await service.endCombat(id,'victory',seed);
+      break;
     }
     case 'save': result = await service.saveCampaign(id); break;
     default: error('Неизвестная игровая команда.');

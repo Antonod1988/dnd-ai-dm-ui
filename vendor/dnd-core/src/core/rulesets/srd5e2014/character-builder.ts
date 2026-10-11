@@ -1247,10 +1247,7 @@ export function createSrdLevelOneCharacter(input: SrdCharacterInput = {}): Chara
     xp: 0,
     hp: { current: hpMax, max: hpMax, temp: 0 },
     hitDice: { [profile.hitDie]: { current: 1, max: 1 } },
-    ac:
-      input.abilities || input.baseAbilities || !usesDefaultEquipment
-        ? calculateAc(profile, equipmentPackage.equipment, abilities)
-        : profile.ac,
+    ac: calculateAc(profile, equipmentPackage.equipment, abilities),
     speed: raceSpeeds[raceId],
     proficiencyBonus,
     abilities,

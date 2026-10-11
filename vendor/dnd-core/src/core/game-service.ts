@@ -4540,7 +4540,7 @@ export class RpgGameService {
     const applied = applyConsequences({ ...syncPartyFromCombat(state), combat: undefined }, consequences, {
       rng: rng(seed)
     });
-    const updated = applyOpenWorldCombatOutcome(applied.state, openWorldEventId, outcome);
+    const updated = applyOpenWorldCombatOutcome({...applied.state,flags:{...applied.state.flags,ui_last_combat_outcome:outcome}}, openWorldEventId, outcome);
     await this.store.saveGameState(updated, { reason: `end_combat:${outcome}` });
     return updated;
   }

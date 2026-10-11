@@ -4,10 +4,12 @@ Source: user's `dnd-rpg-cli-mcp` repository, committed snapshot `905beabe71de91f
 
 Only `src/core/` and its MIT license were imported with `git archive`. Uncommitted edits, credentials, saves, browser/CLI providers and application assets were not imported. This snapshot is independent of the adjacent checkout.
 
-Changes in this project are isolated in the application adapter. `entry.ts` and `scripts/build-rules.js` compile the source into an ESM module; built output is not committed.
+Application-specific world, quest, dialogue and memory logic stays in the adapter. `entry.ts` and `scripts/build-rules.js` compile the source into an ESM module; built output is not committed.
 
 One storage fix is applied in the snapshot: `state/store.ts` writes the SQLite export to a temporary file and renames it, avoiding a partially overwritten database after interruption.
 Trailing spaces in four upstream TypeScript files have also been normalized; no rules logic was changed by that formatting step.
+
+Two rules corrections are applied locally: level-one armor class is calculated from the final racial ability scores and equipped armor, and combat completion records an explicit victory/retreat/defeat outcome. The adapter awards victory objectives only for an actual victory. Inventory-use and armor-class helpers are exported so the UI uses the same authoritative rules.
 
 ## SRD attribution
 
