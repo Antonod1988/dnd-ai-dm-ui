@@ -3,14 +3,14 @@ const crypto = require('node:crypto');
 const skillAbilities = { acrobatics: 'dex', animal_handling: 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', sleight_of_hand: 'dex', stealth: 'dex', survival: 'wis' };
 const definitionSchema = z.object({
   sceneId: z.string().min(1).max(120),
-  trigger: z.enum(['enter', 'inspect', 'dialogue']),
+  trigger: z.enum(['enter', 'inspect', 'dialogue','manual']),
   subjectId: z.string().min(1).max(120).optional(),
   skill: z.enum(Object.keys(skillAbilities)), dc: z.number().int().min(5).max(25),
   title: z.string().min(1).max(120), prompt: z.string().min(1).max(500),
   discoveredFact: z.string().min(1).max(700), failureText: z.string().min(1).max(300).default('Надёжного вывода пока нет.'),
   visibility: z.enum(['visible', 'ambient']).default('visible')
 }).strict();
-function read(state) { try { return JSON.parse(state.flags.ui_scene_checks || '{"definitions":[],"attempts":[]}'); } catch { throw new Error('Повреждена история проверок сцены.'); } }
+function read(state) { try { return JSON.parse(state.flags?.ui_scene_checks || '{"definitions":[],"attempts":[]}'); } catch { throw new Error('Повреждена история проверок сцены.'); } }
 async function registerSceneCheck(service, campaignId, input) {
   const draft = definitionSchema.parse(input);
   const state = service.loadCampaign(campaignId), ledger = read(state);
@@ -23,11 +23,11 @@ async function registerSceneCheck(service, campaignId, input) {
   await service.store.saveGameState(state, { reason: 'scene_check_registered' });
   return check;
 }
-async function triggerSceneChecks(service, campaignId, { sceneId, trigger, subjectId }, { seed } = {}) {
+async function triggerSceneChecks(service, campaignId, { sceneId, trigger, subjectId,checkId }, { seed } = {}) {
   let state = service.loadCampaign(campaignId);
   if (state.combat) throw new Error('Эта проверка предназначена для внебоевой сцены.');
   const initial = read(state);
-  const matches = initial.definitions.filter(d => d.sceneId === sceneId && d.trigger === trigger && (!d.subjectId || d.subjectId === subjectId));
+  const matches = initial.definitions.filter(d => d.sceneId === sceneId && d.trigger === trigger && (!d.subjectId || d.subjectId === subjectId)&&(!checkId||d.id===checkId));
   const attempted=new Set(initial.attempts.map(a=>a.key));
   // Already attempted checks must not occupy the three-roll budget forever.
   const matching=[...matches.filter(d=>!attempted.has(`${d.id}:${state.party.heroId}`)),...matches.filter(d=>attempted.has(`${d.id}:${state.party.heroId}`))];

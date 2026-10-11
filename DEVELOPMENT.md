@@ -2,7 +2,7 @@
 
 User objective: a working, attractive D&D-style game UI, with reliable mechanics, AI-created adventures and economical long-campaign memory. The objective remains active until all requirements below have runtime evidence.
 
-Ordered milestones and acceptance criteria: [ROADMAP.md](ROADMAP.md). Current stage: playable single-player alpha (package 0.2.0). The `63ea265` checkpoint had 76 tests and successful Windows/Linux, Node 20/22 CI; the loot/progression follow-up had 79 tests; the economy follow-up has 91 tests and real completed adventure/economy scenarios. Earlier counts below describe historical checkpoints.
+Ordered milestones and acceptance criteria: [ROADMAP.md](ROADMAP.md). Current stage: playable single-player alpha (package 0.2.0). The `63ea265` checkpoint had 76 tests and successful Windows/Linux, Node 20/22 CI; the loot/progression follow-up had 79 tests; the economy follow-up passed 91 tests and Windows/Linux CI; the quest follow-up adds delivery and alternative checks (103 tests). Earlier counts below describe historical checkpoints.
 
 ## Required outcome
 
@@ -77,3 +77,12 @@ Remaining work includes a broader live adventure audit (combat, death and progre
 - Money history includes commerce and rule-based changes. UI has wallet, effects/duration before purchase, trader funds, sale controls, local encounters and recent receipts. Full receipt events remain searchable in the journal; bounded context retains exact coins and only selected market/history records.
 - Live Luna world «Свет над тихими облаками»: two markets, a named inn, Investigation 9 vs 12 including the paid +2 bonus, a distinct donation approach, price reduction 5→4, purchase, paid rumor, a zero balance followed by sale restoring 3 coins, and the purchased shield changing AC 12→13. Shopping kept the AI counter unchanged. The second town has scarce medicine at 12 and a 30-minute ferry at 6; insufficient funds were rejected without a state change. Earned loot in the earlier Rook campaign was sold for 3 coins, 12→15, with no AI call.
 - This closes the basic economy slice, not all social/world consequences. Complex trade, commodity obligations, training/repair, travel risk, weather and optional images remain open. The full objective remains active.
+
+### Quest delivery and alternative approaches follow-up
+
+- Generated quests can require a real item handover to a specific NPC, including provenance and a saved recipient possession. A conversation alone cannot complete that objective. Equipped/attuned items, absent recipients, missing items, inactive stages, combat and incapacitation reject delivery before changes.
+- Check objectives support distinct declared alternatives. Manual checks roll only the chosen method; failed attempts remain saved, another method can succeed, and unrelated rolls do not advance the objective. Earlier successful discoveries and still-carried acquisitions remain valid evidence after accepting a task.
+- The quest UI shows current objectives, approaches/DCs/locations, failed results, recipient details and contextual action buttons. Bounded context includes those IDs and attempt states without unopened discoveries. See [QUESTS.md](QUESTS.md).
+- Explicit locked-container/item-access conditions, quantities, cancellation/timed failure and arbitrary negotiation branches remain open. Older talk/report objectives retain their meaning; existing saves are not converted into different promises.
+
+- Live Luna campaign «Компас над облаками»: Investigation 17/25 failed, History 7/5 succeeded, normal conversation left the delivery pending, and explicit UI handover removed the compass, saved it with Oren, raised trust/reputation once and granted 125 XP plus an original item. A server restart preserved the result. One optional world-development draft was rejected after the successful check; the mechanics persisted and subsequent play continued. Better schema feedback for such narrative drafts is still needed.

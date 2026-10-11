@@ -8,9 +8,14 @@ const paragraph = z.string().trim().min(1).max(1200);
 const nodeSchema = z.object({ id: key, name: short, description: paragraph, kind: z.enum(['settlement', 'wilderness', 'ruins', 'interior', 'road']).default('wilderness'), connectsTo: z.array(key).max(6).default([]) }).strict();
 const npcSchema = z.object({ id: key, name: short, role: z.string().max(240), personality: z.string().max(400).default(''), locationId: key }).strict();
 const itemSchema = z.object({ id: key, name: short, description: z.string().max(600), locationId: key, kind: z.enum(['quest', 'tool', 'consumable', 'weapon']).default('quest'),focus:loot.focusSchema.optional(),rarity:loot.raritySchema.optional() }).strict();
-const objectiveSchema = z.object({ text: z.string().min(1).max(240), kind: z.enum(['visit', 'talk', 'check', 'victory', 'acquire']), targetId: key.optional() }).strict();
+const objectiveSchema = z.object({ text: z.string().min(1).max(240), kind: z.enum(['visit', 'talk', 'check', 'victory', 'acquire','deliver']), targetId: key.optional(),recipientId:key.optional(),alternativeTargetIds:z.array(key).max(3).optional() }).strict().superRefine((o,ctx)=>{
+  if(o.kind==='deliver'&&!o.recipientId)ctx.addIssue({code:'custom',message:'Delivery needs a recipient'});
+  if(o.kind!=='deliver'&&o.recipientId)ctx.addIssue({code:'custom',message:'Only delivery has a recipient'});
+  if(o.kind!=='check'&&o.alternativeTargetIds?.length)ctx.addIssue({code:'custom',message:'Only check objectives accept alternative checks'});
+  const ids=[o.targetId,...(o.alternativeTargetIds||[])];if(new Set(ids).size!==ids.length)ctx.addIssue({code:'custom',message:'Duplicate objective approach'});
+});
 const questSchema = z.object({ id: key, title: short, summary: paragraph, giverId: key.optional(), objectives: z.array(objectiveSchema).min(1).max(5), sequential: z.boolean().default(true), rewardTheme: z.string().max(140).default('полезная находка'),rewardName:z.string().trim().min(1).max(80).optional(),rewardFocus:loot.focusSchema.optional() }).strict();
-const loreSchema = z.object({ id: key, locationId: key, trigger: z.enum(['enter', 'inspect', 'dialogue']), npcId: key.optional(), skill: z.enum(['history', 'arcana', 'religion', 'nature', 'perception', 'investigation', 'insight', 'survival']), dc: z.number().int().min(5).max(25), title: short, prompt: z.string().min(1).max(300), discoveredFact: z.string().min(1).max(650) }).strict();
+const loreSchema = z.object({ id: key, locationId: key, trigger: z.enum(['enter', 'inspect', 'dialogue','manual']), npcId: key.optional(), skill: z.enum(['history', 'arcana', 'religion', 'nature', 'perception', 'investigation', 'insight', 'survival','persuasion','deception','intimidation','athletics','acrobatics','stealth','sleight_of_hand','animal_handling','medicine','performance']), dc: z.number().int().min(5).max(25), title: short, prompt: z.string().min(1).max(300), discoveredFact: z.string().min(1).max(650) }).strict();
 const seedSchema = z.object({ title: short, opening: z.string().min(1).max(2400), startLocationId: key, locations: z.array(nodeSchema).min(1).max(8), npcs: z.array(npcSchema).max(8).default([]), items: z.array(itemSchema).max(8).default([]), quests: z.array(questSchema).max(4).default([]), checks: z.array(loreSchema).max(8).default([]),markets:z.array(economy.marketSchema).max(5).default([]) }).strict();
 function validateSeed(draft) {
   const seed = seedSchema.parse(draft);
@@ -24,6 +29,7 @@ function validateReferences(patch, current) {
   economy.validateMarkets(patch,current);
   const locations = new Set([...(current.locations || []), ...(patch.locations || [])].map(l => l.id));
   const npcs = new Set([...(current.npcs || []), ...(patch.npcs || [])].map(n => n.id));
+  const npcRecords=new Map();for(const n of [...(current.npcs||[]),...(patch.npcs||[])])if(!npcRecords.has(n.id))npcRecords.set(n.id,n);
   const checks = new Set([...(current.loreDefinitions || []), ...(patch.checks || [])].map(c => c.id));
   const items = new Set([...(current.items || []), ...(patch.items || [])].map(i => i.id));
   const unique = records => { const ids = records.map(r => r.id); if (new Set(ids).size !== ids.length) throw new Error('Duplicate world record id'); };
@@ -32,12 +38,14 @@ function validateReferences(patch, current) {
   for (const location of patch.locations || []) for (const id of location.connectsTo) if (!locations.has(id) || id === location.id) throw new Error('Invalid map link');
   for (const npc of patch.npcs || []) if (!locations.has(npc.locationId)) throw new Error('Unknown NPC location');
   for (const item of patch.items || []) if (!locations.has(item.locationId)) throw new Error('Unknown object location');
-  for (const check of patch.checks || []) if (!locations.has(check.locationId) || (check.npcId && !npcs.has(check.npcId))) throw new Error('Unknown lore-check anchor');
+  for (const check of patch.checks || []) if (!locations.has(check.locationId) || (check.npcId && (!npcs.has(check.npcId)||npcRecords.get(check.npcId).locationId!==check.locationId))) throw new Error('Unknown lore-check anchor');
   for (const quest of patch.quests || []) {
     if (quest.giverId && !npcs.has(quest.giverId)) throw new Error('Unknown quest giver');
     for (const objective of quest.objectives) {
-      const catalog = objective.kind === 'visit' || objective.kind === 'victory' ? locations : objective.kind === 'talk' ? npcs : objective.kind === 'check' ? checks : objective.kind === 'acquire' ? items : null;
+      const catalog = objective.kind === 'visit' || objective.kind === 'victory' ? locations : objective.kind === 'talk' ? npcs : objective.kind === 'check' ? checks : ['acquire','deliver'].includes(objective.kind) ? items : null;
       if (catalog && (!objective.targetId || !catalog.has(objective.targetId))) throw new Error('Unknown objective target');
+      if(objective.kind==='deliver'&&!npcs.has(objective.recipientId))throw new Error('Unknown delivery recipient');
+      for(const id of objective.alternativeTargetIds||[])if(!checks.has(id))throw new Error('Unknown alternative check');
     }
   }
 }
@@ -75,7 +83,7 @@ function addEvent(adventure, kind, targetId, text, details = {}) {
 function processQuestEvent(adventure, event) {
   const completed = [];
   for (const quest of adventure.quests.filter(q => q.status === 'active')) {
-    for (const [index, objective] of quest.objectives.entries()) if (!objective.completed && (!quest.sequential || quest.objectives.slice(0, index).every(o => o.completed)) && objective.kind === event.kind && (!objective.targetId || objective.targetId === event.targetId) && event.success !== false) {
+    for (const [index, objective] of quest.objectives.entries()) if (!objective.completed && (!quest.sequential || quest.objectives.slice(0, index).every(o => o.completed)) && objective.kind === event.kind && (!objective.targetId || [objective.targetId,...(objective.alternativeTargetIds||[])].includes(event.targetId)) && (objective.kind!=='deliver'||objective.recipientId===event.recipientId) && event.success !== false) {
       objective.completed = true; objective.evidenceEventId = event.id;
       break;
     }

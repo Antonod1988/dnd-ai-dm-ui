@@ -5,7 +5,7 @@ The full journal, recent dialogue and older dialogue archive remain in the local
 ## What goes to the game master
 
 - Current world and hero concept; exact HP, armor class, abilities, resources, spell slots, conditions and combat turn.
-- Relevant unfinished quest objectives and their recorded completion evidence. A compact index covers additional quests when space permits. Previously completed quests can be recalled with their actual status and reward flag.
+- Relevant unfinished quest objectives, exact delivery recipients, declared alternative check IDs/attempt results and their recorded completion evidence. A compact index covers additional quests when space permits. Previously completed quests can be recalled with their actual status and reward flag.
 - Player bookmarks, confirmed discoveries and relevant excerpts of older dialogue, including their speaker and turn.
 - Nearby people and routes, selected inventory and created spells, a short recent dialogue window and the latest events.
 - Exact wallet balance, selected local market offers and at most three relevant receipts. Unpaid information remains hidden. Purchased information retains its attribution and rumor status.

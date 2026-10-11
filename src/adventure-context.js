@@ -32,9 +32,9 @@ function contextFor(state,adventure,query='') {
     survival:adventure.survival.enabled?{foodDays:adventure.survival.foodDays,waterDays:adventure.survival.waterDays,hungerDays:adventure.survival.hungerDays}:undefined,
     combat:state.combat?{round:state.combat.round,actorId:state.combat.participants[state.combat.turnIndex]?.id,turnBudget:state.combat.turnBudget,
       participants:state.combat.participants.slice(0,10).map(p=>({id:p.id,name:clip(p.name,80),kind:p.kind,hp:p.hp,conditions:p.conditions}))}:undefined,
-    bookmarks:[],quests:[],questIndex:[],questHistory:[],activeFacts:[],recollections:[],npcs:[],inventory:[],createdSpells:[],nearbyPlaces:[],recentDialogue:[],recentEvents:[],markets:[],transactions:[],
+    bookmarks:[],quests:[],checks:[],questIndex:[],questHistory:[],activeFacts:[],recollections:[],npcs:[],inventory:[],createdSpells:[],nearbyPlaces:[],recentDialogue:[],recentEvents:[],markets:[],transactions:[],
     omitted:{quests:pending.length,facts:state.facts.length,notes:(adventure.notes||[]).length,archive:(adventure.archive||[]).length}};
-  const budgets={bookmarks:2800,quests:3200,questIndex:1400,questHistory:1000,activeFacts:2000,recollections:2000,npcs:1200,inventory:900,createdSpells:1400,nearbyPlaces:1000,recentDialogue:1200,recentEvents:1000,markets:1600,transactions:600};
+  const budgets={bookmarks:2800,quests:3200,checks:1600,questIndex:1400,questHistory:1000,activeFacts:2000,recollections:2000,npcs:1200,inventory:900,createdSpells:1400,nearbyPlaces:1000,recentDialogue:1200,recentEvents:1000,markets:1600,transactions:600};
   const append=(key,value)=>{
     packet[key].push(value);
     if(JSON.stringify(packet[key]).length>budgets[key]||JSON.stringify(packet).length>MAX_CHARS){packet[key].pop();return false;}
@@ -43,8 +43,10 @@ function contextFor(state,adventure,query='') {
   // Bookmarks and relevant active objectives get space before optional prose.
   for(const note of recall(bookmarks,query,scene,4))append('bookmarks',{id:note.id,kind:note.kind,text:excerpt(note,query,scene,650),sourceSceneId:note.sourceSceneId});
   for(const q of ranked.slice(0,6))append('quests',{id:q.id,title:clip(q.title,100),status:q.status,summary:clip(q.summary,220),
-    objectives:q.objectives.map(o=>({id:o.id,kind:o.kind,targetId:o.targetId,text:clip(o.text,120),completed:o.completed,evidenceEventId:o.evidenceEventId}))});
-  const questTargets=new Set(packet.quests.flatMap(q=>q.objectives.map(o=>o.targetId)));
+    objectives:q.objectives.map(o=>({id:o.id,kind:o.kind,targetId:o.targetId,recipientId:o.recipientId,alternativeTargetIds:o.alternativeTargetIds,text:clip(o.text,120),completed:o.completed,evidenceEventId:o.evidenceEventId}))});
+  const questTargets=new Set(packet.quests.flatMap(q=>q.objectives.flatMap(o=>[o.targetId,o.recipientId,...(o.alternativeTargetIds||[])])));
+  const attempts=require('./scene-checks').publicChecks(state);
+  for(const d of adventure.loreDefinitions.filter(d=>questTargets.has(d.id)||(d.trigger==='manual'&&d.locationId===location.id)).slice(0,8)){const c=attempts.find(c=>c.id===adventure.loreCheckIds[d.id]);append('checks',{id:d.id,title:clip(d.title,100),locationId:d.locationId,npcId:d.npcId,skill:d.skill,dc:d.dc,trigger:d.trigger,attempted:Boolean(c?.attempted),success:c?.result?.success});}
   const people=adventure.npcs.map((n,index)=>({n,index,score:relevance({...n,text:`${n.role} ${n.personality}`},query,scene)*5+(n.locationId===location.id?5:0)+(questTargets.has(n.id)?3:0)})).sort((a,b)=>b.score-a.score||a.index-b.index);
   for(const {n} of people.slice(0,4))append('npcs',{id:n.id,name:clip(n.name,80),role:clip(n.role,140),locationId:n.locationId,location:clip(adventure.locations.find(l=>l.id===n.locationId)?.name,140),trust:n.trust,familiarity:n.familiarity});
   const recalled=recall(adventure.archive||[],query,scene,4).filter(m=>query.trim()&&relevance(m,query,scene)>0);

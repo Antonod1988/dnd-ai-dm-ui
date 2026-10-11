@@ -87,3 +87,5 @@ npm run smoke
 Атрибуция импортированного ядра и SRD находится в [vendor/dnd-core/PROVENANCE.md](vendor/dnd-core/PROVENANCE.md).
 
 Исходный интерфейс восстановлен из личного архивного прототипа; прежние сохранения, ключи и приватные заметки в репозиторий не включены. MIT распространяется на код проекта; права на упоминаемые сторонние названия и материалы принадлежат их владельцам. Неофициальный независимый проект, не продукт OpenAI или Wizards of the Coast.
+
+Quest mechanics, delivery evidence and alternative checks: [QUESTS.md](QUESTS.md).

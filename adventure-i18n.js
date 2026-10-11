@@ -1,6 +1,7 @@
 // UI labels are translated locally. Story content is generated in the campaign's language.
 const uiLanguage = new URLSearchParams(location.search).get('lang') === 'en' ? 'en' : 'ru';
 const englishLabels = {
+  'Адресат':'Recipient','Передача заберёт предмет из инвентаря. Разговор сам по себе её не заменяет.':'Handing it over removes the item from your inventory. Conversation alone does not hand it over.','Этот подход не помог. Можно попробовать другой способ.':'This approach failed. You can try a different method.',
   'Расходуется':'Consumed on use','Путь к ночлегу':'Travel to the lodging','Требует настройки':'Requires attunement','Льготные цены':'Better prices',
   'Перемещение':'Travel','мин.':'min.',
   'СВЕДЕНИЯ ОТ СОБЕСЕДНИКА':'REPORTED INFORMATION',
