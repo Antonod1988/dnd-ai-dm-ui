@@ -2,6 +2,8 @@
 
 User objective: a working, attractive D&D-style game UI, with reliable mechanics, AI-created adventures and economical long-campaign memory. The objective remains active until all requirements below have runtime evidence.
 
+Ordered milestones and acceptance criteria: [ROADMAP.md](ROADMAP.md). Current stage: playable single-player alpha (package 0.2.0). Latest implementation checkpoint: `63ea265`, 76 tests and successful Windows/Linux, Node 20/22 CI. Earlier counts below describe historical checkpoints.
+
 ## Required outcome
 
 1. General D&D resolution: abilities, skills, proficiency, dice and advantage; action/bonus/reaction/movement economy; initiative, damage, saves, conditions, concentration, death, rests and progression.
@@ -29,7 +31,7 @@ Latest user clarification: maximize narrative freedom in any world co-created by
 
 ## Completion evidence still required
 
-Rules integration and general generated effects are in progress. The complete UI, map, campaign flow, survival/social systems, optional image controls and long-session runtime audit are not yet complete. Passing the previous alpha tests does not prove this objective.
+The main UI, map and campaign flow are integrated. Remaining acceptance work includes a complete live adventure with combat/progression, richer generated item mechanics and quest cases, consequential relationships/reputation, weather/survival depth, optional image controls, and broader long-session runtime validation. Cooperative networking is researched, not implemented. Passing the previous alpha tests does not prove the complete objective.
 
 ## Current checkpoint — 2026-10-11
 
