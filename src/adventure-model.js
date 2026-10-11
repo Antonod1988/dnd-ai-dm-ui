@@ -1,13 +1,14 @@
 const { z } = require('zod');
 const crypto = require('node:crypto');
+const loot=require('./adventure-loot');
 const key = z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,59}$/);
 const short = z.string().trim().min(1).max(140);
 const paragraph = z.string().trim().min(1).max(1200);
 const nodeSchema = z.object({ id: key, name: short, description: paragraph, kind: z.enum(['settlement', 'wilderness', 'ruins', 'interior', 'road']).default('wilderness'), connectsTo: z.array(key).max(6).default([]) }).strict();
 const npcSchema = z.object({ id: key, name: short, role: z.string().max(240), personality: z.string().max(400).default(''), locationId: key }).strict();
-const itemSchema = z.object({ id: key, name: short, description: z.string().max(600), locationId: key, kind: z.enum(['quest', 'tool', 'consumable', 'weapon']).default('quest') }).strict();
+const itemSchema = z.object({ id: key, name: short, description: z.string().max(600), locationId: key, kind: z.enum(['quest', 'tool', 'consumable', 'weapon']).default('quest'),focus:loot.focusSchema.optional(),rarity:loot.raritySchema.optional() }).strict();
 const objectiveSchema = z.object({ text: z.string().min(1).max(240), kind: z.enum(['visit', 'talk', 'check', 'victory', 'acquire']), targetId: key.optional() }).strict();
-const questSchema = z.object({ id: key, title: short, summary: paragraph, giverId: key.optional(), objectives: z.array(objectiveSchema).min(1).max(5), sequential: z.boolean().default(true), rewardTheme: z.string().max(140).default('полезная находка') }).strict();
+const questSchema = z.object({ id: key, title: short, summary: paragraph, giverId: key.optional(), objectives: z.array(objectiveSchema).min(1).max(5), sequential: z.boolean().default(true), rewardTheme: z.string().max(140).default('полезная находка'),rewardName:z.string().trim().min(1).max(80).optional(),rewardFocus:loot.focusSchema.optional() }).strict();
 const loreSchema = z.object({ id: key, locationId: key, trigger: z.enum(['enter', 'inspect', 'dialogue']), npcId: key.optional(), skill: z.enum(['history', 'arcana', 'religion', 'nature', 'perception', 'investigation', 'insight', 'survival']), dc: z.number().int().min(5).max(25), title: short, prompt: z.string().min(1).max(300), discoveredFact: z.string().min(1).max(650) }).strict();
 const seedSchema = z.object({ title: short, opening: z.string().min(1).max(2400), startLocationId: key, locations: z.array(nodeSchema).min(1).max(8), npcs: z.array(npcSchema).max(8).default([]), items: z.array(itemSchema).max(8).default([]), quests: z.array(questSchema).max(4).default([]), checks: z.array(loreSchema).max(8).default([]) }).strict();
 function validateSeed(draft) {
@@ -52,7 +53,7 @@ function makeAdventure(seed, input) {
     quests: seed.quests.map(q => makeQuest(q)), loreDefinitions: seed.checks,
     loreCheckIds: {}, createdSpells: [], messages: [], archive: [], events: [], journal: [], appliedOperations: [],
     survival: { enabled: Boolean(input.survival), foodDays: 3, waterDays: 3, hungerDays: 0, thirstDays: 0 }, reputation: {},
-    notes: [], pinnedFactIds: [], sceneImageId: null, pendingNarration: null, operations: 0
+    notes: [], pinnedFactIds: [],lootLedger:[],sceneImageId: null, pendingNarration: null, operations: 0
   };
   for (const location of adventure.locations) for (const neighbor of location.connectsTo) { const other = adventure.locations.find(l => l.id === neighbor); if (!other.connectsTo.includes(location.id)) other.connectsTo.push(location.id); }
   return adventure;

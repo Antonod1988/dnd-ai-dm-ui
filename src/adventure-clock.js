@@ -7,6 +7,7 @@ function elapsedSeconds(command, beforeCombat, afterCombat, outcome = {}) {
   if (command.type === 'combat') return 0;
   if (command.type === 'travel') return 3600;
   if (command.type === 'rest') return command.kind === 'long' ? 28800 : 3600;
+  if(['attune_item','unattune_item'].includes(command.type))return 3600;
   if (['cast_spell','cast_created_spell','use_item','equip_item','death_save'].includes(command.type)) return 6;
   if (['accept_quest','pickup','supplies'].includes(command.type)) return 60;
   if (command.type === 'save') return 0;

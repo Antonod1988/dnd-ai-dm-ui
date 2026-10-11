@@ -80,8 +80,22 @@ async function command(input, { seed } = {}) {
       result.message=`Спасбросок от смерти: ${result.result.roll.total}. Успехи ${result.character.deathSaves.successes}/3, неудачи ${result.character.deathSaves.failures}/3.`;
       break;
     }
-    case 'use_item': result = await service.useItem(id, String(input.itemId || ''), undefined, seed); break;
-    case 'equip_item': result = await service.equipItem(id, String(input.itemId || '')); break;
+    case 'use_item': {
+      const itemId=String(input.itemId||'');
+      if(state.combat){
+        const action=service.getAvailableActions(id).actions.find(a=>a.id===`combat.action.use_item.${itemId}`||a.id===`combat.bonus.class_feature.feature_fast_hands_use_item.${itemId}`);
+        if(!action)error('Предмет сейчас нельзя использовать: проверь действие текущего хода, заряды и настройку.');
+        result=await service.chooseAction(id,action.id,seed);
+      }else result=await service.useItem(id,itemId,undefined,seed);
+      break;
+    }
+    case 'equip_item':
+      if(state.combat)error('Смените экипировку вне боя. В бою используйте доступные действия.');
+      result = await service.equipItem(id, String(input.itemId || '')); break;
+    case 'attune_item':
+    case 'unattune_item':
+      if(state.combat)error('Настройка на предмет требует спокойного времени вне боя.');
+      result=await service[input.type==='attune_item'?'attuneItem':'unattuneItem'](id,String(input.itemId||''));break;
     case 'cast_spell':
       result = await service.castSpell(id, String(input.spellId || ''), input.targetId, seed); break;
     case 'cast_created_spell': {

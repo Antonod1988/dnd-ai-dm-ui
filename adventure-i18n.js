@@ -1,6 +1,10 @@
 // UI labels are translated locally. Story content is generated in the campaign's language.
 const uiLanguage = new URLSearchParams(location.search).get('lang') === 'en' ? 'en' : 'ru';
 const englishLabels = {
+  'Все вещи':'All items','Добыча':'Loot','Фильтр вещей':'Inventory filter','Новые находки появятся после исследования и выполнения задач.':'New finds appear through exploration and quests.',
+  'До следующего уровня':'To the next level','Достигнут максимальный уровень':'Maximum level reached','Опыт до следующего уровня':'Experience toward the next level',
+  'Обычный':'Common','Необычный':'Uncommon','Редкий':'Rare','Очень редкий':'Very rare','Легендарный':'Legendary','Награда за задачу':'Quest reward','Добыча после боя':'Battle loot','Находка':'Discovery','Ход':'Turn','Экипировано':'Equipped','Настроиться · 1 ч.':'Attune · 1 hr','Прекратить настройку':'End attunement','зарядов':'charges',
+  'Лечение':'Healing','Временные HP':'Temporary HP','Снятие состояния':'Remove condition','Бонус атаки':'Attack bonus','Бонус проверки':'Ability check bonus','Бонус спасброска':'Saving throw bonus','Урон':'Damage','к атаке':'to attack',
   'Живое приключение':'Living Adventure','Мир, который начинается с твоей идеи':'A world that begins with your idea',
   'Совет':'Party council','Новое приключение':'New adventure','Подключить AI':'Connect AI','Выбрать кампанию':'Select campaign',
   'ТВОЙ МИР · ТВОЙ ГЕРОЙ · ЖИВОЙ МАСТЕР':'YOUR WORLD · YOUR HERO · A LIVING GAME MASTER',

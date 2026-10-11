@@ -102,7 +102,7 @@ async function generateStructured(type, promptPayload, fallbackFactory) {
   try {
     const text = await callConfiguredProvider(config, prompt, type);
     const draft = parseJsonLoose(text);
-    if(type==='master_question'&&(!draft||typeof draft==='string')) {
+    if(['master_question','adventure_narration'].includes(type)&&(!draft||typeof draft==='string')) {
       const answer=(typeof draft==='string'?draft:String(text||'')).trim();
       if(answer&&answer.length<=6000&&!/^[\[{]|^```/.test(answer))return {narration:answer};
     }

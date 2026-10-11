@@ -10,6 +10,8 @@ const { contextFor } = require('./adventure-context');
 const { validateSpell } = require('./generated-effects');
 const { elapsedSeconds, expireExplorationEffects } = require('./adventure-clock');
 const measuredAi=require('./adventure-usage');
+const loot=require('./adventure-loot');
+const LOOT_RULES='Optional item fields: focus healing/temporary_hp/remove_condition/attack_bonus/ability_check_bonus/saving_throw_bonus/armor_class_bonus/weapon/quest_item/story_clue/utility and rarity common/uncommon/rare/very_rare/legendary. Quest rewardName is a short concrete original item name, distinct from rewardTheme; optional rewardFocus uses the same focus values. Choose fitting original names and fictional descriptions; the engine decides actual dice, charges, rarity and strength within the hero level budget. Never claim unsupported numerical properties. For type combat supply lootName and lootFocus for one find after a confirmed victory when a fitting item is recoverable. Defeat and retreat grant no battle loot. Do not duplicate that recorded drop through developments.';
 const classNames = { barbarian: 'Варвар', bard: 'Бард', cleric: 'Жрец', druid: 'Друид', fighter: 'Воин', monk: 'Монах', paladin: 'Паладин', ranger: 'Следопыт', rogue: 'Плут', sorcerer: 'Чародей', warlock: 'Колдун', wizard: 'Маг' };
 const raceNames = { dragonborn: 'Драконорождённый', dwarf: 'Дварф', elf: 'Эльф', gnome: 'Гном', half_elf: 'Полуэльф', half_orc: 'Полуорк', halfling: 'Полурослик', human: 'Человек', tiefling: 'Тифлинг' };
 function bad(message, status = 400) { throw Object.assign(new Error(message), { status }); }
@@ -26,6 +28,7 @@ async function loaded(id) {
     for(const member of state.party.members)if(!member.activeEffects?.length)member.ac=core.calculateSrdArmorClass(member);
     state.flags.ui_racial_ac_fixed=true;await service.store.saveGameState(state,{snapshot:false,reason:'racial_ac_fix'});
   }
+  if(state.flags.ui_player_turn_control!==true){state.flags.ui_player_turn_control=true;await service.store.saveGameState(state,{snapshot:false,reason:'player_turn_control'});}
   return {service,state,adventure};
 }
 async function save(service, state, adventure, reason) { state.flags.ui_adventure = JSON.stringify(adventure); await service.store.saveGameState(state, { reason, snapshot: false }); }
@@ -53,7 +56,8 @@ function choices(service, state, adventure) {
 async function publicView(service, state, adventure) {
   const raw = await srd.getState(state.campaign.id), hero = raw.hero;
   const core=await import('../vendor/dnd-core/dist/engine.mjs');
-  const cleanCharacter=character=>({...character,baseAc:character.ac,ac:core.effectiveArmorClass(character),inventory:character.inventory.map(({hiddenDescription,...item})=>({...item,canUse:Boolean(core.modeledInventoryUseEffect(item,character.inventory))}))});
+  const origins=new Map((adventure.lootLedger||[]).map(record=>[record.itemId,record]));
+  const cleanCharacter=character=>({...character,baseAc:character.ac,ac:core.effectiveArmorClass(character),inventory:character.inventory.map(({hiddenDescription,...item})=>({...item,description:loot.displayDescription(item,adventure.language),canUse:Boolean(core.modeledInventoryUseEffect(item,character.inventory)),origin:origins.get(item.itemId)}))});
   const configuration = ai.getAiConfig();
   return { ready: true, campaign: { id: state.campaign.id, title: adventure.title, revision: adventure.revision, turn: adventure.turn, day: adventure.day, hours: adventure.hours, worldIdea: adventure.worldIdea, tone: adventure.tone, language: adventure.language || 'ru' },
     hero: { ...cleanCharacter(hero), concept:adventure.heroConcept,classLabel: classNames[hero.classLevels?.[0]?.classId?.replace(/^class_/, '')] || hero.className.replace(' SRD', ''), raceLabel: raceNames[hero.raceId?.replace(/^race_/,'')] || raceNames[hero.ancestry.replace(/-/g,'_')] || hero.ancestry },
@@ -62,6 +66,7 @@ async function publicView(service, state, adventure) {
     notes:adventure.notes||[], facts: state.facts.filter(f=>f.id!=='hero_identity').map(f=>({...f,pinned:Boolean(f.pinned||(adventure.pinnedFactIds||[]).includes(f.id))})), messages: adventure.messages,
     actions: choices(service, state, adventure).map(({ command, ...entry }) => entry), combat: raw.combat, turnBudget: raw.actions.turn,
     spellbook: {...raw.spellbook,spells:(raw.spellbook.spells||[]).filter(s=>s.accessible)}, createdSpells: adventure.createdSpells, rolls: raw.rolls, survival: adventure.survival, reputation: adventure.reputation,
+    progression:{nextLevelXp:core.srdXpThresholds[hero.level]??null,levelStartXp:core.srdXpThresholds[hero.level-1]??0},
     loreChecks: lore.publicChecks(state).filter(c => c.sceneId === adventure.currentLocationId), memory: contextFor(state, adventure).metrics,
     provider: { id: configuration.provider, model: configuration.modelLabel, configured: ai.isConfigured(configuration), usage: configuration.usage },
     inferenceUsage:adventure.usage||null,pendingNarration: Boolean(adventure.pendingNarration), campaigns: service.listCampaigns().map(c => ({ id: c.id, title: c.title })) };
@@ -78,10 +83,11 @@ const createSchema = z.object({ heroName: z.string().trim().min(1).max(80), hero
 async function create(input) {
   const parsed = createSchema.parse(input);
   const meter={};
-  const draft = await measuredAi.generate(meter,'adventure_world', { instruction: `Create an original ${parsed.language === 'en' ? 'English' : 'Russian'} adventure in the player world. Respect their premise and hero. Return JSON {title,opening,startLocationId,locations:[{id,name,description,kind,connectsTo}],npcs:[{id,name,role,personality,locationId}],items:[{id,name,description,locationId,kind}],quests:[{id,title,summary,giverId,objectives:[{text,kind,targetId}],rewardTheme}],checks:[{id,locationId,trigger,skill,dc,title,prompt,discoveredFact}]}. Use simple stable ASCII ids, a connected map of 3-5 places, 2-4 distinct NPCs, 1-2 offered quests with specific visit/talk/check objectives. Checks have DC 5-25, trigger enter/inspect/dialogue, skills history/arcana/religion/nature/perception/investigation/insight/survival. Do not reveal discoveredFact in the opening. Objective kind is visit/talk/check/victory/acquire; visit/victory target a location id, talk targets an npc id, check targets a check id, acquire targets an item id. Reference only existing ids. Item kind quest/tool/consumable/weapon, with flavor description and no numerical claims. Locations kind settlement/wilderness/ruins/interior/road. Keep prose compact. No predefined licensed setting unless player supplied it. No numeric hero rewards or state changes.`, world: parsed.worldIdea, hero: { name: parsed.heroName, concept: parsed.heroConcept }, tone: parsed.tone, startingPlace: parsed.location }, () => model.fallbackSeed(parsed));
+  const draft = await measuredAi.generate(meter,'adventure_world', { lootRules:LOOT_RULES, instruction: `Create an original ${parsed.language === 'en' ? 'English' : 'Russian'} adventure in the player world. Respect their premise and hero. Return JSON {title,opening,startLocationId,locations:[{id,name,description,kind,connectsTo}],npcs:[{id,name,role,personality,locationId}],items:[{id,name,description,locationId,kind}],quests:[{id,title,summary,giverId,objectives:[{text,kind,targetId}],rewardTheme}],checks:[{id,locationId,trigger,skill,dc,title,prompt,discoveredFact}]}. Use simple stable ASCII ids, a connected map of 3-5 places, 2-4 distinct NPCs, 1-2 offered quests with specific visit/talk/check objectives. Checks have DC 5-25, trigger enter/inspect/dialogue, skills history/arcana/religion/nature/perception/investigation/insight/survival. Do not reveal discoveredFact in the opening. Objective kind is visit/talk/check/victory/acquire; visit/victory target a location id, talk targets an npc id, check targets a check id, acquire targets an item id. Reference only existing ids. Item kind quest/tool/consumable/weapon, with flavor description and no numerical claims. For each consumable supply focus matching its fiction: protection uses armor_class_bonus, recovery uses healing; for weapons use focus weapon. Optional rarity and quest rewardFocus follow lootRules. Locations kind settlement/wilderness/ruins/interior/road. Keep prose compact. No predefined licensed setting unless player supplied it. No numeric hero rewards or state changes.`, world: parsed.worldIdea, hero: { name: parsed.heroName, concept: parsed.heroConcept }, tone: parsed.tone, startingPlace: parsed.location }, () => model.fallbackSeed(parsed));
   const seed = model.validateSeed(draft);
   const raw = await srd.createCampaign({ heroName: parsed.heroName, heroConcept: parsed.heroConcept, language: parsed.language, classId: parsed.classId, raceId: parsed.raceId, backgroundId: parsed.backgroundId, worldIdea: parsed.worldIdea, location: seed.locations.find(n => n.id === seed.startLocationId).name, tone: parsed.tone });
   const service = await srd.session(); let state = service.loadCampaign(raw.campaign.id); const adventure = model.makeAdventure(seed, parsed);adventure.usage=meter.usage;
+  state.flags.ui_player_turn_control=true;
   if (adventure.survival.enabled) state.party.members.find(m=>m.id===state.party.heroId).inventory.push({itemId:'travel_food',name:'Дорожные припасы',quantity:3,weight:2,tags:['supplies','food'],description:'Запас еды на день пути для отряда.',identified:true,source:'generated'}, {itemId:'travel_water',name:'Запас воды',quantity:3,weight:2,tags:['supplies','water'],description:'Запас воды на день пути для отряда.',identified:true,source:'generated'});
   model.addMessage(adventure, 'dm', 'Мастер', seed.opening);
   model.addEvent(adventure, 'visit', seed.startLocationId, `Начало приключения: ${seed.locations.find(n => n.id === seed.startLocationId).name}`);
@@ -109,10 +115,10 @@ async function rewardQuests(service, state, adventure) {
     const heroAt = state.party.members.findIndex(m => m.id === state.party.heroId), hero = state.party.members[heroAt];
     const xp = Math.min(300, 50 * hero.level + quest.objectives.length * 25);
     state.party.members[heroAt] = core.addXp(hero, xp);
-    const itemPlan = service.planGeneratedReward(state.campaign.id, { theme: quest.rewardTheme, difficulty: 'easy', focus: 'utility', rarity: 'common' });
-    const item = core.createGeneratedInventoryItem({ ...itemPlan.itemInput, name: quest.rewardTheme });
-    state.party.members[heroAt].inventory.push(item); quest.rewardClaimed = true;
-    model.addEvent(adventure, 'quest_reward', quest.id, `Завершено «${quest.title}»: +${xp} XP, ${item.name}.`);
+    const rewardName=quest.rewardName||(quest.rewardTheme.length<=60&&!/[.!?]$/.test(quest.rewardTheme)?quest.rewardTheme:`${adventure.language==='en'?'Travel charm':'Путевой оберег'}: ${quest.title.slice(0,45)}`);
+    const event=model.addEvent(adventure,'quest_reward',quest.id,`Завершено «${quest.title}»: +${xp} XP, ${rewardName}.`);
+    const item = await loot.grantLoot(service,state,adventure,loot.planLoot(service,state,{name:rewardName,theme:quest.rewardTheme,focus:quest.rewardFocus||'ability_check_bonus',rarity:'common'}),{kind:'quest',questId:quest.id,eventId:event.id,locationId:adventure.currentLocationId});
+    quest.rewardClaimed = true;
     model.addMessage(adventure, 'system', 'Награда', `«${quest.title}» завершено. Получено ${xp} XP и ${item.name}.`);
   }
   return state;
@@ -136,18 +142,18 @@ async function narrate(service, state, adventure, outcome, input = '', {question
   const localAnswer=()=>questionOnly
     ? {narration:`${context.packet.hero.name}: HP ${context.packet.hero.hp.current}/${context.packet.hero.hp.max}, ${adventure.language==='en'?'armor':'защита'} ${context.packet.hero.ac}.\n\n${[...context.packet.bookmarks,...context.packet.activeFacts,...context.packet.recollections].slice(0,3).map(r=>r.text).join('\n\n')}`}
     : {narration:outcome.text||'Сцена ждёт твоего следующего решения.'};
-  const report = await measuredAi.generate(adventure,questionOnly?'master_question':'adventure_narration', { instruction: questionOnly ? `Answer the player's question in ${adventure.language === 'en' ? 'English' : 'Russian'}. Return JSON {narration}. Use current state and relevant recollections. Preserve exact numbers and distinguish suggestions from events. Do not execute actions, roll, advance time, invent rewards or propose world developments.` : `Speak ${adventure.language === 'en' ? 'English' : 'Russian'} as a creative Dungeon Master in the player-defined world. Return JSON {narration,developments?:{locations:[],npcs:[],quests:[],checks:[],items:[]}}. Write 1-3 vivid short paragraphs that respond to the actual intent and engine outcome. Preserve exact numbers, conditions and failure. Do not invent numerical inventory, spell slots, XP, rewards, damage or victories. Do not move the player or make choices for them. You may introduce coherent new places, NPCs and OFFERED quests as optional developments with the same schemas as world creation. Current ids are stable; never overwrite current entities, close quests or alter old facts. Keep developments small; empty arrays are valid. Leave a concrete opening for the player.`, input, outcome, questionOnly, context: context.packet }, localAnswer);
+  const report = await measuredAi.generate(adventure,questionOnly?'master_question':'adventure_narration', { lootRules:questionOnly?undefined:LOOT_RULES, instruction: questionOnly ? `Answer the player's question in ${adventure.language === 'en' ? 'English' : 'Russian'}. Return JSON {narration}. Use current state and relevant recollections. Preserve exact numbers and distinguish suggestions from events. Do not execute actions, roll, advance time, invent rewards or propose world developments.` : `Speak ${adventure.language === 'en' ? 'English' : 'Russian'} as a creative Dungeon Master in the player-defined world. Return JSON {narration,developments?:{locations:[],npcs:[],quests:[],checks:[],items:[]}}. Write 1-3 vivid short paragraphs that respond to the actual intent and engine outcome. Preserve exact numbers, conditions and failure. outcome.inventoryChanges are already applied to the inventory; do not describe that money as still on the ground. Only outcome.lootOnGround awaits pickup. Honor outcome.time and context.time: resting does not imply sunrise or a new day unless the recorded clock supports it. Do not invent numerical inventory, spell slots, XP, rewards, damage or victories. Do not move the player or make choices for them. You may introduce coherent new places, NPCs and OFFERED quests as optional developments with the same schemas as world creation. Current ids are stable; never overwrite current entities, close quests or alter old facts. Keep developments small; empty arrays are valid. Leave a concrete opening for the player.`, input, outcome, questionOnly, context: context.packet }, localAnswer);
   if (typeof report.narration !== 'string' || !report.narration.trim() || report.narration.length > 6000) throw new Error('AI не вернул корректное повествование.');
   if (!questionOnly&&report.developments) { model.applyDevelopments(adventure, report.developments); await registerChecks(service, state, adventure); }
   model.addMessage(adventure, 'dm', 'Мастер', report.narration); adventure.pendingNarration = null;
 }
-const planSchema = z.object({ type: z.enum(['narrative', 'travel', 'talk', 'check', 'combat', 'action', 'cast_created_spell', 'cast_spell']), actionId: z.string().max(160).optional(), spellId:z.string().max(160).optional(), targetId:z.string().max(160).optional(), locationId: z.string().max(80).optional(), npcId: z.string().max(80).optional(), ability: z.enum(['str', 'dex', 'con', 'int', 'wis', 'cha']).optional(), skill: z.string().max(40).optional(), dc: z.number().int().min(5).max(25).optional(), successFact: z.string().max(650).optional(), theme: z.string().max(200).optional(), enemyName: z.string().max(100).optional(), difficulty: z.enum(['easy', 'medium', 'hard']).optional(), description: z.string().max(500).default('Свободное действие героя.'), developments: z.object({ locations: z.array(z.any()).max(3), npcs: z.array(z.any()).max(3), quests: z.array(z.any()).max(2), checks: z.array(z.any()).max(3) }).optional() }).strict();
+const planSchema = z.object({ type: z.enum(['narrative', 'travel', 'talk', 'check', 'combat', 'action', 'cast_created_spell', 'cast_spell']), actionId: z.string().max(160).optional(), spellId:z.string().max(160).optional(), targetId:z.string().max(160).optional(), locationId: z.string().max(80).optional(), npcId: z.string().max(80).optional(), ability: z.enum(['str', 'dex', 'con', 'int', 'wis', 'cha']).optional(), skill: z.string().max(40).optional(), dc: z.number().int().min(5).max(25).optional(), successFact: z.string().max(650).optional(), theme: z.string().max(200).optional(), enemyName: z.string().max(100).optional(), difficulty: z.enum(['easy', 'medium', 'hard']).optional(),lootName:z.string().min(1).max(140).optional(),lootFocus:loot.focusSchema.optional(),description: z.string().max(500).default('Свободное действие героя.'), developments: z.object({ locations: z.array(z.any()).max(3), npcs: z.array(z.any()).max(3), quests: z.array(z.any()).max(2), checks: z.array(z.any()).max(3) }).optional() }).strict();
 async function resolveInput(service, state, adventure, input) {
   const available = choices(service, state, adventure);
   const words = input.toLowerCase().split(/\s+/).filter(w => w.length > 3);
   const candidates = available.map(a => ({ ...a, score: words.filter(w => a.label.toLowerCase().includes(w)).length })).sort((a, b) => b.score - a.score).slice(0, 18);
   const knownSpells=(service.getSpellbook(state.campaign.id).spells||[]).filter(s=>s.accessible).map(s=>({id:s.id||s.spellId,name:s.name})).slice(0,32);
-  const draft = await measuredAi.generate(adventure,'adventure_intent', { instruction: `Map player intent to a game operation. Return JSON {type,actionId?,locationId?,npcId?,spellId?,targetId?,ability?,skill?,dc?,successFact?,theme?,enemyName?,difficulty?,description,developments?}. Use type action with an EXACT supplied actionId in combat, or cast_created_spell with an exact learned context.createdSpells id and an exact current party/combat target id. Use cast_spell only with an exact supplied knownSpells id. Never invent a spell id. A self-target spell can use the hero id. Outside combat type may be narrative (no numerical changes), travel to a known connected location, talk to an existing nearby npc, check (ability, skill, dc 5-25 and optional successFact), or combat (theme, enemyName, difficulty easy/medium/hard). Infer fair uncertainty rather than rolling for every sentence. Do not choose an action contrary to the player. New world records can be proposed via developments using the world schemas; reference valid ids. No HP, money, XP or resource changes. ASCII stable ids. ${adventure.language === 'en' ? 'English' : 'Russian'} description. Do not narrate a successful outcome before rules resolution.`, input, knownSpells, availableActions: candidates.map(({ id, label }) => ({ id, label })), context: contextFor(state, adventure, input).packet }, () => ({ type: 'narrative', description: `Ты описываешь действие: ${input}` }));
+  const draft = await measuredAi.generate(adventure,'adventure_intent', { lootRules:LOOT_RULES, instruction: `Map player intent to a game operation. Return JSON {type,actionId?,locationId?,npcId?,spellId?,targetId?,ability?,skill?,dc?,successFact?,theme?,enemyName?,difficulty?,description,developments?}. Use type action with an EXACT supplied actionId in combat, or cast_created_spell with an exact learned context.createdSpells id and an exact current party/combat target id. Use cast_spell only with an exact supplied knownSpells id. Never invent a spell id. A self-target spell can use the hero id. Outside combat type may be narrative (no numerical changes), travel to a known connected location, talk to an existing nearby npc, check (ability, skill, dc 5-25 and optional successFact), or combat (theme, enemyName, difficulty easy/medium/hard). Infer fair uncertainty rather than rolling for every sentence. Do not choose an action contrary to the player. New world records can be proposed via developments using the world schemas; reference valid ids. No HP, money, XP or resource changes. ASCII stable ids. ${adventure.language === 'en' ? 'English' : 'Russian'} description. Do not narrate a successful outcome before rules resolution.`, input, knownSpells, availableActions: candidates.map(({ id, label }) => ({ id, label })), context: contextFor(state, adventure, input).packet }, () => ({ type: 'narrative', description: `Ты описываешь действие: ${input}` }));
   return planSchema.parse(draft);
 }
 async function perform(body, { seed } = {}) {
@@ -157,6 +163,7 @@ async function perform(body, { seed } = {}) {
   if (body.expectedRevision !== adventure.revision) bad('Кампания уже изменилась. Обновите сцену и повторите намерение.', 409);
   const input = typeof body.input === 'string' ? body.input.trim().slice(0, 2000) : '';
   const beforeCombat=initial.combat ? structuredClone(initial.combat) : null;
+  const beforeHero=structuredClone(initial.party.members.find(m=>m.id===initial.party.heroId));
   const previousEffects=new Set(initial.party.members.flatMap(m=>(m.activeEffects||[]).map(e=>e.id)));
   let command = body.command;
   if (body.actionId) command = choices(service, initial, adventure).find(a => a.id === body.actionId)?.command;
@@ -184,12 +191,12 @@ async function perform(body, { seed } = {}) {
   else if (command.type === 'pickup') {
     const item = proposed.items.find(i => i.id === command.itemId && !i.collected && i.locationId === proposed.currentLocationId);
     if (!item) bad('Этого предмета здесь нет или он уже взят.');
-    const core = await import('../vendor/dnd-core/dist/engine.mjs');
-    const plan = service.planGeneratedReward(state.campaign.id, { theme: item.description, name: item.name, itemType: item.kind, rarity: 'common', difficulty: 'easy' });
-    const held = core.createGeneratedInventoryItem(plan.itemInput); held.tags.push('world_item', item.id);
-    state.party.members.find(m => m.id === state.party.heroId).inventory.push(held); item.collected = true;
     outcome.text = `Получен предмет: ${item.name}.`;
-    model.processQuestEvent(proposed, model.addEvent(proposed, 'acquire', item.id, outcome.text));
+    const event=model.addEvent(proposed,'acquire',item.id,outcome.text);
+    const held=await loot.grantLoot(service,state,proposed,item.lootInput||loot.planLoot(service,state,item),{...item.origin,kind:item.origin?.kind||'exploration',eventId:event.id,sourceEventId:item.origin?.eventId,locationId:item.locationId,worldItemId:item.id});
+    held.tags.push('world_item',item.id);
+    const stored=state.party.members.find(m=>m.id===state.party.heroId).inventory.find(i=>i.itemId===held.itemId);stored.tags=[...new Set([...stored.tags,...held.tags])];
+    item.collected=true;model.processQuestEvent(proposed,event);
   }
   else if(command.type==='supplies'){
     const location=proposed.locations.find(l=>l.id===proposed.currentLocationId),hero=state.party.members.find(m=>m.id===state.party.heroId),coins=hero.inventory.find(i=>i.itemId==='gold_piece');
@@ -209,10 +216,13 @@ async function perform(body, { seed } = {}) {
     if (check.success && command.successFact) { await service.addKnownFact(state.campaign.id, { id: crypto.randomUUID(), text: command.successFact, sourceSceneId: proposed.currentLocationId, tags: ['player_check'] }); state = service.loadCampaign(state.campaign.id); }
     model.processQuestEvent(proposed, model.addEvent(proposed, 'check', command.skill || command.ability, outcome.text, { success: check.success }));
   } else if (command.type === 'combat') {
+    const lootFocus=command.lootFocus?loot.focusSchema.parse(command.lootFocus):'healing';
     const plan = service.planGeneratedEncounter(state.campaign.id, { theme: command.theme || 'неожиданная опасность', difficulty: command.difficulty || 'easy', includeReward: false });
     const monsters = plan.monsters.map((m, i) => ({ ...m, name: command.enemyName ? `${command.enemyName}${i ? ` ${i + 1}` : ''}` : m.name }));
     const started = await service.startGeneratedEncounter(state.campaign.id, monsters, seed); state = started.state;state.flags.ui_last_combat_outcome='ongoing';
-    proposed.activeEncounterId = crypto.randomUUID(); outcome.text = 'Начался бой. Инициатива и действия определены правилами.'; model.addEvent(proposed, 'combat', proposed.activeEncounterId, outcome.text);
+    proposed.activeEncounterId = crypto.randomUUID(); outcome.text = 'Начался бой. Инициатива и действия определены правилами.';
+    const event=model.addEvent(proposed,'combat',proposed.activeEncounterId,outcome.text);
+    proposed.activeEncounter={id:proposed.activeEncounterId,eventId:event.id,locationId:proposed.currentLocationId,theme:command.theme||'Добыча после столкновения',difficulty:command.difficulty||'easy',lootName:typeof command.lootName==='string'?command.lootName.slice(0,140):undefined,lootFocus,lootDropped:false};
   } else if (command.type === 'recover_stable') {
     const hero=state.party.members.find(m=>m.id===state.party.heroId);
     if(state.combat||hero.hp.current!==0||!hero.deathSaves?.stable||hero.deathSaves?.dead||hero.conditions.includes('dead'))bad('Восстановление доступно только стабильному герою вне боя.');
@@ -225,14 +235,18 @@ async function perform(body, { seed } = {}) {
   } else if (command.type === 'narrative') { model.addEvent(proposed, 'story', proposed.currentLocationId, input || outcome.text); }
   else {
     const hadCombat = Boolean(state.combat);
-    const allowed = ['action', 'rest', 'death_save', 'use_item', 'equip_item', 'cast_spell', 'cast_created_spell', 'save'];
+    const allowed = ['action', 'rest', 'death_save', 'use_item', 'equip_item','attune_item','unattune_item', 'cast_spell', 'cast_created_spell', 'save'];
     if (!allowed.includes(command.type)) bad('Эта механика ещё не поддерживается.');
     const result = await srd.command({ ...command, campaignId: state.campaign.id }, { seed }); state = service.loadCampaign(state.campaign.id);
     outcome = { type: command.type, text: result.resolution.message, mechanical: result.resolution };
     if (!result.resolution.ok && state.flags.ui_last_combat_outcome!=='defeat') bad(result.resolution.message);
-    if(['action','death_save','use_item','equip_item','cast_spell','cast_created_spell'].includes(command.type))model.addEvent(proposed,command.type,command.spellId||command.itemId||command.actionId||state.party.heroId,outcome.text);
+    if(['action','death_save','use_item','equip_item','attune_item','unattune_item','cast_spell','cast_created_spell'].includes(command.type))model.addEvent(proposed,command.type,command.spellId||command.itemId||command.actionId||state.party.heroId,outcome.text);
     if (command.type === 'rest') { model.addEvent(proposed, 'rest', proposed.currentLocationId, command.kind === 'long' ? 'Долгий отдых завершён.' : 'Короткий отдых завершён.'); }
-    if(hadCombat&&!state.combat){const result=state.flags.ui_last_combat_outcome;if(result==='victory')model.processQuestEvent(proposed,model.addEvent(proposed,'victory',proposed.currentLocationId,'Победа в бою.'));else model.addEvent(proposed,result||'combat_end',proposed.currentLocationId,result==='defeat'?'Бой закончен поражением.':'Бой закончен без подтверждённой победы.');}
+    if(hadCombat&&!state.combat){const result=state.flags.ui_last_combat_outcome;if(result==='victory'){
+      model.processQuestEvent(proposed,model.addEvent(proposed,'victory',proposed.currentLocationId,'Победа в бою.'));
+      const dropped=loot.dropEncounterLoot(service,state,proposed);
+      if(dropped){model.addEvent(proposed,'loot_found',dropped.id,`Добыча доступна: ${dropped.name}.`);outcome.lootOnGround={id:dropped.id,name:dropped.name,rarity:dropped.rarity,mechanics:dropped.lootInput.useEffect||dropped.lootInput.weapon};outcome.text+=` Добыча остаётся в месте боя: ${dropped.name}; её можно забрать.`;}
+    }else model.addEvent(proposed,result||'combat_end',proposed.currentLocationId,result==='defeat'?'Бой закончен поражением.':'Бой закончен без подтверждённой победы.');}
   }
   const elapsed=elapsedSeconds(command,beforeCombat,state.combat,outcome);
   if(!beforeCombat) {
@@ -250,8 +264,22 @@ async function perform(body, { seed } = {}) {
   await registerChecks(service, state, proposed);
   if (!state.combat && ['travel', 'talk', 'inspect'].includes(command.type)) await runChecks(service, state.campaign.id, proposed, command.type === 'travel' ? 'enter' : command.type === 'talk' ? 'dialogue' : 'inspect', command.npcId, seed);
   state = service.loadCampaign(state.campaign.id); state = await rewardQuests(service, state, proposed); await save(service, state, proposed, 'adventure_scene_resolved');
+  const afterHero=state.party.members.find(m=>m.id===state.party.heroId);
+  const itemIds=new Set([...beforeHero.inventory,...afterHero.inventory].map(i=>i.itemId));
+  outcome.inventoryChanges=[...itemIds].map(id=>{const before=beforeHero.inventory.find(i=>i.itemId===id),after=afterHero.inventory.find(i=>i.itemId===id);return {id,name:after?.name||before.name,before:before?.quantity||0,after:after?.quantity||0};}).filter(i=>i.before!==i.after).slice(0,12);
+  outcome.time={day:proposed.day,hours:proposed.hours};
+  if(afterHero.xp>beforeHero.xp)model.addEvent(proposed,'xp_gain',afterHero.id,`Получено ${afterHero.xp-beforeHero.xp} XP. Всего ${afterHero.xp} XP.`);
+  if(afterHero.level>beforeHero.level){
+    const resources=afterHero.resources.filter(r=>!beforeHero.resources.some(old=>old.id===r.id)).map(r=>r.label);
+    const text=`Новый уровень: ${beforeHero.level} → ${afterHero.level}. Максимум HP: ${beforeHero.hp.max} → ${afterHero.hp.max}.${resources.length?` Новые ресурсы: ${resources.join(', ')}.`:''}`;
+    model.addEvent(proposed,'level_up',afterHero.id,text);model.addMessage(proposed,'system','Развитие героя',text);outcome.progression={previousLevel:beforeHero.level,level:afterHero.level,newResources:resources};
+  }
   try { await narrate(service, state, proposed, outcome, input); }
-  catch { model.addMessage(proposed, 'system', 'Связь с мастером', 'Игровое действие сохранено. AI пока не смог закончить описание — его можно повторить без нового броска.'); }
+  catch(error) {
+    const failure=error.name==='ZodError'||/Unknown|Invalid map|Duplicate world|unreachable/i.test(error.message)?'world_development':/некорректные данные|корректное повествование/.test(error.message)?'reply_format':'provider';
+    proposed.pendingNarration.failure=failure;
+    model.addMessage(proposed,'system','Связь с мастером',`Игровое действие сохранено. ${failure==='world_development'?'Новые детали мира не прошли проверку.':failure==='reply_format'?'Описание пришло в неподдержанном формате.':'AI пока не смог закончить описание.'} Его можно повторить без нового броска.`);
+  }
   state = service.loadCampaign(state.campaign.id); await save(service, state, proposed, 'adventure_turn_done');
   return publicView(service, state, proposed);
 }

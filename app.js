@@ -2,6 +2,7 @@ let currentView = null;
 let busy = false;
 let currentSection = 'story';
 let currentSheet = 'inventory';
+let inventoryFilter='all';
 let draftSpell = null;
 let pendingTargetCommand = null;
 let creatingNew = false;
@@ -70,13 +71,18 @@ function renderHero(view) {
   $('#compactHeroContent').textContent=`${hero.name} · HP ${hero.hp.current}/${hero.hp.max} · ${T('Защита')} ${hero.ac}`;
   $('#hpFill').style.width = `${Math.max(0,Math.min(100,hero.hp.current/hero.hp.max*100))}%`;
   $('#heroAc').textContent = hero.ac; $('#heroXp').textContent = hero.xp;
+  const progression=view.progression||{},remaining=progression.nextLevelXp===null?null:Math.max(0,(progression.nextLevelXp||300)-hero.xp);
+  const percent=remaining===null?100:Math.max(0,Math.min(100,(hero.xp-(progression.levelStartXp||0))/((progression.nextLevelXp||300)-(progression.levelStartXp||0))*100));
+  $('#xpCaption').textContent=remaining===null?T('Достигнут максимальный уровень'):`${T('До следующего уровня')}: ${remaining} XP`;
+  $('#xpFill').style.width=`${percent}%`;$('#xpTrack').setAttribute('aria-valuenow',String(Math.round(percent)));
   $('#heroAc').title=hero.ac!==hero.baseAc?`Базовая защита: ${hero.baseAc}`:'';
   const recovery=$('#recoveryStatus');recovery.hidden=hero.hp.current>0;
   recovery.textContent=hero.conditions.includes('dead')||hero.deathSaves?.dead?'Герой погиб. История и журнал сохранены.':hero.deathSaves?.stable?'Герой стабилен, но без сознания. Можно дождаться восстановления.':`При смерти · успехи ${hero.deathSaves?.successes||0}/3 · неудачи ${hero.deathSaves?.failures||0}/3`;
   $('#abilityGrid').innerHTML = Object.entries(hero.abilities).map(([id,score]) => { const mod=Math.floor((score-10)/2); return `<div><small>${abilityLabels[id]}</small><strong>${score}</strong><em>${mod>=0?'+':''}${mod}</em></div>`; }).join('');
   $('#heroConditions').innerHTML = hero.conditions.map(c=>`<span>${esc(conditionLabels[c]||c)}</span>`).join('')+(hero.activeEffects||[]).map(e=>`<span class="active-effect">✦ ${esc(e.label)}</span>`).join('');
-  $('#resourceList').innerHTML = [...Object.entries(hero.spellcasting?.slots||{}).map(([level,s])=>`<div class="resource-row"><span>Ячейки ${level} уровня</span><strong>${s.current} / ${s.max}</strong></div>`),...hero.resources.filter(r=>!/^Level \d+ slots$/.test(r.label)).map(r=>`<div class="resource-row"><span>${esc(r.label)}</span><strong>${r.current} / ${r.max}</strong></div>`)].join('') || '<p class="muted">Здоровье, движение и доступные действия.</p>';
-  $('#inventoryPanel').innerHTML = hero.inventory.map(item=>`<article class="item-card"><h4>${esc(item.name)} <small>×${item.quantity}</small></h4><p>${esc(item.description)}</p><div class="mini-actions">${item.canUse?`<button data-command="use_item" data-item="${esc(item.itemId)}">Использовать</button>`:''}${item.tags.some(t=>['weapon','armor','shield'].includes(t))?`<button data-command="equip_item" data-item="${esc(item.itemId)}">Надеть / взять</button>`:''}${item.charges?`<small>${item.charges.current}/${item.charges.max} зарядов</small>`:''}</div></article>`).join('') || '<p class="empty">Инвентарь пуст.</p>';
+  $('#resourceList').innerHTML = [...Object.entries(hero.spellcasting?.slots||{}).map(([level,s])=>`<div class="resource-row"><span>Ячейки ${level} уровня</span><strong>${s.current} / ${s.max}</strong></div>`),...hero.resources.filter(r=>!/^Level \d+ slots$/.test(r.label)).map(r=>`<div class="resource-row"><span>${esc(label(r.label))}</span><strong>${r.current} / ${r.max}</strong></div>`)].join('') || '<p class="muted">Здоровье, движение и доступные действия.</p>';
+  const inventory=inventoryFilter==='loot'?hero.inventory.filter(i=>i.origin).slice().sort((a,b)=>b.origin.turn-a.origin.turn):hero.inventory;
+  $('#inventoryPanel').innerHTML=`<div class="inventory-filters" role="group" aria-label="Фильтр вещей"><button data-inventory-filter="all" aria-pressed="${inventoryFilter==='all'}">${T('Все вещи')}</button><button data-inventory-filter="loot" aria-pressed="${inventoryFilter==='loot'}">${T('Добыча')}</button></div>`+(inventory.map(item=>inventoryCard(item,view)).join('')||`<p class="empty">${T(inventoryFilter==='loot'?'Новые находки появятся после исследования и выполнения задач.':'Инвентарь пуст.')}</p>`);
   $('#spellList').innerHTML = [...view.createdSpells.map(s=>`<article class="spell-card"><h4>✦ ${esc(s.name)}</h4><p>${esc(s.description)}</p><p>${esc(spellCaption(s))}</p><div class="mini-actions"><button data-created-spell="${esc(s.id)}">Применить</button></div></article>`),...(view.spellbook.spells||[]).map(s=>`<article class="spell-card"><h4>${esc(s.name||s.id)}</h4><p>${esc(s.summary||s.description||'')}</p><div class="mini-actions"><button data-spell="${esc(s.id||s.spellId)}">Применить</button></div></article>`)].join('') || '<p class="empty">Книга магии пока пуста.</p>';
   $('#openSpellWorkshop').disabled = !hero.spellcasting;
   $('#featureList').innerHTML = `${hero.concept?`<p class="hero-concept">${esc(hero.concept)}</p>`:''}<p class="muted">${hero.skillProficiencies.map(s=>uiLanguage==='en'?s.replace(/_/g,' '):skillLabels[s]||s).join(' · ')}</p><ul>${hero.features.map(f=>`<li>${esc(f)}</li>`).join('')}</ul>`;
@@ -87,6 +93,14 @@ function renderHero(view) {
   $('#survivalPanel').hidden = !view.survival.enabled;
   $('#survivalPanel').innerHTML = `<h3>Путешествие</h3><p class="muted">Еда: ${view.survival.foodDays} дн. · Вода: ${view.survival.waterDays} дн.</p>`;
 }
+function inventoryCard(item,view){
+  const effect=item.mechanics?.use,attack=item.mechanics?.equip?.attack;
+  const effectNames={healing:'Лечение',temporary_hp:'Временные HP',remove_condition:'Снятие состояния',armor_class_bonus:'Защита',attack_roll_bonus:'Бонус атаки',ability_check_bonus:'Бонус проверки',saving_throw_bonus:'Бонус спасброска'};
+  const property=effect?`${T(effectNames[effect.type]||effect.type)}: ${effect.dice||effect.amount||T(conditionLabels[effect.condition]||effect.condition)}${effect.durationTurns?` · ${effect.durationTurns} ${T('раундов')}`:''}`:attack?`${T('Урон')}: ${attack.damageDice}${attack.damageBonus?` +${attack.damageBonus}`:''}${attack.weaponBonus?` · +${attack.weaponBonus} ${T('к атаке')}`:''}`:'';
+  const origin=item.origin,originName=origin?.kind==='quest'?view.quests.find(q=>q.id===origin.questId)?.title:view.locations.find(l=>l.id===origin?.locationId)?.name;
+  const equipped=Object.values(view.hero.equipment||{}).includes(item.itemId),blocked=(item.requiresAttunement&&!item.attuned)||(item.charges&&item.charges.current<item.charges.costPerUse)||(view.combat&&!view.actions.some(a=>a.id===`core:combat.action.use_item.${item.itemId}`||a.id===`core:combat.bonus.class_feature.feature_fast_hands_use_item.${item.itemId}`));
+  return `<article class="item-card"><div class="item-heading"><h4>${esc(label(item.name))} <small>×${item.quantity}</small></h4>${item.rarity?`<span class="rarity rarity-${esc(item.rarity)}">${T(({common:'Обычный',uncommon:'Необычный',rare:'Редкий',very_rare:'Очень редкий',legendary:'Легендарный'})[item.rarity]||item.rarity)}</span>`:''}</div><p>${esc(item.description)}</p>${property?`<p class="item-mechanics">${esc(property)}</p>`:''}${origin?`<p class="item-origin">${T(origin.kind==='quest'?'Награда за задачу':origin.kind==='combat'?'Добыча после боя':'Находка')}: ${esc(originName||'')} · ${T('Ход')} ${origin.turn}</p>`:''}${equipped?`<p class="item-equipped">${T('Экипировано')}</p>`:''}<div class="mini-actions">${item.canUse?`<button data-command="use_item" data-item="${esc(item.itemId)}" ${blocked?'disabled':''}>Использовать</button>`:''}${item.tags.some(t=>['weapon','armor','shield','focus'].includes(t))?`<button data-command="equip_item" data-item="${esc(item.itemId)}" ${blocked?'disabled':''}>Надеть / взять</button>`:''}${item.requiresAttunement?`<button data-command="${item.attuned?'unattune_item':'attune_item'}" data-item="${esc(item.itemId)}" ${view.combat?'disabled':''}>${T(item.attuned?'Прекратить настройку':'Настроиться · 1 ч.')}</button>`:''}${item.charges?`<small>${item.charges.current}/${item.charges.max} ${T('зарядов')}</small>`:''}</div></article>`;
+}
 function spellCaption(spell) {
   const level=Number(spell.level||0);
   return `${level?`${T('Уровень')} ${level}`:T('Заговор')}${spell.rangeFeet!==undefined?` · ${spell.rangeFeet} ${T('фт.')}`:''}${spell.concentration?` · ${T('Концентрация')}`:''}`;
@@ -94,7 +108,16 @@ function spellCaption(spell) {
 function renderMessages(view) {
   const feed=$('#storyFeed'),previous=feed.lastElementChild?.dataset.messageId,scroll=feed.scrollTop; feed.innerHTML=view.messages.map(m=>`<article class="message ${esc(m.role)}" data-message-id="${esc(m.id)}"><div class="message-meta"><span>${esc(m.author)}</span><time>ХОД ${m.turn}</time></div>${m.text.split(/\n\s*\n/).filter(Boolean).map(p=>`<p>${storyText(p)}</p>`).join('')}</article>`).join(''); if(previous!==view.messages.at(-1)?.id)requestAnimationFrame(()=>{if(currentSection==='story')feed.scrollTop=feed.scrollHeight;});else feed.scrollTop=scroll;
 }
-function label(v) { if(uiLanguage==='en')return T(v); return String(v).replace(/^Choose fighting style:/,'Боевой стиль:').replace(/^End turn$/,'Завершить ход').replace(/^Attack with /,'Атака: ').replace(/^Cast /,'Применить ').replace(/^Use /,'Использовать ').replace(/^Move /,'Переместиться '); }
+function label(v) {
+  if(uiLanguage==='en')return T(v);
+  const names={'End Turn':'Завершить ход',Retreat:'Отступить',Dash:'Рывок',Dodge:'Уклонение',Disengage:'Отход',Hide:'Спрятаться',Search:'Поиск','Ready action':'Подготовить действие','Use Object':'Взаимодействовать с предметом','Demand surrender':'Потребовать сдачи',
+    Archery:'Стрельба',Defense:'Защита',Dueling:'Дуэль','Great Weapon Fighting':'Двуручное оружие',Protection:'Прикрытие','Second Wind':'Второе дыхание','Action Surge':'Всплеск действий','Arcane Recovery':'Восстановление магии',
+    Longsword:'Длинный меч',Shortbow:'Короткий лук',Dagger:'Кинжал',Chainmail:'Кольчуга','Healing Potion':'Лечебное зелье',Torch:'Факел','Gold piece':'Монеты',Arrow:'Стрелы','Rope 15m':'Верёвка 15 м','Arcane Focus':'Магический фокус','Scholar notes':'Записки учёного'};
+  if(names[v])return names[v];
+  return String(v).replace(/^Choose fighting style: (.+)$/,(_,style)=>`Боевой стиль: ${names[style]||style}`).replace(/^(Longsword|Shortbow|Dagger): /,(_,weapon)=>`${names[weapon]}: `)
+    .replace(/^Search opening: /,'Найти уязвимость: ').replace(/^Help against /,'Помочь против: ').replace(/^Grapple: /,'Захватить: ').replace(/^Shove Prone: /,'Сбить с ног: ').replace(/^Shove Away: /,'Оттолкнуть: ').replace(/^Withdraw (\d+) ft$/,'Отойти на $1 фт.')
+    .replace(/^Cast /,'Применить ').replace(/^Use (.+)$/,(_,item)=>`Использовать ${names[item]||item}`).replace(/^Move /,'Переместиться ');
+}
 function renderActions(view) { $('#actionDock').innerHTML=view.actions.map(a=>`<button data-action="${esc(a.id)}" title="${esc(label(a.label))}">${esc(label(a.label))}</button>`).join(''); }
 function renderMap(view) {
   const seen=new Set(),edges=[],places=new Map(view.locations.map(l=>[l.id,l]));
@@ -162,6 +185,7 @@ async function init() {
   document.querySelectorAll('[data-intent-mode]').forEach(button=>button.addEventListener('click',()=>{intentMode=button.dataset.intentMode;document.querySelectorAll('[data-intent-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.intentMode===intentMode)));$('#playerIntent').placeholder=T(intentMode==='question'?'Спроси о мире, правилах или прошлых событиях…':'Что делает твой герой?');}));
   $('#intentForm').addEventListener('submit',async event=>{event.preventDefault();const input=$('#playerIntent').value.trim();if(input&&await(intentMode==='question'?askMaster(input):act({input})))$('#playerIntent').value='';});
   document.addEventListener('click',async event=>{
+    const filter=event.target.closest('[data-inventory-filter]');if(filter){inventoryFilter=filter.dataset.inventoryFilter;renderHero(currentView);localizeUi($('#characterSheet'));return;}
     const pin=event.target.closest('[data-memory-pin]');if(pin){await memoryChange('pin',{recordId:pin.dataset.memoryPin,kind:pin.dataset.memoryKind,pinned:pin.dataset.pinned==='true'});return;}
     const a=event.target.closest('[data-action]');if(a){await act({actionId:a.dataset.action,input:a.textContent.trim()});return;}
     const p=event.target.closest('[data-place]');if(p&&!p.disabled){await act({actionId:`travel:${p.dataset.place}`,input:p.textContent.trim()});return;}

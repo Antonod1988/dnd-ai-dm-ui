@@ -13,6 +13,8 @@ Two rules corrections are applied locally: level-one armor class is calculated f
 
 The adapter also imports the existing effective-armor and removed-effect condition cleanup helpers. The cleanup helper was exported without changing its rules behavior, so elapsed exploration time removes an effect and its associated condition consistently with combat expiration.
 
+The main adventure opts into explicit player turn completion with `ui_player_turn_control`: spending an action preserves the living player's remaining bonus action/movement until End Turn. Other callers retain the snapshot's automatic behavior. Typed inventory defense/attack/save bonuses can also be prepared outside combat, using the same consumption and duration fields; combat effects are mirrored into the party sheet. The adapter routes combat inventory use through the existing action-cost resolver. XP thresholds and inventory merging are exported for progression UI and durable loot.
+
 ## SRD attribution
 
 This work includes material from the System Reference Document 5.1 (SRD 5.1) by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License available at https://creativecommons.org/licenses/by/4.0/legalcode.

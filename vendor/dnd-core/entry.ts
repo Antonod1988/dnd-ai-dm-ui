@@ -7,8 +7,9 @@ export { applyDamage, applyHealing, currentCombatant, ensureTurnBudget, combatDi
 export { spendAction, spendBonusAction } from './src/core/rulesets/srd5e2014/action-economy.js';
 export { syncPartyFromCombat } from './src/core/narrative/consequence-engine.js';
 export { applyEffectToTargets, applyConcentrationEffectToTargets, removeConcentrationEffectsForSource, resolveConcentrationAfterDamage } from './src/core/rules/effects.js';
-export { addXp } from './src/core/rules/progression.js';
+export { addXp, srdXpThresholds } from './src/core/rules/progression.js';
 export { createGeneratedInventoryItem } from './src/core/homebrew/generated-content.js';
+export { mergeInventoryItem } from './src/core/homebrew/generated-content.js';
 export { setExhaustionLevel } from './src/core/rules/conditions.js';
 export { calculateSrdArmorClass } from './src/core/rulesets/srd5e2014/character-builder.js';
 export { modeledInventoryUseEffect } from './src/core/content/items.js';

@@ -713,28 +713,27 @@ export class SceneRunner {
       useEffect.type === "saving_throw_bonus" ||
       useEffect.type === "armor_class_bonus"
     ) {
-      if (!state.combat) {
-        return this.result(false, `${item.name} has a combat-only use effect.`, state);
-      }
-      if (!targetCombatant || targetCombatant.conditions.includes("dead")) {
+      if ((state.combat && !targetCombatant) || actor.hp.current <= 0 || (targetCombatant ?? actor).conditions.includes("dead")) {
         return this.result(false, `${actor.name} is not a valid combat target for ${item.name}.`, state);
       }
       const durationTurns = Math.max(1, Math.min(100, useEffect.durationTurns ?? 10));
       const effect = {
         id: newId("effect"),
         label: item.name,
-        sourceId: targetCombatant.id,
+        sourceId: targetCombatant?.id ?? targetId,
         attackRollBonus: useEffect.type === "attack_roll_bonus" ? useEffect.dice : undefined,
         savingThrowBonus: useEffect.type === "saving_throw_bonus" ? useEffect.dice : undefined,
         armorClassBonus: useEffect.type === "armor_class_bonus" ? useEffect.amount : undefined,
         remainingSourceTurnStarts: durationTurns
       };
       const roll = rollExpression("0");
-      const updated = {
-        ...updatePartyMember(state, targetId, (character) => ({
-          ...character,
-          inventory: spendInventoryItemUse(character.inventory, itemId, useEffect.consume)
-        })),
+      const partyUpdated = updatePartyMember(state, targetId, (character) => ({
+        ...character,
+        inventory: spendInventoryItemUse(character.inventory, itemId, useEffect.consume),
+        activeEffects: [...(character.activeEffects ?? []), effect]
+      }));
+      const updated = state.combat && targetCombatant ? {
+        ...partyUpdated,
         combat: {
           ...state.combat,
           participants: state.combat.participants.map((participant) =>
@@ -747,6 +746,9 @@ export class SceneRunner {
           )
         },
         rollLog: [...state.rollLog, makeRollLog(targetCombatant.id, useEffect.label, roll)]
+      } : {
+        ...partyUpdated,
+        rollLog: [...state.rollLog, makeRollLog(targetId, useEffect.label, roll)]
       };
       const effectText =
         useEffect.type === "armor_class_bonus"
@@ -5064,7 +5066,9 @@ export class SceneRunner {
   }
 
   private advanceCombatAfterAction(state: GameState, combat: CombatState, rng: Rng, keepTurn = false): GameState {
-    if (hasAvailableAction(combat.turnBudget) || keepTurn) {
+    const actor = currentCombatant(combat);
+    const playerKeepsTurn = state.flags.ui_player_turn_control === true && actor?.kind === "player" && actor.hp.current > 0;
+    if (hasAvailableAction(combat.turnBudget) || keepTurn || playerKeepsTurn) {
       return { ...state, combat };
     }
     return this.runAutomaticTurnsForState(

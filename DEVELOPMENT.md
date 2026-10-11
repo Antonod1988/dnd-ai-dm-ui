@@ -2,7 +2,7 @@
 
 User objective: a working, attractive D&D-style game UI, with reliable mechanics, AI-created adventures and economical long-campaign memory. The objective remains active until all requirements below have runtime evidence.
 
-Ordered milestones and acceptance criteria: [ROADMAP.md](ROADMAP.md). Current stage: playable single-player alpha (package 0.2.0). Latest implementation checkpoint: `63ea265`, 76 tests and successful Windows/Linux, Node 20/22 CI. Earlier counts below describe historical checkpoints.
+Ordered milestones and acceptance criteria: [ROADMAP.md](ROADMAP.md). Current stage: playable single-player alpha (package 0.2.0). The `63ea265` checkpoint had 76 tests and successful Windows/Linux, Node 20/22 CI; the loot/progression follow-up has 79 local tests and a real completed adventure. Earlier counts below describe historical checkpoints.
 
 ## Required outcome
 
@@ -17,6 +17,7 @@ Ordered milestones and acceptance criteria: [ROADMAP.md](ROADMAP.md). Current st
 9. Scene and dialogue skill checks (History, Religion, Perception, Insight, etc.): AI defines the fictional reason and possible discovery, rules resolve the roll, facts are unlocked only by the outcome. Persist attempts so reloads/re-entry cannot reroll the same check indefinitely.
 10. Party/NPC dialogue inspired by the classroom project's interaction pattern: distinct visible speakers, player interventions, proposals that can be accepted/rejected. Independently implemented; avoid automatic unbounded role loops.
 11. Investigate cooperative multiplayer and optional external agents. Do not label it working until two human characters, actor ownership, simultaneous input, reconnection and a genuine remote join have been verified. Findings are in DIALOGUE_AND_COOP.md.
+12. Meaningful economy and settlements: money buys useful services and goods, with recorded income/spending, finite stock and coherent prices. Settlements have distinct livelihoods, shortages, contacts and encounters. Connect loot, trade, travel, information, lodging and reputation to consequences; the model invents their fiction while validated transactions change currency/inventory. A static supplies button alone does not satisfy this requirement.
 
 Latest user clarification: maximize narrative freedom in any world co-created by the player and AI. Use general mechanics and composable effects rather than a mandatory fixed spell/item catalog. SRD classes and catalog entries are optional foundations/references.
 
@@ -58,3 +59,12 @@ Remaining work includes a broader live adventure audit (combat, death and progre
 - Live GPT-6-Luna generated and learned an original protection spell. Free-text casting spent a slot and changed armor 12→13; exploration expired the effect and unlocked lore through a real History roll (23 against DC 14).
 - New scene checks no longer get blocked by three previously attempted checks. Multi-place world developments add all nodes before wiring reciprocal links. The journal records mechanical actions and uses the same turn number as dialogue.
 - On narrow layouts a compact hero strip keeps HP/armor visible and links to the character sheet. Spell previews show target, duration, concentration and cost; inaccessible catalog spells are omitted from the playable book.
+
+### Loot, progression and the complete adventure follow-up
+
+- Battle loot appears after confirmed victory, remains in the location until collected, and survives restarting. Exploration, battle and quest sources are recorded. Effects use the existing bounded generator; rarity is capped by hero level. There is an inventory Loot filter and cards show exact properties and provenance.
+- Main campaigns keep the living player's turn until End Turn. Combat item use now spends an actual action; Second Wind can follow as a bonus action. Equipment changes and attunement are guarded outside combat. Typed defensive/attack/save consumables can be prepared outside combat and expire through the clock.
+- XP gains and level changes are journaled; the sheet shows progress to the next level. Model narration receives actual inventory deltas, separate ground loot, and current time. Plain prose is accepted for narration only; world/intent/spell drafts remain structured.
+- A complete offline adventure uses an unmodified fighter, real attacks, two five-step tasks, pickup/use, level 2, rest, and SQLite reopening. Separate tests cover a real equipped generated weapon, retreat without battle loot, and item action/bonus budgets. Total 79 tests; syntax and isolated smoke pass.
+- Real GPT-6-Luna campaign «Дорога над облаками»: History 15 vs 10, an ordinary longsword attack 22 vs AC 13 with 8 damage, confirmed victory, 25 XP + 2 coins, one collected battle find, return/report, both tasks rewarded once, level 2 with 375 XP and 20/20 HP, Action Surge, long rest and successful server restart. Three earlier format failures were retried without repeating actions; plain-prose handling was then improved.
+- Economy/settlements were added as a requirement. The design and acceptance checks are in [LOOT_AND_ECONOMY.md](LOOT_AND_ECONOMY.md); trading, meaningful services and distinct markets are not implemented yet. The full objective remains active.

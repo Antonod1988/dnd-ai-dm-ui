@@ -54,7 +54,7 @@ function contextFor(state,adventure,query='') {
   for(const note of recall((adventure.notes||[]).filter(n=>!n.pinned),query,scene,3))append('recollections',{id:note.id,kind:'player_note',text:clip(note.text,650)});
   for(const q of ranked.filter(q=>!packet.quests.some(s=>s.id===q.id)).slice(0,20))append('questIndex',{id:q.id,title:clip(q.title,80),status:q.status,next:clip(q.objectives.find(o=>!o.completed)?.text,100)});
   for(const spell of recall(adventure.createdSpells||[],query,scene,6))append('createdSpells',{id:spell.id,name:clip(spell.name,100),level:spell.level,cost:spell.cost,target:spell.target,effects:spell.effects});
-  for(const item of recall(hero.inventory.map(i=>({...i,text:i.description})),query,scene,8))append('inventory',{id:item.itemId,name:clip(item.name,100),quantity:item.quantity});
+  for(const item of recall(hero.inventory.map(i=>({...i,text:i.description})),query,scene,8))append('inventory',{id:item.itemId,name:clip(item.name,100),quantity:item.quantity,rarity:item.rarity,mechanics:item.mechanics,charges:item.charges,requiresAttunement:item.requiresAttunement,attuned:item.attuned});
   for(const place of adventure.locations.filter(l=>location.connectsTo.includes(l.id)))append('nearbyPlaces',{id:place.id,name:clip(place.name,140)});
   for(const message of adventure.messages.slice(-4))append('recentDialogue',{role:message.role,speaker:clip(message.author,80),text:clip(message.text,400)});
   for(const event of adventure.events.slice(-4).reverse())append('recentEvents',{turn:event.turn,kind:event.kind,text:clip(event.text,280)});

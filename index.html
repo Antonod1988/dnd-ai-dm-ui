@@ -35,6 +35,7 @@
       <aside id="characterSheet" class="character-sheet" aria-label="Лист персонажа">
         <div class="hero-heading"><div id="heroSigil" class="hero-sigil"></div><div><h2 id="heroName"></h2><p id="heroIdentity"></p></div><span id="heroLevel" class="level-label"></span></div>
         <div class="hero-metrics"><div><small>ЗДОРОВЬЕ</small><strong id="heroHp"></strong><div class="health-track"><span id="hpFill"></span></div></div><div><small>ЗАЩИТА</small><strong id="heroAc"></strong></div><div><small>ОПЫТ</small><strong id="heroXp"></strong></div></div>
+        <div class="xp-progress"><p id="xpCaption"></p><div role="progressbar" id="xpTrack" aria-label="Опыт до следующего уровня" aria-valuemin="0" aria-valuemax="100"><span id="xpFill"></span></div></div>
         <p id="recoveryStatus" class="recovery-status" hidden></p><div id="abilityGrid" class="ability-grid"></div><div id="heroConditions" class="condition-list"></div><section class="sheet-section"><h3>Ресурсы</h3><div id="resourceList"></div></section>
         <nav class="sheet-tabs" aria-label="Панели персонажа"><button data-sheet="inventory" class="active">Вещи</button><button data-sheet="spells">Магия</button><button data-sheet="rolls">Броски</button></nav>
         <section id="inventoryPanel" class="sheet-panel"></section><section id="spellsPanel" class="sheet-panel" hidden><button id="openSpellWorkshop" class="subtle full-width">Придумать новое заклинание</button><div id="spellList"></div></section><section id="rollsPanel" class="sheet-panel" hidden></section>
