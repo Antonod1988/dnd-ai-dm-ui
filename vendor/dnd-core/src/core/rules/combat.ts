@@ -2727,6 +2727,7 @@ export function runAutomaticTurns(
     rules = defaultRules,
     options: {
         zeroHpPolicy?: string;
+        beforeAutomaticDeathSave?: (params: { combat: CombatState; actor: Combatant; rng: Rng; rules: RulesConfig }) => { combat: CombatState } | undefined;
         beforeAutomaticActor?: (params: { combat: CombatState; actor: Combatant; rng: Rng; rules: RulesConfig }) => BeforeAutomaticActorResult | undefined;
     } = {}
 ): CombatState {
@@ -2735,7 +2736,13 @@ export function runAutomaticTurns(
     while (!sideDefeated(current, "heroes") && !sideDefeated(current, "enemies") && guard < 50) {
         let actor = currentCombatant(current);
         if (needsDeathSave(actor)) {
-            break;
+            const automaticSave=options.beforeAutomaticDeathSave?.({combat:current,actor,rng,rules});
+            if(!automaticSave)break;
+            current=automaticSave.combat;actor=currentCombatant(current);
+            if(actor.hp.current<=0){
+                current=advanceTurn(current,rng,rules);guard+=1;continue;
+            }
+            // A natural 20 restores 1 HP and the same actor keeps this turn's action budget.
         }
         current = rechargeSavingThrowActionsAtTurnStart(current, actor, rng);
         actor = currentCombatant(current);

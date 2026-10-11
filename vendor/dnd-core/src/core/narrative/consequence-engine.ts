@@ -510,9 +510,14 @@ export function syncPartyFromCombat(state: GameState): GameState {
     ? JSON.stringify({ combatId: state.combat.id, environmentId: state.combat.environment.id,
         participants: state.combat.participants.filter((participant) => participant.kind === "enemy").slice(0, 6) })
     : undefined;
+  const companionLog = typeof state.flags.ui_companion_ai_ids === "string" && state.flags.ui_companion_ai_ids !== "[]"
+    ? JSON.stringify({ combatId:state.combat.id,entries:state.combat.log.slice(-12).map(entry=>({id:entry.id,actorId:entry.actorId,title:entry.title.slice(0,120),body:entry.body.slice(0,900),round:entry.round})),
+        fallen:state.party.members.filter(member=>member.kind==="ally").map(member=>{const combatant=state.combat?.participants.find(p=>(p.sourceCharacterId||p.id)===member.id);return combatant?syncCombatantToCharacter(member,combatant):member;}).filter(member=>member.conditions.includes("dead")||member.deathSaves?.dead).map(member=>({id:member.id,resources:member.resources,slots:member.spellcasting?.slots})) })
+    : undefined;
   return {
     ...state,
     ...(boundNpcSnapshot ? { flags: { ...state.flags, ui_bound_npc_combat_snapshot: boundNpcSnapshot } } : {}),
+    ...(companionLog ? { flags: { ...state.flags, ...(boundNpcSnapshot?{ui_bound_npc_combat_snapshot:boundNpcSnapshot}:{}), ui_companion_combat_log: companionLog } } : {}),
     party: {
       ...state.party,
       members: state.party.members.map((member) => {

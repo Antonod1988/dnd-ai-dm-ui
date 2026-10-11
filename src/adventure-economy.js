@@ -95,6 +95,7 @@ function validateMarkets(patch,current){
 }
 function merchantAvailable(adventure,market){
   if(!market.merchantId)return true;
+  if(adventure.companions?.records?.some(r=>r.npcId===market.merchantId&&r.joined))return false;
   const npc=adventure.npcs.find(n=>n.id===market.merchantId&&n.locationId===market.locationId);
   const record=adventure.environment?.npcStates?.find(n=>n.npcId===market.merchantId);
   return Boolean(npc&&!npc.hidden&&(npc.disposition||record?.disposition)!=='hostile'&&(!record||(record.body.hp.current>0&&!record.body.conditions.some(c=>['dead','unconscious','incapacitated','stunned','paralyzed','petrified','fled','captured'].includes(c)))));

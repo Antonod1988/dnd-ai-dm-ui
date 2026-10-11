@@ -13,6 +13,11 @@ const PROFILES={
 function refusal(state,adventure,code,message,alternatives=['Выберите другого доступного персонажа или отступите.']){return {ok:false,state,adventure,refusal:{code,message,alternatives}};}
 function data(adventure){adventure.environment||={version:1,props:[],npcStates:[],consequences:[],appliedPlans:[]};return adventure.environment;}
 function createBody(npc,rules){
+  if(npc.companionOffer){
+    const character=rules.createSrdLevelOneCharacter({id:npc.id,name:npc.name,...npc.companionOffer});
+    const actor=rules.characterToCombatant(character);
+    return {...actor,id:npc.id,sourceCharacterId:undefined,kind:'enemy',equipment:structuredClone(character.equipment),ai:{preferredAttackRange:actor.attacks.some(a=>a.range==='spell'||a.range==='ranged')?'ranged':'melee',traits:[]}};
+  }
   const profileId=npc.combatProfile||'civilian',profile=PROFILES[profileId];
   if(!profile)throw new Error('Unknown NPC combat profile');
   const actor=rules.characterToCombatant(rules.createSrdLevelOneCharacter({id:npc.id,name:npc.name,classId:'fighter',raceId:'human'}));
@@ -27,6 +32,7 @@ function updateBody(record,body){
   const priorTotal=Math.max(0,Number.isFinite(record.injuryHpTotal)?record.injuryHpTotal:(previous?.hp?.max||0)-(previous?.hp?.current||0),record.socialPaidWoundHp||0,record.socialPaidInjuryHp||0);
   record.injuryHpTotal=priorTotal+Math.max(0,(previous?.hp?.current??body.hp.current)-body.hp.current);
   record.body=structuredClone(body);
+  if(body.equipment===undefined&&previous?.equipment!==undefined)record.body.equipment=structuredClone(previous.equipment);
 }
 function incapacitated(body,rules){return body.hp.current<=0||rules.isActionIncapacitated(body)||body.conditions.some(c=>['dead','fled','captured'].includes(c));}
 function snapshot(state,active){
@@ -77,7 +83,8 @@ async function start({state,adventure,npcIds,sourceId,seed}){
   environment.consequences=environment.consequences.slice(-200);
   const rng=new rules.SeededRng(seed===undefined?sourceId:seed),environmentId=`npc_encounter:${sourceId}`;
   nextState.combat=rules.startCombat(participants,{id:environmentId,name:'Столкновение с персонажами сцены',description:'Физические состояния участников сохраняются после боя.',victory:[],defeat:[],escape:[{type:'set_flag',key:'ui_last_combat_outcome',value:'retreat'}]},rng);
-  nextState.combat=rules.runAutomaticTurns(nextState.combat,rng,nextState.campaign.rules);
+  const automatic=rules.runCompanionAutomaticTurns(nextState,nextState.combat,rng);
+  Object.assign(nextState,automatic.state);
   nextAdventure.activeNpcEncounter={id:sourceId,sourceId,combatId:nextState.combat.id,environmentId,locationId:nextAdventure.currentLocationId,npcIds:[...npcIds],status:'ongoing'};
   // A civilian encounter must never claim a previous generated fight's loot.
   nextAdventure.activeEncounter=null;nextAdventure.activeEncounterId=null;

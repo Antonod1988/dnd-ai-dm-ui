@@ -6,9 +6,10 @@ const access=require('./adventure-access');
 const key = z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,59}$/);
 const short = z.string().trim().min(1).max(140);
 const paragraph = z.string().trim().min(1).max(1200);
+const companionOfferSchema=z.object({classId:z.enum(['barbarian','bard','cleric','druid','fighter','monk','paladin','ranger','rogue','sorcerer','warlock','wizard']),raceId:z.enum(['human','elf','dwarf','halfling','gnome','half_elf','half_orc','tiefling','dragonborn']).default('human'),backgroundId:z.enum(['acolyte','soldier','sage','criminal']).default('sage'),reason:z.string().trim().min(1).max(300)}).strict();
 const affordanceSchema = z.object({id:key,description:z.string().trim().min(1).max(240),materials:z.array(z.enum(['ceramic','glass','wood','metal','stone','cloth'])).min(1).max(6),maxWeightLb:z.number().min(0.1).max(200).default(5),portable:z.boolean().default(true),quantity:z.number().int().min(1).max(8).default(1)}).strict();
 const nodeSchema = z.object({ id: key, name: short, description: paragraph, kind: z.enum(['settlement', 'wilderness', 'ruins', 'interior', 'road']).default('wilderness'), connectsTo: z.array(key).max(6).default([]),affordances:z.array(affordanceSchema).max(4).default([]) }).strict();
-const npcSchema = z.object({ id: key, name: short, role: z.string().max(240), personality: z.string().max(400).default(''), locationId: key, combatProfile:z.enum(['civilian','guard','scout','brute','arcanist']).default('civilian') }).strict();
+const npcSchema = z.object({ id: key.refine(id=>!['hero','player','dm'].includes(id),'NPC identity collides with a player or narrator'), name: short, role: z.string().max(240), personality: z.string().max(400).default(''), locationId: key, combatProfile:z.enum(['civilian','guard','scout','brute','arcanist']).default('civilian'),companionOffer:companionOfferSchema.optional() }).strict();
 const itemSchema = z.object({ id: key, name: short, description: z.string().max(600), locationId: key, kind: z.enum(['quest', 'tool', 'consumable', 'weapon']).default('quest'),focus:loot.focusSchema.optional(),rarity:loot.raritySchema.optional(),access:access.schema.optional() }).strict();
 const objectiveSchema = z.object({ text: z.string().min(1).max(240), kind: z.enum(['visit', 'talk', 'check', 'victory', 'acquire','deliver']), targetId: key.optional(),recipientId:key.optional(),alternativeTargetIds:z.array(key).max(3).optional() }).strict().superRefine((o,ctx)=>{
   if(o.kind==='deliver'&&!o.recipientId)ctx.addIssue({code:'custom',message:'Delivery needs a recipient'});
@@ -53,6 +54,14 @@ function validateReferences(patch, current) {
     if(existing.length+addition.cues.length>6||addition.cues.some(c=>existing.some(a=>a.id===c.id)))throw new Error('Physical cues are additive and bounded; existing anchors cannot be rewritten');
   }
   for (const npc of patch.npcs || []) if (!locations.has(npc.locationId)) throw new Error('Unknown NPC location');
+  const offerIds=new Set();
+  for(const offer of patch.companionOffers||[]){
+    if(offerIds.has(offer.npcId))throw new Error('Duplicate companion offer');offerIds.add(offer.npcId);
+    const npc=npcRecords.get(offer.npcId);if(!npc)throw new Error('Unknown companion NPC');
+    const body=current.environment?.npcStates?.find(r=>r.npcId===npc.id)?.body;
+    if(npc.hidden||npc.disposition==='hostile'||body&&(body.hp.current<=0||body.conditions.some(c=>['dead','unconscious','incapacitated','fled','captured'].includes(c))))throw new Error('This NPC cannot offer companionship now');
+    if(npc.companionOffer&&['classId','raceId','backgroundId'].some(k=>npc.companionOffer[k]!==offer[k]))throw new Error('An established companion foundation cannot be rewritten');
+  }
   for (const item of patch.items || []) if (!locations.has(item.locationId)) throw new Error('Unknown object location');
   for (const check of patch.checks || []) if (!locations.has(check.locationId) || (check.npcId && (!npcs.has(check.npcId)||npcRecords.get(check.npcId).locationId!==check.locationId))) throw new Error('Unknown lore-check anchor');
   const checkRecords=new Map();for(const d of [...(current.loreDefinitions||[]),...(patch.checks||[])])if(!checkRecords.has(d.id))checkRecords.set(d.id,d);
@@ -71,7 +80,7 @@ function validateReferences(patch, current) {
     }
   }
 }
-const developmentSchema = z.object({ locations: z.array(nodeSchema).max(3).default([]), npcs: z.array(npcSchema).max(3).default([]), items: z.array(itemSchema).max(3).default([]), quests: z.array(questSchema).max(2).default([]), checks: z.array(loreSchema).max(3).default([]),markets:z.array(economy.marketSchema).max(2).default([]),sceneAffordances:z.array(z.object({locationId:key,sourceText:z.string().trim().min(3).max(240),cues:z.array(affordanceSchema).min(1).max(3)}).strict()).max(1).default([]) }).strict();
+const developmentSchema = z.object({ locations: z.array(nodeSchema).max(3).default([]), npcs: z.array(npcSchema).max(3).default([]), items: z.array(itemSchema).max(3).default([]), quests: z.array(questSchema).max(2).default([]), checks: z.array(loreSchema).max(3).default([]),markets:z.array(economy.marketSchema).max(2).default([]),companionOffers:z.array(companionOfferSchema.extend({npcId:key})).max(3).default([]),sceneAffordances:z.array(z.object({locationId:key,sourceText:z.string().trim().min(3).max(240),cues:z.array(affordanceSchema).min(1).max(3)}).strict()).max(1).default([]) }).strict();
 function validateDevelopments(draft, adventure) {
   const patch = developmentSchema.parse(draft || {}); validateReferences(patch, adventure);
   return patch;
@@ -127,6 +136,7 @@ function applyDevelopments(adventure, draft) {
     for (const existingId of node.connectsTo) { const existing = adventure.locations.find(l => l.id === existingId); if (!existing.connectsTo.includes(node.id)) existing.connectsTo.push(node.id); }
   }
   for (const npc of patch.npcs) if (!adventure.npcs.some(n => n.id === npc.id)) adventure.npcs.push({ ...npc, trust: 0, familiarity: 0 });
+  for(const {npcId,...offer} of patch.companionOffers||[]){const npc=adventure.npcs.find(n=>n.id===npcId);if(!npc.companionOffer)npc.companionOffer=offer;}
   for (const item of patch.items) if (!adventure.items.some(i => i.id === item.id)) adventure.items.push({ ...item, collected: false });
   for (const quest of patch.quests) if (!adventure.quests.some(q => q.id === quest.id)) adventure.quests.push(makeQuest(quest));
   for (const check of patch.checks) if (!adventure.loreDefinitions.some(c => c.id === check.id)) adventure.loreDefinitions.push(check);
@@ -150,4 +160,4 @@ function fallbackSeed(input) {
     quests: [{ id: 'first-route', title: 'За знакомым пределом', summary: 'Добраться до неизвестного рубежа и разобраться в старом знаке.', giverId: 'guide', objectives: [{ text: 'Добраться до рубежа', kind: 'visit', targetId: 'threshold' }, { text: 'Разобраться в старом знаке', kind: 'check', targetId: 'old-sign' }], rewardTheme: 'Память о первом открытии' }],
     checks: [{ id: 'old-sign', locationId: 'threshold', trigger: 'inspect', skill: 'history', dc: 10, title: 'Старый знак', prompt: 'На поверхности виден почти стёртый знак.', discoveredFact: 'Этот путь прежде соединял поселения, которые теперь считаются потерянными.' }] });
 }
-module.exports = { seedSchema,developmentSchema, validateSeed, validateDevelopments, makeAdventure, fallbackSeed, addMessage, addEvent, processQuestEvent, applyDevelopments };
+module.exports = { seedSchema,developmentSchema,companionOfferSchema, validateSeed, validateDevelopments, makeAdventure, fallbackSeed, addMessage, addEvent, processQuestEvent, applyDevelopments };

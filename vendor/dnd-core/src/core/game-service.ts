@@ -62,6 +62,7 @@ import {
   startCombat
 } from "./rules/combat.js";
 import { SqliteGameStore, type CampaignListItem } from "./state/store.js";
+import { runCompanionAutomaticTurns } from './narrative/companion-combat-ai.js';
 import {
   SceneRunner,
   formatFronts,
@@ -4340,12 +4341,15 @@ export class RpgGameService {
       encounterRng
     );
     const dayState = addEncounterToAdventuringDay(state, xpBudget);
+    const companionAutomatic = runCompanionAutomaticTurns(state, combat, encounterRng);
     const updated = {
       ...state,
       flags: scoutedSurprise
         ? { ...dayState.flags, open_world_next_generated_encounter_surprise_enemies: false }
         : dayState.flags,
-      combat: runAutomaticTurns(combat, encounterRng, state.campaign.rules),
+      party: companionAutomatic.state.party,
+      rollLog: companionAutomatic.state.rollLog,
+      combat: companionAutomatic.combat,
       journal: [
         ...state.journal,
         makeJournalEntry({

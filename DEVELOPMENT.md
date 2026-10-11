@@ -1,5 +1,7 @@
 # Active development contract
 
+Latest checkpoint,2026-10-12:265 passing tests,78 JavaScript syntax checks and isolated smoke. Persistent NPC companions now recruit through actual relationship checks, travel, fight with their own resources, dismiss/rejoin and survive reopening. Explicit dialogue continuation responds to an interjection with one bounded batch; heard history and withdrawn proposals persist. Live evidence and remaining limits are in [COMPANIONS.md](COMPANIONS.md), [DIALOGUE_AND_COOP.md](DIALOGUE_AND_COOP.md) and [VERIFICATION.md](VERIFICATION.md). Earlier checkpoint counts below are historical. The full objective remains active.
+
 User objective: a working, attractive D&D-style game UI, with reliable mechanics, AI-created adventures and economical long-campaign memory. The objective remains active until all requirements below have runtime evidence.
 
 Ordered milestones and acceptance criteria: [ROADMAP.md](ROADMAP.md). Current stage: playable single-player alpha (package 0.2.0). The `63ea265` checkpoint had 76 tests and successful Windows/Linux, Node 20/22 CI; the loot/progression follow-up had 79 tests; the economy follow-up passed 91 tests and Windows/Linux CI; the quest follow-up passed 103 tests; the access/correction follow-up has 127 tests. Earlier counts below describe historical checkpoints.

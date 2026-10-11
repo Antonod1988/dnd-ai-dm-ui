@@ -31,6 +31,9 @@ test('discussion uses this world roster and does not spend a rules turn',async()
   const started=await post('/api/adventure/discussion/start',{campaignId:view.campaign.id,topic:'Куда идти?'});assert.equal(started.status,200);assert.equal(started.body.spoken[0].speakerName,'Проводник');
   const interrupted=await post('/api/adventure/discussion/intervene',{campaignId:view.campaign.id,text:'Сначала осмотримся.'});assert.equal(interrupted.status,200);
   const saved=await fetch(url+'/api/adventure/state').then(r=>r.json());assert.equal(saved.campaign.turn,before);assert.equal(saved.messages.at(-1).author,'Путник');
+  const reply=await post('/api/adventure/discussion/respond',{campaignId:view.campaign.id,dialogueId:interrupted.body.id});assert.equal(reply.status,200);assert.notEqual(reply.body.id,interrupted.body.id);assert.ok(reply.body.spoken.some(line=>line.speakerId==='player'&&line.text==='Сначала осмотримся.'));assert.equal(reply.body.spoken.at(-1).speakerName,'Проводник');
+  const replay=await post('/api/adventure/discussion/respond',{campaignId:view.campaign.id,dialogueId:interrupted.body.id});assert.equal(replay.status,409);
+  const after=await fetch(url+'/api/adventure/state').then(r=>r.json());assert.equal(after.campaign.turn,before);assert.deepEqual(after.hero,saved.hero);
 });
 test('HTTP notes, pinning and full journal search use revision checks without taking a game turn',async()=>{
   view=await fetch(url+'/api/adventure/state').then(r=>r.json());const turn=view.campaign.turn;

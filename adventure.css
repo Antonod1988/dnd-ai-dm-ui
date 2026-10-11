@@ -46,3 +46,5 @@ button:disabled{cursor:not-allowed}body.is-busy button:disabled{cursor:progress}
 
 .social-check{padding:9px;border:1px solid #4b4435;border-radius:8px;font-size:12px}.social-check.success{color:#97bf9d}.social-check.failure{color:#d4ac73}
 #peopleList{align-items:start}
+
+#partyRoster{align-items:start}.companion-sheet{font-size:12px;line-height:1.6}.companion-sheet ul{padding-left:18px}.world-card [data-party-details],.npc-companion-offer{margin-top:14px}.companion-sheet h4{margin-bottom:8px}.npc-companion-offer p{margin-top:10px}

@@ -7,6 +7,7 @@
   type CharacterTemplateId
 } from "../content/classes.js";
 import { createInitialClocks, createInitialFronts } from "../content/campaign-world.js";
+import { createCompanionAutomaticHook } from './companion-combat-ai.js';
 import { getScene, firstCampaign } from "../content/scenes.js";
 import { findStandardCombatAction } from "../actions/action-registry.js";
 import {
@@ -5082,7 +5083,20 @@ export class SceneRunner {
     let partyMembers = state.party.members;
     const rollLogs: RollLogEntry[] = [];
     const automaticCombat = runAutomaticTurns(combat, rng, state.campaign.rules, {
+      beforeAutomaticDeathSave: ({combat:currentCombat,actor,rules})=>{
+        const companion=createCompanionAutomaticHook({...state,party:{...state.party,members:partyMembers}},rng);
+        const saved=companion.beforeAutomaticDeathSave({combat:currentCombat,actor,rules,rng});
+        if(saved){const resolved=companion.result(saved.combat);partyMembers=resolved.partyMembers;rollLogs.push(...resolved.rollLogs);}
+        return saved;
+      },
       beforeAutomaticActor: ({ combat: currentCombat, actor, rules }) => {
+        const companion=createCompanionAutomaticHook({...state,party:{...state.party,members:partyMembers}},rng);
+        const companionTurn=companion.beforeAutomaticActor({combat:currentCombat,actor,rules,rng});
+        if(companionTurn){
+          const resolved=companion.result(companionTurn.combat);
+          partyMembers=resolved.partyMembers;rollLogs.push(...resolved.rollLogs);
+          return companionTurn;
+        }
         const spellTurn = this.resolvePossessionControlledSpellTurn({
           combat: currentCombat,
           actor,

@@ -14,7 +14,7 @@ function scenePacket(state,meta,actions,targetId) {
   for(const person of [...companions,...npcs]) {
     if(humanIds.has(person.id)||['dm','player'].includes(person.id)||actors.some(a=>a.id===person.id))continue;
     const actor={id:person.id,name:clip(person.name,80),kind:person.kind==='ally'?'companion':'npc'};
-    const role=clip(person.role||person.className,140),personality=clip(person.personality,240);
+    const source=meta.npcs.find(n=>n.id===person.id);const role=clip(source?.role||person.role||person.className,140),personality=clip(source?.personality||person.personality,240);
     if(actors.length<=6&&detailChars+role.length+personality.length<=2400){actor.role=role;actor.personality=personality;detailChars+=role.length+personality.length;}
     actors.push(actor);
   }

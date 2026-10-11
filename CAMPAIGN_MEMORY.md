@@ -6,6 +6,7 @@ Artwork stays outside the text context: no image bytes, gallery labels or bindin
 
 ## What goes to the game master
 
+- Up to three actual companions with compact exact HP/conditions/abilities/resources/slots. This is within the same12,000-character total, with no complete per-companion spellbook or extra automatic-turn model request.
 - Current world and hero concept; exact HP, armor class, abilities, resources, spell slots, conditions and combat turn.
 - Relevant unfinished quest objectives, exact delivery recipients, declared alternative check IDs/attempt results and their recorded completion evidence. A compact index covers additional quests when space permits. Previously completed quests can be recalled with their actual status and reward flag.
 - Player bookmarks, confirmed discoveries and relevant excerpts of older dialogue, including their speaker and turn.
@@ -20,6 +21,8 @@ Limits do not delete source records. If the campaign has more facts, notes or qu
 Unopened scene-check secrets stay outside the packet. Player notes retain their provenance: a hypothesis or personal goal is different from a confirmed discovery.
 
 ## Journal controls
+
+Dialogue continuation after a player interjection uses at most eight heard lines and4,000 characters. Unspoken cancelled replies never enter the prompt or archive. One explicit response generates at most five short lines, with at most one correction attempt; Next/Reject/Intervene use no AI. The combined response payload has an18,000-character pre-wrapper bound. This is separate from the general12,000-character context packet; neither character bound is a complete token bill. See [DIALOGUE_AND_COOP.md](DIALOGUE_AND_COOP.md).
 
 The player can write a note, pin/unpin it, and pin a confirmed discovery. These operations save locally, check the campaign revision, and do not advance the game, roll dice or call AI. Search covers the full stored journal. Older entries are paginated, so the main state response does not grow by resending the entire journal.
 

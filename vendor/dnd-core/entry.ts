@@ -23,3 +23,5 @@ export { spendObjectInteraction } from './src/core/rulesets/srd5e2014/action-eco
 export { isCharmedBySource } from './src/core/rules/conditions.js';
 export { startCombat, runAutomaticTurns } from './src/core/rules/combat.js';
 export { hasPendingDeathSaves, focusNextDeathSaveTurn } from './src/core/rules/combat.js';
+export { createCompanionAutomaticHook, runCompanionAutomaticTurns } from './src/core/narrative/companion-combat-ai.js';
+export { syncCombatantToCharacter } from './src/core/rules/combat.js';
