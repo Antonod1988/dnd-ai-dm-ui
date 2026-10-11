@@ -29,3 +29,12 @@ test('failed dialogue Insight does not leak hidden knowledge and requires the co
   assert.equal(result[0].success, false); assert.ok(!service.loadCampaign(campaignId).facts.some(f => f.text.includes('голубой вазе')));
   assert.doesNotMatch(JSON.stringify(checks.publicChecks(service.loadCampaign(campaignId))), /голубой вазе/);
 });
+test('new scene checks still run after the first three checks have already been attempted',async()=>{
+  for(let i=0;i<3;i++)await checks.registerSceneCheck(service,campaignId,{sceneId:'new-room',trigger:'inspect',skill:'history',dc:5,title:`Старый знак ${i}`,prompt:'На стене виден знак.',discoveredFact:`Старое открытие ${i}.`});
+  await checks.triggerSceneChecks(service,campaignId,{sceneId:'new-room',trigger:'inspect'},{seed:'old-signs'});
+  const fourth=await checks.registerSceneCheck(service,campaignId,{sceneId:'new-room',trigger:'inspect',skill:'history',dc:5,title:'Новая надпись',prompt:'После открытия двери видна новая надпись.',discoveredFact:'Новая надпись объясняет происхождение башни.'});
+  const before=service.loadCampaign(campaignId).rollLog.length;
+  const result=await checks.triggerSceneChecks(service,campaignId,{sceneId:'new-room',trigger:'inspect'},{seed:'new-inscription'});
+  assert.ok(result.some(r=>r.checkId===fourth.id&&!r.replayed));assert.equal(service.loadCampaign(campaignId).rollLog.length,before+1);
+  await checks.triggerSceneChecks(service,campaignId,{sceneId:'new-room',trigger:'inspect'},{seed:'different-again'});assert.equal(service.loadCampaign(campaignId).rollLog.length,before+1);
+});

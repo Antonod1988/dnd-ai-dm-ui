@@ -1,11 +1,12 @@
 const MAX_CONTEXT_CHARS = 10000;
 const tidy = (value, length = 500) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, length);
-function textOf(record) { return typeof record === 'string' ? record : `${record.title || ''} ${record.text || record.body || record.summary || ''}`; }
+function textOf(record) { return typeof record === 'string' ? record : `${record.title || record.name || record.author || ''} ${record.text || record.body || record.summary || ''}`; }
+const stopWords=new Set('the a an and or of to in on at by for is are was were be it this that these those i me my we you your he she they what where when which who how as from with это что как где кто когда какой какая какие и а но да нет я ты он она мы вы они мой моя мои его её мне тебе нам вам в на из по за до со для'.split(' '));
 function relevance(record, query, scene) {
   const text = textOf(record).toLocaleLowerCase('ru');
-  const words = new Set(`${query} ${scene?.title || ''} ${scene?.location || ''}`.toLocaleLowerCase('ru').split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 3));
+  const words = new Set(`${query} ${scene?.title || ''} ${scene?.location || ''}`.toLocaleLowerCase('ru').split(/[^\p{L}\p{N}]+/u).filter(w => w.length >= 2&&!stopWords.has(w)));
   let score = record.pinned ? 1000 : 0;
-  for (const word of words) if (text.includes(word)) score += 3;
+  for (const word of words) if(word.length<=3?new RegExp(`(^|[^\\p{L}\\p{N}])${word}($|[^\\p{L}\\p{N}])`,'u').test(text):text.includes(word))score+=3;
   if (record.sourceSceneId && record.sourceSceneId === scene?.id) score += 4;
   if ((record.tags || []).some(tag => ['promise', 'identity', 'quest', 'relationship'].includes(tag))) score += 2;
   return score;
@@ -45,4 +46,4 @@ function archiveMessages(state, keep = 40) {
   }
 }
 function contextMetrics(packet) { const chars = JSON.stringify(packet).length; return { chars, approximateTokens: Math.ceil(chars / 3), estimate: true, maxChars: MAX_CONTEXT_CHARS }; }
-module.exports = { buildContext, recall, archiveMessages, contextMetrics, MAX_CONTEXT_CHARS };
+module.exports = { buildContext, recall, relevance, archiveMessages, contextMetrics, MAX_CONTEXT_CHARS };

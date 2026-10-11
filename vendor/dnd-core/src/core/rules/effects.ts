@@ -1777,7 +1777,7 @@ function conditionInstanceFromEffect(effect: ActiveEffect, condition: Condition)
   };
 }
 
-function cleanRemovedEffectConditions(target: Combatant, removedEffects: ActiveEffect[]): Combatant {
+export function cleanRemovedEffectConditions(target: Combatant, removedEffects: ActiveEffect[]): Combatant {
   const removedConditions = new Set(
     removedEffects
       .map((effect) => effect.appliedCondition)

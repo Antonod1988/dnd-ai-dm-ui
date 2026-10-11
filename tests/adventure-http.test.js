@@ -32,3 +32,12 @@ test('discussion uses this world roster and does not spend a rules turn',async()
   const interrupted=await post('/api/adventure/discussion/intervene',{campaignId:view.campaign.id,text:'Сначала осмотримся.'});assert.equal(interrupted.status,200);
   const saved=await fetch(url+'/api/adventure/state').then(r=>r.json());assert.equal(saved.campaign.turn,before);assert.equal(saved.messages.at(-1).author,'Путник');
 });
+test('HTTP notes, pinning and full journal search use revision checks without taking a game turn',async()=>{
+  view=await fetch(url+'/api/adventure/state').then(r=>r.json());const turn=view.campaign.turn;
+  const note={campaignId:view.campaign.id,expectedRevision:view.campaign.revision,operationId:crypto.randomUUID(),text:'Я обещал вернуть карту капитану Тарену.',pinned:true};
+  const created=await post('/api/adventure/memory/note',note);assert.equal(created.status,200);view=created.body;
+  assert.equal(view.campaign.turn,turn);assert.equal(view.notes.length,1);
+  const replay=await post('/api/adventure/memory/note',note);assert.equal(replay.body.replayed,true);assert.equal(replay.body.notes.length,1);
+  const stale=await post('/api/adventure/memory/pin',{campaignId:view.campaign.id,expectedRevision:note.expectedRevision,operationId:crypto.randomUUID(),kind:'note',recordId:view.notes[0].id,pinned:false});assert.equal(stale.status,409);
+  const search=await fetch(url+`/api/adventure/history?campaignId=${encodeURIComponent(view.campaign.id)}&query=${encodeURIComponent('капитану Тарену')}`).then(r=>r.json());assert.equal(search.total,1);assert.equal(search.entries[0].kind,'player_note');
+});

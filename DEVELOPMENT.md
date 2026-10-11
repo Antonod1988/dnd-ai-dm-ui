@@ -42,3 +42,17 @@ Rules integration and general generated effects are in progress. The complete UI
 - Full local history remains archived. Current scene context is about 3–4k characters in the demonstrated campaign; selection caps context at 12k characters. This is a character bound, not an exact billed-token guarantee.
 
 Remaining work includes a broader live adventure audit (combat, death and progression), richer reputation/relationship consequences, survival/weather depth, optional image controls, and long-session runtime validation. Multiplayer is researched, not connected. The objective remains active.
+
+### Memory and mechanics follow-up
+
+- Full-journal search/pagination, player notes and pinning are integrated in the UI. They preserve game time/resources and require no AI call. The packet now ranks quests by relevance and recalls archived dialogue, rather than always selecting the first six tasks.
+- A 600-turn test uses the new adventure model and verifies full history preservation, an early promise recall, and the 12k-character bound. Source state remains intact. See CAMPAIGN_MEMORY.md for the packet contract and limits.
+- Actual provider counters are recorded per campaign. A live GPT-6-Luna check correctly recalled a saved promise and phrase; two reported requests used 3,641 input and 133 output tokens. It preserved HP, XP, inventory and location.
+- Combat/clock tests verify six-second rounds, exact rest/travel duration, timed spell expiration, effective armor in the sheet, death/stable/dead recovery paths, and one reward after a lethal created spell resolves combat.
+- This is progress toward the full objective. Optional images, deeper social consequences, weather/survival depth and the broader live gameplay/progression audit remain open.
+
+- A second check executes 200 controller turns against SQLite and reopens the store, preserving all dialogue/events and recalling an early promise. A separate 600-turn context fixture verifies the budget across longer histories.
+- The composer now distinguishes a hero action from a question to the master. Questions use one request and do not advance rules/time or apply world developments. Notes and journal browsing use no AI.
+- Live GPT-6-Luna generated and learned an original protection spell. Free-text casting spent a slot and changed armor 12→13; exploration expired the effect and unlocked lore through a real History roll (23 against DC 14).
+- New scene checks no longer get blocked by three previously attempted checks. Multi-place world developments add all nodes before wiring reciprocal links. The journal records mechanical actions and uses the same turn number as dialogue.
+- On narrow layouts a compact hero strip keeps HP/armor visible and links to the character sheet. Spell previews show target, duration, concentration and cost; inaccessible catalog spells are omitted from the playable book.

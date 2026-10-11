@@ -52,7 +52,7 @@ function makeAdventure(seed, input) {
     quests: seed.quests.map(q => makeQuest(q)), loreDefinitions: seed.checks,
     loreCheckIds: {}, createdSpells: [], messages: [], archive: [], events: [], journal: [], appliedOperations: [],
     survival: { enabled: Boolean(input.survival), foodDays: 3, waterDays: 3, hungerDays: 0, thirstDays: 0 }, reputation: {},
-    sceneImageId: null, pendingNarration: null, operations: 0
+    notes: [], pinnedFactIds: [], sceneImageId: null, pendingNarration: null, operations: 0
   };
   for (const location of adventure.locations) for (const neighbor of location.connectsTo) { const other = adventure.locations.find(l => l.id === neighbor); if (!other.connectsTo.includes(location.id)) other.connectsTo.push(location.id); }
   return adventure;
@@ -82,10 +82,15 @@ function processQuestEvent(adventure, event) {
 }
 function applyDevelopments(adventure, draft) {
   const patch = validateDevelopments(draft, adventure);
+  const added=[];
   for (const node of patch.locations) {
     if (adventure.locations.some(l => l.id === node.id)) continue;
     const i = adventure.locations.length;
     adventure.locations.push({ ...node, x: 50 + Math.cos(i * 2.4) * 34, y: 50 + Math.sin(i * 2.4) * 34, visited: false });
+    added.push(node);
+  }
+  // A single development can connect several newly introduced places to each other.
+  for(const node of added) {
     for (const existingId of node.connectsTo) { const existing = adventure.locations.find(l => l.id === existingId); if (!existing.connectsTo.includes(node.id)) existing.connectsTo.push(node.id); }
   }
   for (const npc of patch.npcs) if (!adventure.npcs.some(n => n.id === npc.id)) adventure.npcs.push({ ...npc, trust: 0, familiarity: 0 });

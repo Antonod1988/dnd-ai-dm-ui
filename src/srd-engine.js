@@ -72,7 +72,14 @@ async function command(input, { seed } = {}) {
       if (state.combat) error('Сначала завершите бой.');
       if (!['short', 'long'].includes(input.kind)) error('Неизвестный вид отдыха.');
       result = await service.rest(id, input.kind, seed, { hitDiceToSpend: input.hitDiceToSpend === undefined ? 0 : integer(input.hitDiceToSpend, 0, 20, 'кости здоровья') }); break;
-    case 'death_save': result = await service.rollDeathSave(id, undefined, seed); break;
+    case 'death_save': {
+      const hero=state.party.members.find(m=>m.id===state.party.heroId);
+      if(state.combat) error('В бою используйте спасбросок текущего участника через доступные действия.');
+      if(hero.hp.current>0||hero.conditions.includes('dead')||hero.deathSaves?.dead||hero.deathSaves?.stable) error('Герою сейчас не нужен спасбросок от смерти.');
+      result = await service.rollDeathSave(id, undefined, seed);
+      result.message=`Спасбросок от смерти: ${result.result.roll.total}. Успехи ${result.character.deathSaves.successes}/3, неудачи ${result.character.deathSaves.failures}/3.`;
+      break;
+    }
     case 'use_item': result = await service.useItem(id, String(input.itemId || ''), undefined, seed); break;
     case 'equip_item': result = await service.equipItem(id, String(input.itemId || '')); break;
     case 'cast_spell':
@@ -90,7 +97,7 @@ async function command(input, { seed } = {}) {
     default: error('Неизвестная игровая команда.');
   }
   const updated = service.loadCampaign(id);
-  return { ...view(service, updated), resolution: { ok: result.ok !== false, message: result.message || result.spell?.name || 'Действие разрешено.', events: result.events || [], check: typeof result.success === 'boolean' ? result : result.check || null } };
+  return { ...view(service, updated), resolution: { ok: result.ok !== false, message: result.message || result.effect?.summary || result.spell?.name || 'Действие разрешено.', events: result.events || (result.effect?[result.effect]:[]), check: typeof result.success === 'boolean' ? result : result.check || null } };
 }
 
 async function registerSpell(campaignId, draft, { sourceEventId } = {}) {

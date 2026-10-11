@@ -23,12 +23,24 @@ test('world records reject unreachable maps and dangling quest references before
   assert.throws(()=>model.validateSeed(seed),/unreachable/);
   const broken=model.fallbackSeed(input);broken.quests[0].objectives[0].targetId='nowhere';assert.throws(()=>model.validateSeed(broken),/Unknown/);
 });
+test('one world development can introduce two connected places without leaving a partial map',()=>{
+  const world=model.makeAdventure(model.fallbackSeed(input),input);
+  model.applyDevelopments(world,{locations:[{id:'new-a',name:'Верхний причал',description:'Площадка над облаками',kind:'road',connectsTo:['start','new-b']},{id:'new-b',name:'Новая башня',description:'Башня у дальнего причала',kind:'ruins',connectsTo:['new-a']}]});
+  assert.ok(world.locations.find(l=>l.id==='start').connectsTo.includes('new-a'));
+  assert.ok(world.locations.find(l=>l.id==='new-a').connectsTo.includes('new-b'));assert.ok(world.locations.find(l=>l.id==='new-b').connectsTo.includes('new-a'));
+  const before=JSON.stringify(world);assert.throws(()=>model.applyDevelopments(world,{locations:[{id:'bad',name:'Ошибка',description:'Невалидный маршрут',kind:'road',connectsTo:['missing']}]}));assert.equal(JSON.stringify(world),before);
+});
 test('one shared campaign view contains arbitrary world, live SRD character, map and offered quests', async () => {
   latest=await adventure.create(input);
   assert.equal(latest.hero.name,'Мира');assert.equal(latest.hero.level,1);assert.equal(latest.hero.spellcasting.slots['1'].current,2);
   assert.match(latest.campaign.worldIdea,/летающих китах/);assert.equal(latest.scene.name,'Левый плавник');
   assert.equal(latest.quests[0].status,'offered');assert.equal(latest.locations.length,2);
   assert.doesNotMatch(JSON.stringify(latest),/Этот путь прежде соединял поселения/);
+});
+test('journal entries and dialogue use the same turn number for a resolved player action',async()=>{
+  await act({type:'narrative',description:'Герой сверяет карту.'},{input:'Сверяю карту.'});
+  assert.equal(latest.journal[0].turn,latest.campaign.turn);assert.equal(latest.messages.at(-1).turn,latest.campaign.turn);
+  assert.equal(latest.messages.findLast(m=>m.role==='player').turn,latest.campaign.turn);
 });
 test('visit + successful lore check completes a quest with one durable reward', async () => {
   await act({type:'accept_quest',questId:'first-route'});

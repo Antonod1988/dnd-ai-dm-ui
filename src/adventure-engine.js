@@ -8,6 +8,8 @@ const model = require('./adventure-model');
 const lore = require('./scene-checks');
 const { contextFor } = require('./adventure-context');
 const { validateSpell } = require('./generated-effects');
+const { elapsedSeconds, expireExplorationEffects } = require('./adventure-clock');
+const measuredAi=require('./adventure-usage');
 const classNames = { barbarian: 'Варвар', bard: 'Бард', cleric: 'Жрец', druid: 'Друид', fighter: 'Воин', monk: 'Монах', paladin: 'Паладин', ranger: 'Следопыт', rogue: 'Плут', sorcerer: 'Чародей', warlock: 'Колдун', wizard: 'Маг' };
 const raceNames = { dragonborn: 'Драконорождённый', dwarf: 'Дварф', elf: 'Эльф', gnome: 'Гном', half_elf: 'Полуэльф', half_orc: 'Полуорк', halfling: 'Полурослик', human: 'Человек', tiefling: 'Тифлинг' };
 function bad(message, status = 400) { throw Object.assign(new Error(message), { status }); }
@@ -30,7 +32,13 @@ async function save(service, state, adventure, reason) { state.flags.ui_adventur
 function choices(service, state, adventure) {
   const location = adventure.locations.find(n => n.id === adventure.currentLocationId);
   const available = [];
-  if(!state.combat&&state.party.members.find(m=>m.id===state.party.heroId).hp.current<=0)return available;
+  const hero=state.party.members.find(m=>m.id===state.party.heroId);
+  if(!state.combat&&hero.hp.current<=0) {
+    if(hero.conditions.includes('dead')||hero.deathSaves?.dead)return available;
+    return hero.deathSaves?.stable
+      ? [{id:'recover:stable',label:'Дождаться возвращения в сознание',kind:'recovery',command:{type:'recover_stable'}}]
+      : [{id:'death:save',label:'Спасбросок от смерти',kind:'recovery',command:{type:'death_save'}}];
+  }
   if (!state.combat) {
     available.push({ id: 'inspect', label: 'Осмотреть место', kind: 'exploration', command: { type: 'inspect' } });
     for (const npc of adventure.npcs.filter(n => n.locationId === location.id)) available.push({ id: `talk:${npc.id}`, label: `Поговорить: ${npc.name}`, kind: 'social', command: { type: 'talk', npcId: npc.id } });
@@ -45,17 +53,18 @@ function choices(service, state, adventure) {
 async function publicView(service, state, adventure) {
   const raw = await srd.getState(state.campaign.id), hero = raw.hero;
   const core=await import('../vendor/dnd-core/dist/engine.mjs');
-  const cleanCharacter=character=>({...character,inventory:character.inventory.map(({hiddenDescription,...item})=>({...item,canUse:Boolean(core.modeledInventoryUseEffect(item,character.inventory))}))});
+  const cleanCharacter=character=>({...character,baseAc:character.ac,ac:core.effectiveArmorClass(character),inventory:character.inventory.map(({hiddenDescription,...item})=>({...item,canUse:Boolean(core.modeledInventoryUseEffect(item,character.inventory))}))});
   const configuration = ai.getAiConfig();
   return { ready: true, campaign: { id: state.campaign.id, title: adventure.title, revision: adventure.revision, turn: adventure.turn, day: adventure.day, hours: adventure.hours, worldIdea: adventure.worldIdea, tone: adventure.tone, language: adventure.language || 'ru' },
-    hero: { ...cleanCharacter(hero), classLabel: classNames[hero.classLevels?.[0]?.classId?.replace(/^class_/, '')] || hero.className.replace(' SRD', ''), raceLabel: raceNames[hero.raceId?.replace(/^race_/,'')] || raceNames[hero.ancestry.replace(/-/g,'_')] || hero.ancestry },
+    hero: { ...cleanCharacter(hero), concept:adventure.heroConcept,classLabel: classNames[hero.classLevels?.[0]?.classId?.replace(/^class_/, '')] || hero.className.replace(' SRD', ''), raceLabel: raceNames[hero.raceId?.replace(/^race_/,'')] || raceNames[hero.ancestry.replace(/-/g,'_')] || hero.ancestry },
     party: state.party.members.map(cleanCharacter), scene: adventure.locations.find(n => n.id === adventure.currentLocationId),
-    locations: adventure.locations, npcs: adventure.npcs, items: adventure.items, quests: adventure.quests, journal: adventure.journal, facts: state.facts, messages: adventure.messages,
+    locations: adventure.locations, npcs: adventure.npcs, items: adventure.items, quests: adventure.quests, journal: adventure.journal.slice(0,100), journalTotal:adventure.journal.length,
+    notes:adventure.notes||[], facts: state.facts.filter(f=>f.id!=='hero_identity').map(f=>({...f,pinned:Boolean(f.pinned||(adventure.pinnedFactIds||[]).includes(f.id))})), messages: adventure.messages,
     actions: choices(service, state, adventure).map(({ command, ...entry }) => entry), combat: raw.combat, turnBudget: raw.actions.turn,
-    spellbook: raw.spellbook, createdSpells: adventure.createdSpells, rolls: raw.rolls, survival: adventure.survival, reputation: adventure.reputation,
+    spellbook: {...raw.spellbook,spells:(raw.spellbook.spells||[]).filter(s=>s.accessible)}, createdSpells: adventure.createdSpells, rolls: raw.rolls, survival: adventure.survival, reputation: adventure.reputation,
     loreChecks: lore.publicChecks(state).filter(c => c.sceneId === adventure.currentLocationId), memory: contextFor(state, adventure).metrics,
     provider: { id: configuration.provider, model: configuration.modelLabel, configured: ai.isConfigured(configuration), usage: configuration.usage },
-    pendingNarration: Boolean(adventure.pendingNarration), campaigns: service.listCampaigns().map(c => ({ id: c.id, title: c.title })) };
+    inferenceUsage:adventure.usage||null,pendingNarration: Boolean(adventure.pendingNarration), campaigns: service.listCampaigns().map(c => ({ id: c.id, title: c.title })) };
 }
 async function getView(id) { const { service, state, adventure } = await loaded(id); const configuration=ai.getAiConfig();return state ? publicView(service, state, adventure) : { ready: false, provider:{id:configuration.provider,model:configuration.modelLabel,configured:ai.isConfigured(configuration)},campaigns: service.listCampaigns().map(c => ({ id: c.id, title: c.title })) }; }
 async function setup() { const options = await srd.setupOptions(); return { ...options, classes: options.classes.map(c => ({ ...c, label: classNames[c.id] })), races: options.races.map(r => ({ ...r, label: raceNames[r.id] })), backgrounds: options.backgrounds.map(b => ({ ...b, label: { acolyte: 'Послушник', soldier: 'Солдат', sage: 'Учёный', criminal: 'Бродяга' }[b.id] })) }; }
@@ -68,10 +77,11 @@ async function registerChecks(service, state, adventure) {
 const createSchema = z.object({ heroName: z.string().trim().min(1).max(80), heroConcept: z.string().max(800).default(''), language: z.enum(['ru', 'en']).default('ru'), worldIdea: z.string().trim().min(5).max(1200), classId: z.string().default('wizard'), raceId: z.string().default('human'), backgroundId: z.string().default('sage'), location: z.string().max(100).default('Начало пути'), tone: z.string().max(100).default('Приключение'), survival: z.boolean().default(false) }).strict();
 async function create(input) {
   const parsed = createSchema.parse(input);
-  const draft = await ai.generateStructured('adventure_world', { instruction: `Create an original ${parsed.language === 'en' ? 'English' : 'Russian'} adventure in the player world. Respect their premise and hero. Return JSON {title,opening,startLocationId,locations:[{id,name,description,kind,connectsTo}],npcs:[{id,name,role,personality,locationId}],items:[{id,name,description,locationId,kind}],quests:[{id,title,summary,giverId,objectives:[{text,kind,targetId}],rewardTheme}],checks:[{id,locationId,trigger,skill,dc,title,prompt,discoveredFact}]}. Use simple stable ASCII ids, a connected map of 3-5 places, 2-4 distinct NPCs, 1-2 offered quests with specific visit/talk/check objectives. Checks have DC 5-25, trigger enter/inspect/dialogue, skills history/arcana/religion/nature/perception/investigation/insight/survival. Do not reveal discoveredFact in the opening. Objective kind is visit/talk/check/victory/acquire; visit/victory target a location id, talk targets an npc id, check targets a check id, acquire targets an item id. Reference only existing ids. Item kind quest/tool/consumable/weapon, with flavor description and no numerical claims. Locations kind settlement/wilderness/ruins/interior/road. Keep prose compact. No predefined licensed setting unless player supplied it. No numeric hero rewards or state changes.`, world: parsed.worldIdea, hero: { name: parsed.heroName, concept: parsed.heroConcept }, tone: parsed.tone, startingPlace: parsed.location }, () => model.fallbackSeed(parsed));
+  const meter={};
+  const draft = await measuredAi.generate(meter,'adventure_world', { instruction: `Create an original ${parsed.language === 'en' ? 'English' : 'Russian'} adventure in the player world. Respect their premise and hero. Return JSON {title,opening,startLocationId,locations:[{id,name,description,kind,connectsTo}],npcs:[{id,name,role,personality,locationId}],items:[{id,name,description,locationId,kind}],quests:[{id,title,summary,giverId,objectives:[{text,kind,targetId}],rewardTheme}],checks:[{id,locationId,trigger,skill,dc,title,prompt,discoveredFact}]}. Use simple stable ASCII ids, a connected map of 3-5 places, 2-4 distinct NPCs, 1-2 offered quests with specific visit/talk/check objectives. Checks have DC 5-25, trigger enter/inspect/dialogue, skills history/arcana/religion/nature/perception/investigation/insight/survival. Do not reveal discoveredFact in the opening. Objective kind is visit/talk/check/victory/acquire; visit/victory target a location id, talk targets an npc id, check targets a check id, acquire targets an item id. Reference only existing ids. Item kind quest/tool/consumable/weapon, with flavor description and no numerical claims. Locations kind settlement/wilderness/ruins/interior/road. Keep prose compact. No predefined licensed setting unless player supplied it. No numeric hero rewards or state changes.`, world: parsed.worldIdea, hero: { name: parsed.heroName, concept: parsed.heroConcept }, tone: parsed.tone, startingPlace: parsed.location }, () => model.fallbackSeed(parsed));
   const seed = model.validateSeed(draft);
   const raw = await srd.createCampaign({ heroName: parsed.heroName, heroConcept: parsed.heroConcept, language: parsed.language, classId: parsed.classId, raceId: parsed.raceId, backgroundId: parsed.backgroundId, worldIdea: parsed.worldIdea, location: seed.locations.find(n => n.id === seed.startLocationId).name, tone: parsed.tone });
-  const service = await srd.session(); let state = service.loadCampaign(raw.campaign.id); const adventure = model.makeAdventure(seed, parsed);
+  const service = await srd.session(); let state = service.loadCampaign(raw.campaign.id); const adventure = model.makeAdventure(seed, parsed);adventure.usage=meter.usage;
   if (adventure.survival.enabled) state.party.members.find(m=>m.id===state.party.heroId).inventory.push({itemId:'travel_food',name:'Дорожные припасы',quantity:3,weight:2,tags:['supplies','food'],description:'Запас еды на день пути для отряда.',identified:true,source:'generated'}, {itemId:'travel_water',name:'Запас воды',quantity:3,weight:2,tags:['supplies','water'],description:'Запас воды на день пути для отряда.',identified:true,source:'generated'});
   model.addMessage(adventure, 'dm', 'Мастер', seed.opening);
   model.addEvent(adventure, 'visit', seed.startLocationId, `Начало приключения: ${seed.locations.find(n => n.id === seed.startLocationId).name}`);
@@ -121,19 +131,23 @@ async function survivalDay(state, adventure, elapsedDays) {
   }
   return state;
 }
-async function narrate(service, state, adventure, outcome, input = '') {
+async function narrate(service, state, adventure, outcome, input = '', {questionOnly=false}={}) {
   const context = contextFor(state, adventure, input);
-  const report = await ai.generateStructured('adventure_narration', { instruction: `Speak ${adventure.language === 'en' ? 'English' : 'Russian'} as a creative Dungeon Master in the player-defined world. Return JSON {narration,developments?:{locations:[],npcs:[],quests:[],checks:[],items:[]}}. Write 1-3 vivid short paragraphs that respond to the actual intent and engine outcome. Preserve exact numbers, conditions and failure. Do not invent numerical inventory, spell slots, XP, rewards, damage or victories. Do not move the player or make choices for them. You may introduce coherent new places, NPCs and OFFERED quests as optional developments with the same schemas as world creation. Current ids are stable; never overwrite current entities, close quests or alter old facts. Keep developments small; empty arrays are valid. Leave a concrete opening for the player.`, input, outcome, context: context.packet }, () => ({ narration: outcome.text || 'Сцена ждёт твоего следующего решения.' }));
+  const localAnswer=()=>questionOnly
+    ? {narration:`${context.packet.hero.name}: HP ${context.packet.hero.hp.current}/${context.packet.hero.hp.max}, ${adventure.language==='en'?'armor':'защита'} ${context.packet.hero.ac}.\n\n${[...context.packet.bookmarks,...context.packet.activeFacts,...context.packet.recollections].slice(0,3).map(r=>r.text).join('\n\n')}`}
+    : {narration:outcome.text||'Сцена ждёт твоего следующего решения.'};
+  const report = await measuredAi.generate(adventure,questionOnly?'master_question':'adventure_narration', { instruction: questionOnly ? `Answer the player's question in ${adventure.language === 'en' ? 'English' : 'Russian'}. Return JSON {narration}. Use current state and relevant recollections. Preserve exact numbers and distinguish suggestions from events. Do not execute actions, roll, advance time, invent rewards or propose world developments.` : `Speak ${adventure.language === 'en' ? 'English' : 'Russian'} as a creative Dungeon Master in the player-defined world. Return JSON {narration,developments?:{locations:[],npcs:[],quests:[],checks:[],items:[]}}. Write 1-3 vivid short paragraphs that respond to the actual intent and engine outcome. Preserve exact numbers, conditions and failure. Do not invent numerical inventory, spell slots, XP, rewards, damage or victories. Do not move the player or make choices for them. You may introduce coherent new places, NPCs and OFFERED quests as optional developments with the same schemas as world creation. Current ids are stable; never overwrite current entities, close quests or alter old facts. Keep developments small; empty arrays are valid. Leave a concrete opening for the player.`, input, outcome, questionOnly, context: context.packet }, localAnswer);
   if (typeof report.narration !== 'string' || !report.narration.trim() || report.narration.length > 6000) throw new Error('AI не вернул корректное повествование.');
-  if (report.developments) { model.applyDevelopments(adventure, report.developments); await registerChecks(service, state, adventure); }
+  if (!questionOnly&&report.developments) { model.applyDevelopments(adventure, report.developments); await registerChecks(service, state, adventure); }
   model.addMessage(adventure, 'dm', 'Мастер', report.narration); adventure.pendingNarration = null;
 }
-const planSchema = z.object({ type: z.enum(['narrative', 'travel', 'talk', 'check', 'combat', 'action']), actionId: z.string().max(160).optional(), locationId: z.string().max(80).optional(), npcId: z.string().max(80).optional(), ability: z.enum(['str', 'dex', 'con', 'int', 'wis', 'cha']).optional(), skill: z.string().max(40).optional(), dc: z.number().int().min(5).max(25).optional(), successFact: z.string().max(650).optional(), theme: z.string().max(200).optional(), enemyName: z.string().max(100).optional(), difficulty: z.enum(['easy', 'medium', 'hard']).optional(), description: z.string().max(500).default('Свободное действие героя.'), developments: z.object({ locations: z.array(z.any()).max(3), npcs: z.array(z.any()).max(3), quests: z.array(z.any()).max(2), checks: z.array(z.any()).max(3) }).optional() }).strict();
+const planSchema = z.object({ type: z.enum(['narrative', 'travel', 'talk', 'check', 'combat', 'action', 'cast_created_spell', 'cast_spell']), actionId: z.string().max(160).optional(), spellId:z.string().max(160).optional(), targetId:z.string().max(160).optional(), locationId: z.string().max(80).optional(), npcId: z.string().max(80).optional(), ability: z.enum(['str', 'dex', 'con', 'int', 'wis', 'cha']).optional(), skill: z.string().max(40).optional(), dc: z.number().int().min(5).max(25).optional(), successFact: z.string().max(650).optional(), theme: z.string().max(200).optional(), enemyName: z.string().max(100).optional(), difficulty: z.enum(['easy', 'medium', 'hard']).optional(), description: z.string().max(500).default('Свободное действие героя.'), developments: z.object({ locations: z.array(z.any()).max(3), npcs: z.array(z.any()).max(3), quests: z.array(z.any()).max(2), checks: z.array(z.any()).max(3) }).optional() }).strict();
 async function resolveInput(service, state, adventure, input) {
   const available = choices(service, state, adventure);
   const words = input.toLowerCase().split(/\s+/).filter(w => w.length > 3);
   const candidates = available.map(a => ({ ...a, score: words.filter(w => a.label.toLowerCase().includes(w)).length })).sort((a, b) => b.score - a.score).slice(0, 18);
-  const draft = await ai.generateStructured('adventure_intent', { instruction: `Map player intent to a game operation. Return JSON {type,actionId?,locationId?,npcId?,ability?,skill?,dc?,successFact?,theme?,enemyName?,difficulty?,description,developments?}. Use type action with an EXACT supplied actionId in combat. Outside combat type may be narrative (no numerical changes), travel to a known connected location, talk to an existing nearby npc, check (ability, skill, dc 5-25 and optional successFact), or combat (theme, enemyName, difficulty easy/medium/hard). Infer fair uncertainty rather than rolling for every sentence. Do not choose an action contrary to the player. New world records can be proposed via developments using the world schemas; reference valid ids. No HP, money, XP or resource changes. ASCII stable ids. ${adventure.language === 'en' ? 'English' : 'Russian'} description. Do not narrate a successful outcome before rules resolution.`, input, availableActions: candidates.map(({ id, label }) => ({ id, label })), context: contextFor(state, adventure, input).packet }, () => ({ type: 'narrative', description: `Ты описываешь действие: ${input}` }));
+  const knownSpells=(service.getSpellbook(state.campaign.id).spells||[]).filter(s=>s.accessible).map(s=>({id:s.id||s.spellId,name:s.name})).slice(0,32);
+  const draft = await measuredAi.generate(adventure,'adventure_intent', { instruction: `Map player intent to a game operation. Return JSON {type,actionId?,locationId?,npcId?,spellId?,targetId?,ability?,skill?,dc?,successFact?,theme?,enemyName?,difficulty?,description,developments?}. Use type action with an EXACT supplied actionId in combat, or cast_created_spell with an exact learned context.createdSpells id and an exact current party/combat target id. Use cast_spell only with an exact supplied knownSpells id. Never invent a spell id. A self-target spell can use the hero id. Outside combat type may be narrative (no numerical changes), travel to a known connected location, talk to an existing nearby npc, check (ability, skill, dc 5-25 and optional successFact), or combat (theme, enemyName, difficulty easy/medium/hard). Infer fair uncertainty rather than rolling for every sentence. Do not choose an action contrary to the player. New world records can be proposed via developments using the world schemas; reference valid ids. No HP, money, XP or resource changes. ASCII stable ids. ${adventure.language === 'en' ? 'English' : 'Russian'} description. Do not narrate a successful outcome before rules resolution.`, input, knownSpells, availableActions: candidates.map(({ id, label }) => ({ id, label })), context: contextFor(state, adventure, input).packet }, () => ({ type: 'narrative', description: `Ты описываешь действие: ${input}` }));
   return planSchema.parse(draft);
 }
 async function perform(body, { seed } = {}) {
@@ -142,21 +156,24 @@ async function perform(body, { seed } = {}) {
   if (adventure.appliedOperations.some(op => op.id === body.operationId)) return { ...await publicView(service, initial, adventure), replayed: true };
   if (body.expectedRevision !== adventure.revision) bad('Кампания уже изменилась. Обновите сцену и повторите намерение.', 409);
   const input = typeof body.input === 'string' ? body.input.trim().slice(0, 2000) : '';
+  const beforeCombat=initial.combat ? structuredClone(initial.combat) : null;
+  const previousEffects=new Set(initial.party.members.flatMap(m=>(m.activeEffects||[]).map(e=>e.id)));
   let command = body.command;
   if (body.actionId) command = choices(service, initial, adventure).find(a => a.id === body.actionId)?.command;
   if (!command && input) command = await resolveInput(service, initial, adventure, input);
   if (!command || typeof command.type !== 'string') bad('Выберите действие или опишите намерение.');
   const proposed = structuredClone(adventure);
+  proposed.turn+=1;
   if (command.developments) model.applyDevelopments(proposed, command.developments);
   if (command.type === 'action' && command.actionId?.startsWith('core:')) command = { type: 'action', actionId: command.actionId.slice(5) };
   if (command.type === 'action' && !initial.combat && command.actionId && choices(service, initial, proposed).some(a => a.id === command.actionId)) command = choices(service, initial, proposed).find(a => a.id === command.actionId).command;
   let state = initial, outcome = { type: command.type, text: command.description || 'Действие разрешено.' };
-  if(initial.party.members.find(m=>m.id===initial.party.heroId).hp.current<=0&&!['narrative','death_save','action'].includes(command.type))bad('Герой не может действовать при 0 HP. Нужна помощь или спасбросок от смерти.');
+  if(initial.party.members.find(m=>m.id===initial.party.heroId).hp.current<=0&&!['narrative','death_save','recover_stable','action'].includes(command.type))bad('Герой не может действовать при 0 HP. Нужна помощь или спасбросок от смерти.');
   if (initial.combat && ['travel', 'talk', 'check', 'narrative', 'inspect', 'accept_quest', 'combat'].includes(command.type)) bad('Сейчас идёт бой. Выберите действие текущего хода.');
   if (command.type === 'travel') {
     const location = proposed.locations.find(l => l.id === proposed.currentLocationId), next = proposed.locations.find(l => l.id === command.locationId);
     if (!next || !location.connectsTo.includes(next.id)) bad('До этого места пока нет известного маршрута.');
-    proposed.currentLocationId = next.id; next.visited = true; proposed.hours += 1;
+    proposed.currentLocationId = next.id; next.visited = true;
     state.openWorld.location = next.name;
     outcome.text = `Герой дошёл до ${next.name}.`; model.processQuestEvent(proposed, model.addEvent(proposed, 'visit', next.id, outcome.text));
   } else if (command.type === 'talk') {
@@ -196,6 +213,15 @@ async function perform(body, { seed } = {}) {
     const monsters = plan.monsters.map((m, i) => ({ ...m, name: command.enemyName ? `${command.enemyName}${i ? ` ${i + 1}` : ''}` : m.name }));
     const started = await service.startGeneratedEncounter(state.campaign.id, monsters, seed); state = started.state;state.flags.ui_last_combat_outcome='ongoing';
     proposed.activeEncounterId = crypto.randomUUID(); outcome.text = 'Начался бой. Инициатива и действия определены правилами.'; model.addEvent(proposed, 'combat', proposed.activeEncounterId, outcome.text);
+  } else if (command.type === 'recover_stable') {
+    const hero=state.party.members.find(m=>m.id===state.party.heroId);
+    if(state.combat||hero.hp.current!==0||!hero.deathSaves?.stable||hero.deathSaves?.dead||hero.conditions.includes('dead'))bad('Восстановление доступно только стабильному герою вне боя.');
+    const core=await import('../vendor/dnd-core/dist/engine.mjs');
+    const roll=core.rollExpression('1d4',{rng:seed===undefined?undefined:new core.SeededRng(seed)});
+    hero.hp.current=1;hero.conditions=hero.conditions.filter(c=>!['dying','unconscious'].includes(c));hero.deathSaves=undefined;
+    state.rollLog.push({id:crypto.randomUUID(),ts:new Date().toISOString(),actorId:hero.id,label:'stable_recovery',result:roll});
+    outcome={type:'recovery',recoveryHours:roll.total,text:`Герой приходит в сознание спустя ${roll.total} ч. Восстановлен 1 HP.`};
+    model.addEvent(proposed,'recovery',hero.id,outcome.text);
   } else if (command.type === 'narrative') { model.addEvent(proposed, 'story', proposed.currentLocationId, input || outcome.text); }
   else {
     const hadCombat = Boolean(state.combat);
@@ -204,10 +230,16 @@ async function perform(body, { seed } = {}) {
     const result = await srd.command({ ...command, campaignId: state.campaign.id }, { seed }); state = service.loadCampaign(state.campaign.id);
     outcome = { type: command.type, text: result.resolution.message, mechanical: result.resolution };
     if (!result.resolution.ok && state.flags.ui_last_combat_outcome!=='defeat') bad(result.resolution.message);
-    if (command.type === 'rest') { proposed.hours += command.kind === 'long' ? 8 : 1; model.addEvent(proposed, 'rest', proposed.currentLocationId, command.kind === 'long' ? 'Долгий отдых завершён.' : 'Короткий отдых завершён.'); }
+    if(['action','death_save','use_item','equip_item','cast_spell','cast_created_spell'].includes(command.type))model.addEvent(proposed,command.type,command.spellId||command.itemId||command.actionId||state.party.heroId,outcome.text);
+    if (command.type === 'rest') { model.addEvent(proposed, 'rest', proposed.currentLocationId, command.kind === 'long' ? 'Долгий отдых завершён.' : 'Короткий отдых завершён.'); }
     if(hadCombat&&!state.combat){const result=state.flags.ui_last_combat_outcome;if(result==='victory')model.processQuestEvent(proposed,model.addEvent(proposed,'victory',proposed.currentLocationId,'Победа в бою.'));else model.addEvent(proposed,result||'combat_end',proposed.currentLocationId,result==='defeat'?'Бой закончен поражением.':'Бой закончен без подтверждённой победы.');}
   }
-  proposed.turn += 1; proposed.revision += 1; proposed.hours += 1 / 6;
+  const elapsed=elapsedSeconds(command,beforeCombat,state.combat,outcome);
+  if(!beforeCombat) {
+    const expired=await expireExplorationEffects(state,previousEffects,elapsed);
+    if(expired.length)model.addEvent(proposed,'effects_expired',proposed.currentLocationId,`Завершились эффекты: ${expired.join(', ')}.`);
+  }
+  proposed.revision += 1; proposed.hours += elapsed / 3600;
   let elapsedDays=0;while (proposed.hours >= 24) { proposed.hours -= 24; proposed.day += 1; elapsedDays+=1; }
   state=await survivalDay(state,proposed,elapsedDays);
   if (input) model.addMessage(proposed, 'player', state.party.members.find(p => p.id === state.party.heroId).name, input);
@@ -224,6 +256,21 @@ async function perform(body, { seed } = {}) {
   return publicView(service, state, proposed);
 }
 async function retryNarration(id) { const { service, state, adventure } = await loaded(id); if (!adventure.pendingNarration) return publicView(service, state, adventure); await narrate(service, state, adventure, adventure.pendingNarration.outcome, adventure.pendingNarration.input); adventure.revision += 1; const latest = service.loadCampaign(state.campaign.id); await save(service, latest, adventure, 'narration_retry'); return publicView(service, latest, adventure); }
-async function spellDraft(id, idea) { const { state, adventure } = await loaded(id); if (!state) bad('Создайте приключение.'); const hero = state.party.members.find(m => m.id === state.party.heroId); const draft = await ai.generateStructured('created_spell', { instruction: `Invent an original spell matching the player idea. Return exactly {name,description,level,rangeFeet,cost,target,saveAbility?,durationTurns,concentration,effects}. No id. cost action/bonus_action; target self/creature. level 0-9 must fit the caster current slots. Effects: damage {dice,damageType,halfOnSave?}, healing {dice}, temporary_hp {dice}, condition {condition,repeatSave?}, remove_condition {condition}, armor {amount:1-3}, speed {feet:5-30}, skill_bonus {skill,dice:1d4|1d6}, resistance {damageType}, utility {feature:light|water_breathing|water_walk|see_invisible|spider_climb}. Finite duration 0-10 turns; concentration for sustained effects. Harm requires saveAbility str/dex/con/int/wis/cha. Dice modest for level; no healing cantrip, no arbitrary numeric state. ${adventure.language === 'en' ? 'English' : 'Russian'} flavor. Keep combination balanced.`, idea: String(idea).slice(0, 1000), hero: { level: hero.level, slots: hero.spellcasting?.slots }, world: adventure.worldIdea.slice(0, 500) }, () => ({ name: 'Искра намерения', description: String(idea || 'Маленькая искра света').slice(0, 1200), level: 0, rangeFeet: 60, saveAbility: 'dex', effects: [{ type: 'damage', dice: '1d6', damageType: 'force' }] })); return validateSpell(draft); }
+async function ask(body) {
+  const {service,state,adventure}=await loaded(body.campaignId);if(!state)bad('Сначала создайте приключение.');
+  if(typeof body.operationId!=='string'||!body.operationId||body.operationId.length>100)bad('Нужен идентификатор сообщения.');
+  if(adventure.appliedOperations.some(op=>op.id===body.operationId))return {...await publicView(service,state,adventure),replayed:true};
+  if(body.expectedRevision!==adventure.revision)bad('Кампания уже изменилась. Обновите сцену.',409);
+  const input=typeof body.input==='string'?body.input.trim().slice(0,2000):'';if(!input)bad('Напишите вопрос мастеру.');
+  const proposed=structuredClone(adventure),pending=proposed.pendingNarration;
+  model.addMessage(proposed,'player',state.party.members.find(m=>m.id===state.party.heroId).name,input);
+  try {
+    await narrate(service,state,proposed,{type:'question',text:'The player asks the game master a question. No in-world action has occurred. Answer from the supplied state and recollections, or clearly frame a possibility as a suggestion. Do not roll dice, advance time, start events, move the player or add world developments.'},input,{questionOnly:true});
+  }catch(error){if(proposed.usage){adventure.usage=proposed.usage;await save(service,state,adventure,'question_usage');}throw error;}
+  proposed.pendingNarration=pending;proposed.revision+=1;
+  proposed.appliedOperations.push({id:body.operationId,revision:proposed.revision});proposed.appliedOperations=proposed.appliedOperations.slice(-500);
+  await save(service,state,proposed,'master_question');return publicView(service,state,proposed);
+}
+async function spellDraft(id, idea) { const { service, state, adventure } = await loaded(id); if (!state) bad('Создайте приключение.'); const hero = state.party.members.find(m => m.id === state.party.heroId); const draft = await measuredAi.generate(adventure,'created_spell', { instruction: `Invent an original spell matching the player idea. Return exactly {name,description,level,rangeFeet,cost,target,saveAbility?,durationTurns,concentration,effects}. No id. cost action/bonus_action; target self/creature. level 0-9 must fit the caster current slots. Effects: damage {dice,damageType,halfOnSave?}, healing {dice}, temporary_hp {dice}, condition {condition,repeatSave?}, remove_condition {condition}, armor {amount:1-3}, speed {feet:5-30}, skill_bonus {skill,dice:1d4|1d6}, resistance {damageType}, utility {feature:light|water_breathing|water_walk|see_invisible|spider_climb}. Finite duration 0-10 turns; concentration for sustained effects. Harm requires saveAbility str/dex/con/int/wis/cha. Dice modest for level; no healing cantrip, no arbitrary numeric state. ${adventure.language === 'en' ? 'English' : 'Russian'} flavor. Keep combination balanced.`, idea: String(idea).slice(0, 1000), hero: { level: hero.level, slots: hero.spellcasting?.slots }, world: adventure.worldIdea.slice(0, 500) }, () => ({ name: 'Искра намерения', description: String(idea || 'Маленькая искра света').slice(0, 1200), level: 0, rangeFeet: 60, saveAbility: 'dex', effects: [{ type: 'damage', dice: '1d6', damageType: 'force' }] })); await save(service,state,adventure,'spell_draft_usage'); return validateSpell(draft); }
 async function learnSpell(id, draft) { const checked = validateSpell(Object.fromEntries(Object.entries(draft).filter(([key]) => !['id', 'sourceEventId'].includes(key)))); if (!checked.ok) return checked; const { service, state, adventure } = await loaded(id); if (!state) bad('Нет приключения.'); if (!state.party.members.find(m => m.id === state.party.heroId).spellcasting) bad('У этого архетипа пока нет ресурса для магии.'); adventure.createdSpells.push({ ...checked.spell, sourceEventId: `study-${crypto.randomUUID()}` }); adventure.revision += 1; model.addEvent(adventure, 'spell_learned', checked.spell.id, `Создано заклинание: ${checked.spell.name}.`); await save(service, state, adventure, 'spell_created'); return publicView(service, state, adventure); }
-module.exports = { getView, setup, create, select, perform, retryNarration, spellDraft, learnSpell, loaded, save, meta, publicView, choices };
+module.exports = { getView, setup, create, select, perform, ask, retryNarration, spellDraft, learnSpell, loaded, save, meta, publicView, choices };

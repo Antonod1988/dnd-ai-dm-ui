@@ -27,7 +27,10 @@ async function triggerSceneChecks(service, campaignId, { sceneId, trigger, subje
   let state = service.loadCampaign(campaignId);
   if (state.combat) throw new Error('Эта проверка предназначена для внебоевой сцены.');
   const initial = read(state);
-  const matching = initial.definitions.filter(d => d.sceneId === sceneId && d.trigger === trigger && (!d.subjectId || d.subjectId === subjectId));
+  const matches = initial.definitions.filter(d => d.sceneId === sceneId && d.trigger === trigger && (!d.subjectId || d.subjectId === subjectId));
+  const attempted=new Set(initial.attempts.map(a=>a.key));
+  // Already attempted checks must not occupy the three-roll budget forever.
+  const matching=[...matches.filter(d=>!attempted.has(`${d.id}:${state.party.heroId}`)),...matches.filter(d=>attempted.has(`${d.id}:${state.party.heroId}`))];
   const results = [];
   for (const check of matching.slice(0, 3)) {
     state = service.loadCampaign(campaignId);

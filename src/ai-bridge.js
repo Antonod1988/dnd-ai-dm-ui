@@ -102,6 +102,10 @@ async function generateStructured(type, promptPayload, fallbackFactory) {
   try {
     const text = await callConfiguredProvider(config, prompt, type);
     const draft = parseJsonLoose(text);
+    if(type==='master_question'&&(!draft||typeof draft==='string')) {
+      const answer=(typeof draft==='string'?draft:String(text||'')).trim();
+      if(answer&&answer.length<=6000&&!/^[\[{]|^```/.test(answer))return {narration:answer};
+    }
     if ((!draft || typeof draft !== 'object' || Array.isArray(draft)) && config.provider === 'chatgpt') throw new Error('ChatGPT вернул некорректные данные. Повторите запрос.');
     return draft || fallbackFactory();
   } catch (error) {

@@ -12,4 +12,5 @@ export { createGeneratedInventoryItem } from './src/core/homebrew/generated-cont
 export { setExhaustionLevel } from './src/core/rules/conditions.js';
 export { calculateSrdArmorClass } from './src/core/rulesets/srd5e2014/character-builder.js';
 export { modeledInventoryUseEffect } from './src/core/content/items.js';
-export { sideDefeated } from './src/core/rules/combat.js';
+export { sideDefeated, effectiveArmorClass } from './src/core/rules/combat.js';
+export { cleanRemovedEffectConditions } from './src/core/rules/effects.js';

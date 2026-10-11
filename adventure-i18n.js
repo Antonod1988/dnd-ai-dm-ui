@@ -43,7 +43,13 @@ const englishLabels = {
   'Компаньоны могут обсудить текущую сцену. Ты решаешь, как поступить.':'Characters can discuss the scene. The decision stays with you.','Обсуждение идёт. Можно вмешаться перед следующей репликой.':'Discussion in progress. You can intervene before the next speaker.','Персонажи ждут твоего решения.':'The characters await your decision.','Ты вмешался. Остальные запланированные реплики отменены.':'You intervened. The remaining planned lines were cancelled.',
   'Принять':'Accept','Отклонить':'Reject','Принято':'Accepted','Отклонено':'Rejected','Отозвано после вмешательства':'Withdrawn after intervention','Персонажи собираются с мыслями…':'The characters gather their thoughts…','Обновляю обсуждение…':'Updating the discussion…',
   'Мастер готовит ответ…':'The game master is responding…','Рождается новый мир…':'A new world is taking shape…','Мастер создаёт первую сцену и её обитателей…':'The game master is creating the opening scene and its inhabitants…','Новое приключение — предыдущие кампании сохранены':'New adventure — previous campaigns are saved',
-  'Мастер подбирает эффект и цену заклинания…':'Designing the spell effect and cost…','Предложение готово. Проверь эффект перед добавлением.':'Draft ready. Review the effect before learning it.','Заклинание добавлено в книгу героя.':'Spell added to your spellbook.'
+  'Мастер подбирает эффект и цену заклинания…':'Designing the spell effect and cost…','Предложение готово. Проверь эффект перед добавлением.':'Draft ready. Review the effect before learning it.','Заклинание добавлено в книгу героя.':'Spell added to your spellbook.',
+  'Спасбросок от смерти':'Death saving throw','Дождаться возвращения в сознание':'Wait to regain consciousness','Возвращение в сознание':'Regaining consciousness','Герой погиб. История и журнал сохранены.':'Your hero has died. The story and journal are saved.','Герой стабилен, но без сознания. Можно дождаться восстановления.':'Your hero is stable but unconscious. You can wait to recover.',
+  'Что важно помнить?':'What should we remember?','Обещание, цель героя, подозрение или важное имя…':'A promise, your hero’s goal, a suspicion, or an important name…','Закрепить для мастера':'Pin for the game master','Сохранить запись':'Save note','Мои записи':'My notes','Показать ещё записи':'Show more entries','Память мастера':'Game master memory','Запись игрока':'Player note','Закрепить':'Pin','Открепить':'Unpin','Запись сохранена.':'Note saved.','Сохраняю запись…':'Saving your note…','Здесь можно хранить цели, обещания и свои догадки.':'Keep your goals, promises, and hypotheses here.',
+  'Полная история хранится локально. Мастер получает компактную подборку состояния, задач и воспоминаний.':'The full history stays local. The game master receives a compact selection of state, quests, and recollections.','Записей в журнале':'Journal entries','Сообщений в архиве':'Archived messages','Текущий контекст':'Current context','символов':'characters','Показано записей':'Entries shown',
+  'Учтённые AI-запросы':'Recorded AI requests','Входные токены':'Input tokens','Выходные токены':'Output tokens','Из входных в кэше':'Cached input tokens','Счётчики ответов провайдера для этой кампании. Это не остаток лимита аккаунта.':'Provider counters recorded for this campaign; the account’s remaining allowance is separate.',
+  'Цель':'Target','Только герой':'Self only','Существо':'Creature','Длительность':'Duration','раундов':'rounds','Мгновенно':'Instant','Концентрация':'Concentration','Спасбросок':'Saving throw','Лист персонажа →':'Character sheet →','Защита':'Armor','Уровень':'Level','фт.':'ft.','действие':'action','бонусное действие':'bonus action',
+  'Ослеплён':'Blinded','Очарован':'Charmed','Испуган':'Frightened','Отравлен':'Poisoned','Сбит с ног':'Prone','Опутан':'Restrained','Оглушён':'Stunned','Парализован':'Paralyzed','Без сознания':'Unconscious','При смерти':'Dying','Мёртв':'Dead','Истощение':'Exhaustion','Режим сообщения':'Message mode','Вопрос мастеру':'Ask the game master','Спроси о мире, правилах или прошлых событиях…':'Ask about the world, rules, or past events…'
 };
 function T(value) {
   const text = String(value ?? ''); if (uiLanguage !== 'en') return text;
@@ -53,7 +59,7 @@ function T(value) {
     [/^Ячейки (\d+) уровня$/, 'Level $1 slots'], [/^Контекст мастера: ([\d\s,]+) символов$/, 'GM context: $1 characters'],
     [/^Еда: (\d+) дн\. · Вода: (\d+) дн\.$/, 'Food: $1 days · Water: $2 days'],
     [/^Знакомство: (\d+) · Доверие: (-?\d+)$/, 'Familiarity: $1 · Trust: $2'], [/^Поговорить: (.+)$/, 'Talk: $1'], [/^Пойти: (.+)$/, 'Travel: $1'], [/^Взять: (.+)$/, 'Pick up: $1'],
-    [/^Раунд (\d+)$/, 'Round $1'], [/^Действие (.) · Бонус (.) · (\d+) фт\.$/, 'Action $1 · Bonus $2 · $3 ft.']
+    [/^Раунд (\d+)$/, 'Round $1'], [/^Действие (.) · Бонус (.) · (\d+) фт\.$/, 'Action $1 · Bonus $2 · $3 ft.'], [/^При смерти · успехи (\d)\/3 · неудачи (\d)\/3$/, 'Dying · successes $1/3 · failures $2/3']
   ];
   for (const [pattern, replacement] of patterns) if (pattern.test(trimmed)) return text.replace(trimmed, trimmed.replace(pattern, replacement));
   return text;
@@ -62,7 +68,7 @@ function localizeUi(root = document.body) {
   if (uiLanguage !== 'en') return;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   for (let node; (node = walker.nextNode());) {
-    if (['SCRIPT','STYLE'].includes(node.parentElement?.tagName) || node.parentElement?.closest('.message p,.world-card h3,.quest-card h3,#heroName,#worldSubtitle,#sceneTitle,#sceneDescription,.map-node')) continue;
+    if (['SCRIPT','STYLE'].includes(node.parentElement?.tagName) || node.parentElement?.closest('.message p,.world-card h3,.quest-card h3,#heroName,#worldSubtitle,#sceneTitle,#sceneDescription,.map-node,#notesList p,#factsList p')) continue;
     const translated = T(node.nodeValue); if (translated !== node.nodeValue) node.nodeValue = translated;
   }
   root.querySelectorAll('[aria-label],[placeholder]').forEach(element => {

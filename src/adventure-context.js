@@ -1,23 +1,69 @@
-const { buildContext, contextMetrics } = require('./context-memory');
-function contextFor(state, adventure, query = '') {
-  const location = adventure.locations.find(l => l.id === adventure.currentLocationId);
-  const relevant = buildContext({
-    scene: { id: location.id, title: location.name, summary: location.description, location: location.name },
-    facts: [...state.facts].reverse(), journal: adventure.journal,
-    quests: adventure.quests, allies: adventure.npcs.filter(n => n.locationId === location.id).map(n => ({ ...n, relationship: `доверие ${n.trust}, знакомство ${n.familiarity}` })),
-    enemies: state.combat?.participants.filter(p => p.kind === 'enemy').map(p => ({ id: p.id, name: p.name, hp: p.hp.current, status: p.conditions.join(', ') })) || [],
-    messages: adventure.messages.map(m => ({ ...m, type: m.role === 'player' ? 'player' : 'dm' })),
-    memory: { recentEvents: adventure.events.slice(-4).reverse().map(e => e.text), chronicle: [] }
-  }, query);
-  const hero = state.party.members.find(m => m.id === state.party.heroId);
-  const packet = { language: adventure.language || 'ru', world: { premise: adventure.worldIdea.slice(0, 800), tone: adventure.tone, heroConcept: adventure.heroConcept.slice(0, 500) },
-    hero: { id: hero.id, name: hero.name, level: hero.level, hp: hero.hp, ac: hero.ac, conditions: hero.conditions, abilities: hero.abilities, resources: hero.resources, slots: hero.spellcasting?.slots },
-    nearbyPlaces: adventure.locations.filter(n => location.connectsTo.includes(n.id)).slice(0, 6).map(n => ({ id: n.id, name: n.name })), ...relevant };
-  // Narration never receives unopened lore-check secrets.
-  for (const key of ['recentDialogue', 'activeJournal', 'nearbyPlaces', 'chronicle', 'npcs', 'activeFacts']) {
-    while (JSON.stringify(packet).length > 12000 && packet[key].length > (key === 'activeFacts' ? 2 : 0)) packet[key].pop();
+const {recall,relevance}=require('./context-memory');
+const MAX_CHARS=12000;
+const clip=(text,size=400)=>String(text??'').replace(/\s+/g,' ').trim().slice(0,size);
+
+function excerpt(record,query,scene,size=500) {
+  const text=String(record.text||record.body||record.summary||'');
+  if(text.length<=size)return clip(text,size);
+  let best=text.slice(0,size),score=-1;
+  for(let offset=0;offset<text.length;offset+=size-100) {
+    const candidate=text.slice(offset,offset+size),next=relevance({text:candidate},query,scene);
+    if(next>score){best=candidate;score=next;}
   }
-  const chars = JSON.stringify(packet).length;
-  return { packet, metrics: { ...contextMetrics(packet), chars, maxChars: 12000 } };
+  return clip(best,size);
 }
-module.exports = { contextFor };
+
+function contextFor(state,adventure,query='') {
+  const location=adventure.locations.find(l=>l.id===adventure.currentLocationId);
+  const scene={id:location.id,title:clip(location.name,140),location:clip(location.name,140),summary:clip(location.description,650)};
+  const hero=state.party.members.find(m=>m.id===state.party.heroId);
+  const pending=adventure.quests.filter(q=>['active','accepted','offered'].includes(q.status));
+  const ranked=pending.map((q,index)=>({q,index,score:relevance(q,query,scene)*8+(q.status==='active'?12:0)}))
+    .sort((a,b)=>b.score-a.score||b.index-a.index).map(({q})=>q);
+  const pinnedIds=new Set(adventure.pinnedFactIds||[]);
+  const bookmarks=[...(adventure.notes||[]).filter(n=>n.pinned).map(n=>({...n,kind:'player_note'})),
+    ...state.facts.filter(f=>f.pinned||pinnedIds.has(f.id)).map(f=>({...f,kind:'confirmed_fact'}))];
+  const packet={version:2,language:adventure.language||'ru',
+    world:{premise:clip(adventure.worldIdea,1200),tone:clip(adventure.tone,100),heroConcept:clip(adventure.heroConcept,800)},
+    hero:{id:hero.id,name:clip(hero.name,80),className:clip(hero.className,100),ancestry:clip(hero.ancestry,80),level:hero.level,hp:hero.hp,ac:hero.ac+(hero.activeEffects||[]).reduce((sum,e)=>sum+(e.armorClassBonus||0),0),
+      conditions:hero.conditions,abilities:hero.abilities,skills:hero.skillProficiencies,resources:hero.resources.slice(0,12),slots:hero.spellcasting?.slots,
+      effects:(hero.activeEffects||[]).slice(0,6).map(e=>({name:clip(e.label,80),remainingRounds:e.remainingSourceTurnEnds??e.remainingSourceTurnStarts}))},
+    time:{day:adventure.day,hours:adventure.hours},scene,
+    survival:adventure.survival.enabled?{foodDays:adventure.survival.foodDays,waterDays:adventure.survival.waterDays,hungerDays:adventure.survival.hungerDays}:undefined,
+    combat:state.combat?{round:state.combat.round,actorId:state.combat.participants[state.combat.turnIndex]?.id,turnBudget:state.combat.turnBudget,
+      participants:state.combat.participants.slice(0,10).map(p=>({id:p.id,name:clip(p.name,80),kind:p.kind,hp:p.hp,conditions:p.conditions}))}:undefined,
+    bookmarks:[],quests:[],questIndex:[],questHistory:[],activeFacts:[],recollections:[],npcs:[],inventory:[],createdSpells:[],nearbyPlaces:[],recentDialogue:[],recentEvents:[],
+    omitted:{quests:pending.length,facts:state.facts.length,notes:(adventure.notes||[]).length,archive:(adventure.archive||[]).length}};
+  const budgets={bookmarks:2800,quests:3200,questIndex:1400,questHistory:1000,activeFacts:2000,recollections:2000,npcs:1200,inventory:900,createdSpells:1400,nearbyPlaces:1000,recentDialogue:1200,recentEvents:1000};
+  const append=(key,value)=>{
+    packet[key].push(value);
+    if(JSON.stringify(packet[key]).length>budgets[key]||JSON.stringify(packet).length>MAX_CHARS){packet[key].pop();return false;}
+    return true;
+  };
+  // Bookmarks and relevant active objectives get space before optional prose.
+  for(const note of recall(bookmarks,query,scene,4))append('bookmarks',{id:note.id,kind:note.kind,text:clip(note.text,650)});
+  for(const q of ranked.slice(0,6))append('quests',{id:q.id,title:clip(q.title,100),status:q.status,summary:clip(q.summary,220),
+    objectives:q.objectives.map(o=>({id:o.id,kind:o.kind,targetId:o.targetId,text:clip(o.text,120),completed:o.completed,evidenceEventId:o.evidenceEventId}))});
+  const questTargets=new Set(packet.quests.flatMap(q=>q.objectives.map(o=>o.targetId)));
+  const people=adventure.npcs.map((n,index)=>({n,index,score:relevance({...n,text:`${n.role} ${n.personality}`},query,scene)*5+(n.locationId===location.id?5:0)+(questTargets.has(n.id)?3:0)})).sort((a,b)=>b.score-a.score||a.index-b.index);
+  for(const {n} of people.slice(0,4))append('npcs',{id:n.id,name:clip(n.name,80),role:clip(n.role,140),locationId:n.locationId,location:clip(adventure.locations.find(l=>l.id===n.locationId)?.name,140),trust:n.trust,familiarity:n.familiarity});
+  const recalled=recall(adventure.archive||[],query,scene,4).filter(m=>query.trim()&&relevance(m,query,scene)>0);
+  for(const m of recalled)append('recollections',{id:m.id,turn:m.turn,speaker:clip(m.author,80),text:excerpt(m,query,scene)});
+  for(const q of recall(adventure.quests.filter(q=>['completed','failed'].includes(q.status)),query,scene,2).filter(q=>relevance(q,query,scene)>0))append('questHistory',{id:q.id,title:clip(q.title,100),status:q.status,rewardClaimed:q.rewardClaimed,summary:clip(q.summary,220)});
+  for(const f of recall([...state.facts].reverse().filter(f=>f.id!=='hero_identity'),query,scene,8).filter(f=>!bookmarks.some(b=>b.id===f.id)))append('activeFacts',{id:f.id,text:clip(f.text,650),confidence:f.confidence||'confirmed'});
+  for(const note of recall((adventure.notes||[]).filter(n=>!n.pinned),query,scene,3))append('recollections',{id:note.id,kind:'player_note',text:clip(note.text,650)});
+  for(const q of ranked.filter(q=>!packet.quests.some(s=>s.id===q.id)).slice(0,20))append('questIndex',{id:q.id,title:clip(q.title,80),status:q.status,next:clip(q.objectives.find(o=>!o.completed)?.text,100)});
+  for(const spell of recall(adventure.createdSpells||[],query,scene,6))append('createdSpells',{id:spell.id,name:clip(spell.name,100),level:spell.level,cost:spell.cost,target:spell.target,effects:spell.effects});
+  for(const item of recall(hero.inventory.map(i=>({...i,text:i.description})),query,scene,8))append('inventory',{id:item.itemId,name:clip(item.name,100),quantity:item.quantity});
+  for(const place of adventure.locations.filter(l=>location.connectsTo.includes(l.id)))append('nearbyPlaces',{id:place.id,name:clip(place.name,140)});
+  for(const message of adventure.messages.slice(-4))append('recentDialogue',{role:message.role,speaker:clip(message.author,80),text:clip(message.text,400)});
+  for(const event of adventure.events.slice(-4).reverse())append('recentEvents',{turn:event.turn,kind:event.kind,text:clip(event.text,280)});
+  packet.omitted.quests=pending.length-packet.quests.length-packet.questIndex.length;
+  packet.omitted.facts=Math.max(0,state.facts.length-packet.activeFacts.length-packet.bookmarks.filter(b=>b.kind==='confirmed_fact').length);
+  packet.omitted.notes=Math.max(0,(adventure.notes||[]).length-packet.bookmarks.filter(b=>b.kind==='player_note').length-packet.recollections.filter(b=>b.kind==='player_note').length);
+  const chars=JSON.stringify(packet).length;
+  return {packet,metrics:{chars,maxChars:MAX_CHARS,approximateTokens:Math.ceil(chars/3),estimate:true,
+    archivedMessages:(adventure.archive||[]).length,journalEntries:adventure.journal.length,selectedQuests:packet.quests.length+packet.questIndex.length,
+    activeQuests:pending.filter(q=>q.status==='active').length,recalledMessages:packet.recollections.length}};
+}
+module.exports={contextFor,excerpt,MAX_CHARS};
