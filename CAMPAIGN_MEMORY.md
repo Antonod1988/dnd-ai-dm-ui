@@ -59,3 +59,9 @@ Physical props and NPC bodies persist separately; context selects relevant nearb
 ## Persistent NPC battle aftermath — 2026-10-12
 
 Exact NPC HP/conditions persist when combat ends, including a killing blow that previously would lose enemy participants. Compact NPC context includes the declared profile and actual stored body. Separate NPC-combat start/end events do not masquerade as a location-victory quest proof. The existing total context bound stays 12,000 characters. Timed NPC effects expire by world time; hero rest never resets NPC wounds.
+
+## Social claims and attempt memory — 2026-10-12
+
+An archived player line now retains role=player and confidence=player_claim when recalled. Player notes remain notes; a successful deception check does not add the statement as a confirmed fact. Social events separately store stated speech and actual check/payment/attitude changes. Canonical NPC episode locks are independent of the bounded200-row social history, so old attempts do not become available merely because history rotated.
+
+Context includes compact actual attitude, outstanding liability, claimable broken-prop IDs, available approaches and last outcome. Hostile/unavailable merchant offers use the same gate in model context as UI/commands. The total packet remains12,000 characters. Static environment/social rules are sent once in their payload fields, not duplicated inside the instruction. Live limits/counts are in VERIFICATION.md.

@@ -132,14 +132,14 @@ function aggression(adventure, target, sourceId, event) {
   const data = store(adventure), npc = nearbyNpc(adventure, target.sourceCharacterId || target.id);
   const targetId = npc?.id || target.id;
   if (!data.consequences.some(c => c.sourceId === sourceId && c.targetId === targetId)) {
-    data.consequences.push({ id: `${sourceId}:aggression:${targetId}`, sourceId, actorId: event.actorId, targetId, locationId: adventure.currentLocationId, kind: 'attempted_aggression', witnessResponse: 'local_alarm', damage: event.damage });
+    data.consequences.push({ id: `${sourceId}:aggression:${targetId}`, sourceId, actorId: event.actorId, targetId, locationId: adventure.currentLocationId, kind: 'attempted_aggression', witnessResponse: 'local_alarm', damage: event.damage, hpDamage:event.hpDamage });
     data.consequences = data.consequences.slice(-limits.consequences);
     if (npc) { npc.trust = Math.max(-100, (npc.trust || 0) - 20); npc.disposition = 'hostile'; }
   }
   if (npc) {
     let record = data.npcStates.find(n => n.npcId === npc.id);
     if (!record) { record = { npcId: npc.id, profile: 'combat_bound', disposition: 'hostile', body: structuredClone(target) }; data.npcStates.push(record); }
-    record.body = structuredClone(target); record.disposition = 'hostile';
+    require('./npc-encounters').updateBody(record,target); record.disposition = 'hostile';
   }
 }
 
@@ -202,12 +202,13 @@ async function execute(state, adventure, plan, rules, { dryRun, seed }) {
         if (actor.attacks.some(a => a.id === attack.id)) fail('attack_collision', 'Идентификатор этой атаки уже занят.');
         let combat = state.combat || { id: `interaction_${sourceId}`, round: 1, turnIndex: 0, participants: [actor, target], log: [], environment: { id: adventure.currentLocationId, name: 'Scene interaction', description: '', victory: [], defeat: [] } };
         combat = { ...combat, participants: combat.participants.map(p => p.id === actor.id ? { ...p, attacks: [...p.attacks, attack] } : p) };
+        const beforeHp=target.hp.current;
         const resolved = rules.resolveAttack(combat, actor.id, target.id, attack.id, rng, state.campaign.rules);
         resolved.combat.participants = resolved.combat.participants.map(p => p.id === actor.id ? { ...p, attacks: p.attacks.filter(a => a.id !== attack.id) } : p);
         const wasCombat = Boolean(state.combat);
         state = rules.syncPartyFromCombat({ ...state, combat: resolved.combat });
         if (!wasCombat) delete state.combat;
-        const event = { type: step.type, propId: prop.id, actorId: hero.id, targetId: target.id, hit: resolved.resolution.hit, damage: resolved.resolution.damage, attack, resolution: resolved.resolution };
+        const event = { type: step.type, propId: prop.id, actorId: hero.id, targetId: target.id, hit: resolved.resolution.hit, damage: resolved.resolution.damage, hpDamage:Math.max(0,beforeHp-resolved.resolution.target.hp.current), attack, resolution: resolved.resolution };
         events.push(event);
         state.rollLog = [...(state.rollLog || []), { id: crypto.randomUUID(), ts: new Date().toISOString(), actorId: hero.id, label: `Improvised: ${prop.name}`, result: resolved.resolution.attackRoll }];
         aggression(adventure, resolved.resolution.target, sourceId, event);

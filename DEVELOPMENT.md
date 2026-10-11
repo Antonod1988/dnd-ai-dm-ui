@@ -127,3 +127,13 @@ Named NPCs now enter real initiative with their permanent body. Fixed role profi
 Civilian conflict grants no fabricated generated XP/treasure or unrelated location quest victory. Retreat explicitly records its outcome. Opening automatic terminal actions preserve actual bodies; pending death saves retain combat. NPC Sleep effects expire with exploration time without healing wounds. Fled/dead/incapacitated actors do not speak or restart combat.
 
 199 tests, syntax70 and isolated smoke pass. New controller proofs cover sword/Magic Missile killing blows, real Sleep, retreat with stale victory, reopen and new distinct generated combat after a named encounter. Live model testing caught an AI-selected fight action being normalized too late: canonical public-action resolution now precedes operation preflight, with that exact regression covered. No state numbers or seeds were substituted in the live campaign. Details and remaining scope: NPC_COMBAT.md.
+
+### Social mechanics checkpoint — 2026-10-12
+
+Social plans resolve real CHA checks with server DCs, consume actual inspiration/effects and preserve failures. Deescalation synchronizes NPC/body attitudes; rapport and coercion differ. Real payments settle recorded damage once, credit NPC/merchant cash and do not heal, repair, award XP, restock or promise forgiveness. Shared merchant availability now also filters model context.
+
+NPC canonical episode locks survive bounded history rotation and wording/method farming. Monotonic actual HP injury history tracks later wounds after healing, including old paid-record migration; temporary HP absorption is not a wound. An explicit player acknowledgment may compensate a specific local broken unowned prop without inventing historical ownership. It requires exact prop IDs/amount and cannot be paid to another NPC again.
+
+Archived player speech retains its role/confidence; generic social checks cannot manufacture confirmed successFact. Compact relationship records remain under the context limit, and duplicated environment/social instructions were removed. NPC cards have collapsed goal/method/speech/payment tools and an exact check result. Available ordinary relationship actions can be proposed by scene voices and accepted through the same rules path.
+
+220 tests, syntax73 and isolated smoke pass before final publication; new fixtures remain isolated. Live Luna: actual mug miss caused hostility, two acknowledged coins transferred20→18 without forgiveness, then Persuasion13/DC17 failed. Rewording via the NPC form was refused with no extra roll/time/AI. See SOCIAL_MECHANICS.md and VERIFICATION.md for limits; live successful deescalation is not yet separately proven.

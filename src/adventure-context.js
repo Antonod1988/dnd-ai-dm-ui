@@ -1,4 +1,5 @@
 const {recall,relevance}=require('./context-memory');
+const social=require('./adventure-social');
 const MAX_CHARS=12000;
 const clip=(text,size=400)=>String(text??'').replace(/\s+/g,' ').trim().slice(0,size);
 
@@ -52,12 +53,12 @@ function contextFor(state,adventure,query='') {
   const access=require('./adventure-access');
   for(const raw of adventure.items.filter(i=>!i.collected&&i.locationId===location.id).slice(0,6)){const i=access.publicItem(state,adventure,raw);append('objects',{id:i.id,name:clip(i.name,100),description:clip(i.description,180),available:i.accessState.available,access:i.accessState});}
   const people=adventure.npcs.map((n,index)=>({n,index,score:relevance({...n,text:`${n.role} ${n.personality}`},query,scene)*5+(n.locationId===location.id?5:0)+(questTargets.has(n.id)?3:0)})).sort((a,b)=>b.score-a.score||a.index-b.index);
-  for(const {n} of people.slice(0,4)){const record=adventure.environment?.npcStates?.find(r=>r.npcId===n.id);append('npcs',{id:n.id,name:clip(n.name,80),role:clip(n.role,140),combatProfile:n.combatProfile||'civilian',locationId:n.locationId,location:clip(adventure.locations.find(l=>l.id===n.locationId)?.name,140),trust:n.trust,familiarity:n.familiarity,disposition:n.disposition||record?.disposition,body:record?{hp:record.body.hp,conditions:record.body.conditions,ac:record.body.ac,profile:record.profile}:undefined});}
+  for(const {n} of people.slice(0,4)){const record=adventure.environment?.npcStates?.find(r=>r.npcId===n.id),relation=social.publicStatus(adventure,n.id);append('npcs',{id:n.id,name:clip(n.name,80),role:clip(n.role,140),combatProfile:n.combatProfile||'civilian',locationId:n.locationId,location:clip(adventure.locations.find(l=>l.id===n.locationId)?.name,140),trust:n.trust,familiarity:n.familiarity,disposition:n.disposition||record?.disposition,relationship:{dueCoins:relation.dueCoins,serious:relation.serious,availableApproaches:relation.availableApproaches,claimableDamage:relation.claimableDamage,lastOutcome:relation.lastOutcome?{goal:relation.lastOutcome.goal,approach:relation.lastOutcome.approach,success:relation.lastOutcome.success,coinsPaid:relation.lastOutcome.coinsPaid,text:clip(relation.lastOutcome.text,180)}:undefined},body:record?{hp:record.body.hp,conditions:record.body.conditions,ac:record.body.ac,profile:record.profile}:undefined});}
   const recalled=recall(adventure.archive||[],query,scene,4).filter(m=>query.trim()&&relevance(m,query,scene)>0);
-  for(const m of recalled)append('recollections',{id:m.id,turn:m.turn,speaker:clip(m.author,80),text:excerpt(m,query,scene)});
+  for(const m of recalled)append('recollections',{id:m.id,turn:m.turn,speaker:clip(m.author,80),role:m.role||'unknown',confidence:m.role==='player'?'player_claim':m.role==='dm'||m.role==='system'?'narrated':'speaker_claim',text:excerpt(m,query,scene)});
   for(const q of recall(adventure.quests.filter(q=>['completed','failed'].includes(q.status)),query,scene,2).filter(q=>relevance(q,query,scene)>0))append('questHistory',{id:q.id,title:clip(q.title,100),status:q.status,rewardClaimed:q.rewardClaimed,summary:clip(q.summary,220)});
   for(const f of recall([...state.facts].reverse().filter(f=>f.id!=='hero_identity'),query,scene,8).filter(f=>!bookmarks.some(b=>b.id===f.id)))append('activeFacts',{id:f.id,text:excerpt(f,query,scene,650),sourceSceneId:f.sourceSceneId,confidence:f.tags?.includes('rumor')?'reported':f.confidence||'confirmed'});
-  for(const note of recall((adventure.notes||[]).filter(n=>!n.pinned),query,scene,3))append('recollections',{id:note.id,kind:'player_note',text:clip(note.text,650)});
+  for(const note of recall((adventure.notes||[]).filter(n=>!n.pinned),query,scene,3))append('recollections',{id:note.id,kind:'player_note',confidence:'player_note',text:clip(note.text,650)});
   const economy=require('./adventure-economy'),commerce=economy.publicEconomy(state,adventure);
   for(const market of commerce.markets.slice(0,3)){
     const offers=market.offers.map((o,index)=>({o,index,score:relevance({...o,text:o.description},query,scene)})).sort((a,b)=>b.score-a.score||a.index-b.index).slice(0,4).map(({o})=>({id:o.id,name:clip(o.name,80),kind:o.kind,price:o.price,stock:o.stock,targetId:o.targetId}));

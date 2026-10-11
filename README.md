@@ -97,3 +97,5 @@ Class progression, combat casting and verification limits: [CLASS_AND_COMBAT.md]
 General physical scene actions and their present limits: [ENVIRONMENT_INTERACTIONS_DESIGN.md](ENVIRONMENT_INTERACTIONS_DESIGN.md). Ordinary noncombat narration can open a multi-speaker scene conversation with interruption, player intervention and accepted/rejected proposals. The story, character/inventory, map and tasks are separate views; journal/party/settlement/art use More.
 
 Persistent NPC battles, fixed profiles and durable wounds: [NPC_COMBAT.md](NPC_COMBAT.md). Their ordinary attacks and catalog spells share initiative/action resources; a civilian conflict does not invent treasure or location-quest rewards.
+
+Social checks, relationships, restitution and the memory of player claims: [SOCIAL_MECHANICS.md](SOCIAL_MECHANICS.md). Speech can change real NPC attitudes; payment and repeated attempts are guarded independently of narration. Detailed relationship controls are collapsed in NPC cards.

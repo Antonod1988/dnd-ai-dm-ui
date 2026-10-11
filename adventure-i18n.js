@@ -1,6 +1,7 @@
 // UI labels are translated locally. Story content is generated in the campaign's language.
 const uiLanguage = new URLSearchParams(location.search).get('lang') === 'en' ? 'en' : 'ru';
 const englishLabels = {
+  'Возмещаю выбранному персонажу':'I acknowledge compensation to this character','Сложность':'Difficulty','Отношения и разговор':'Relationships and conversation','Возмещение ущерба':'Restitution','Цель разговора':'Conversation goal','Уладить конфликт':'Resolve a conflict','Наладить контакт':'Build rapport','Подход':'Approach','Что ты хочешь сказать персонажу?':'What would you like to say to this character?','Передать монеты':'Transfer coins','Попробовать этот подход':'Try this approach','Исход разговора зависит от проверки. Возмещение передаёт настоящие монеты и само по себе не гарантирует прощения.':'The conversation outcome depends on a check. Restitution transfers actual coins and does not guarantee forgiveness.',
   'Герой':'Hero','Ещё':'More','Отряд':'Party','Отряд и персонажи':'Party and characters','Участники приключения и знакомые в этом мире.':'Adventure participants and people in this world.','Участники приключения':'Adventure participants','Знакомые в мире':'People in the world','Герой и снаряжение':'Hero and equipment','Состояние, вещи, магия и броски — отдельно от истории.':'Condition, items, magic and rolls, separate from the story.',
   'Разговор в сцене':'Scene conversation',
   'Вернуться к истории →':'Back to the story →',
@@ -81,7 +82,7 @@ function T(value) {
     [/^Ячейки (\d+) уровня$/, 'Level $1 slots'], [/^Контекст мастера: ([\d\s,]+) символов$/, 'GM context: $1 characters'],
     [/^Пополнить припасы · (\d+) монеты$/, 'Restock supplies · $1 coins'],
     [/^Еда: (\d+) дн\. · Вода: (\d+) дн\.$/, 'Food: $1 days · Water: $2 days'],
-    [/^Знакомство: (\d+) · Доверие: (-?\d+)$/, 'Familiarity: $1 · Trust: $2'], [/^Поговорить: (.+)$/, 'Talk: $1'], [/^Начать бой: (.+)$/, 'Start combat: $1'], [/^Пойти: (.+)$/, 'Travel: $1'], [/^Взять: (.+)$/, 'Pick up: $1'],
+    [/^Знакомство: (\d+) · Доверие: (-?\d+)$/, 'Familiarity: $1 · Trust: $2'], [/^Поговорить: (.+)$/, 'Talk: $1'], [/^Начать бой: (.+)$/, 'Start combat: $1'], [/^Примирение: (.+)$/, 'Reconcile: $1'], [/^Наладить контакт: (.+)$/, 'Build rapport: $1'], [/^Пойти: (.+)$/, 'Travel: $1'], [/^Взять: (.+)$/, 'Pick up: $1'],
     [/^Раунд (\d+)$/, 'Round $1'], [/^Действие (.) · Бонус (.) · (\d+) фт\.$/, 'Action $1 · Bonus $2 · $3 ft.'], [/^При смерти · успехи (\d)\/3 · неудачи (\d)\/3$/, 'Dying · successes $1/3 · failures $2/3']
   ];
   for (const [pattern, replacement] of patterns) if (pattern.test(trimmed)) return text.replace(trimmed, trimmed.replace(pattern, replacement));

@@ -22,6 +22,12 @@ function createBody(npc,rules){
     ai:{preferredAttackRange:profile.attack.range==='melee'?'melee':'ranged',traits:[]}};
 }
 function defaultAttack(npcId){return {id:`npc_unarmed_${npcId}`,name:'Удар кулаком',ability:'str',damageDice:'1',damageType:'bludgeoning',range:'melee',proficient:false,weaponBonus:0,damageBonus:0};}
+function updateBody(record,body){
+  const previous=record.body;
+  const priorTotal=Math.max(0,Number.isFinite(record.injuryHpTotal)?record.injuryHpTotal:(previous?.hp?.max||0)-(previous?.hp?.current||0),record.socialPaidWoundHp||0,record.socialPaidInjuryHp||0);
+  record.injuryHpTotal=priorTotal+Math.max(0,(previous?.hp?.current??body.hp.current)-body.hp.current);
+  record.body=structuredClone(body);
+}
 function incapacitated(body,rules){return body.hp.current<=0||rules.isActionIncapacitated(body)||body.conditions.some(c=>['dead','fled','captured'].includes(c));}
 function snapshot(state,active){
   const raw=state.flags?.ui_bound_npc_combat_snapshot;
@@ -60,7 +66,7 @@ async function start({state,adventure,npcIds,sourceId,seed}){
     // HP, AC, conditions, resources, equipment attacks, or active effects.
     if(!body.attacks?.length)body.attacks=[defaultAttack(npc.id)];
     body.ai||={preferredAttackRange:'melee',traits:[]};
-    record.body=structuredClone(body);record.disposition='hostile';
+    updateBody(record,body);record.disposition='hostile';
     const person=nextAdventure.npcs.find(n=>n.id===npc.id);person.disposition='hostile';
     if(!environment.consequences.some(c=>c.sourceId===sourceId&&c.targetId===npc.id)){
       person.trust=Math.max(-100,(person.trust||0)-20);
@@ -112,7 +118,7 @@ async function sync({state,adventure,combat}){
     if(!body||!body.hp||!Array.isArray(body.conditions))return refusal(state,adventure,'npc_snapshot_invalid','В сохранённом результате отсутствует установленный участник боя.');
     let record=data(nextAdventure).npcStates.find(n=>n.npcId===npcId);
     if(!record){record={npcId,profile:'combat_bound',disposition:'hostile',body:structuredClone(body)};nextAdventure.environment.npcStates.push(record);}
-    record.body=structuredClone(body);record.disposition='hostile';
+    updateBody(record,body);record.disposition='hostile';
     const npc=nextAdventure.npcs.find(n=>n.id===npcId);if(npc)npc.disposition='hostile';
     updated.push(npcId);
   }
@@ -121,4 +127,4 @@ async function sync({state,adventure,combat}){
   delete nextState.flags.ui_bound_npc_combat_snapshot;
   return {ok:true,state:nextState,adventure:nextAdventure,outcome:{type:'npc_sync',updatedNpcIds:updated,combatId:active.combatId,status:nextAdventure.activeNpcEncounter.status}};
 }
-module.exports={start,sync,createBody,profileIds:Object.keys(PROFILES),MAX_NPCS:6,MAX_NPC_STATES,MAX_REPLAYS};
+module.exports={start,sync,createBody,updateBody,profileIds:Object.keys(PROFILES),MAX_NPCS:6,MAX_NPC_STATES,MAX_REPLAYS};

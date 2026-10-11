@@ -93,8 +93,14 @@ function validateMarkets(patch,current){
   }
   if(new Set(definitions.map(m=>m.id)).size!==definitions.length)bad('Duplicate settlement market');
 }
+function merchantAvailable(adventure,market){
+  if(!market.merchantId)return true;
+  const npc=adventure.npcs.find(n=>n.id===market.merchantId&&n.locationId===market.locationId);
+  const record=adventure.environment?.npcStates?.find(n=>n.npcId===market.merchantId);
+  return Boolean(npc&&!npc.hidden&&(npc.disposition||record?.disposition)!=='hostile'&&(!record||(record.body.hp.current>0&&!record.body.conditions.some(c=>['dead','unconscious','incapacitated','stunned','paralyzed','petrified','fled','captured'].includes(c)))));
+}
 function publicEconomy(state,adventure){
-  const hero=heroOf(state),markets=(adventure.economy?.markets||[]).filter(m=>m.locationId===adventure.currentLocationId);
+  const hero=heroOf(state),markets=(adventure.economy?.markets||[]).filter(m=>m.locationId===adventure.currentLocationId&&merchantAvailable(adventure,m));
   return {coins:money(state),markets:markets.map(m=>({id:m.id,name:m.name,locationId:m.locationId,merchantId:m.merchantId,livelihood:m.livelihood,shortage:m.shortage,cash:m.cash,discount:m.discount,
     offers:m.offers.filter(o=>!o.resaleItem||o.stock>0).map(({discovery,itemInput,resaleItem,...o})=>({...o,price:price(m,o),arrivalMinutes:o.kind==='lodging'&&o.targetId?60*routeDistance(adventure.locations,m.locationId,o.targetId):0,mechanics:resaleItem?.mechanics?.use||resaleItem?.mechanics?.equip?.attack||itemInput?.useEffect||itemInput?.weapon,charges:resaleItem?.charges,requiresAttunement:resaleItem?.requiresAttunement||itemInput?.requiresAttunement,rarity:resaleItem?.rarity||itemInput?.rarity})),encounter:m.encounter})),
     sellable:hero.inventory.map(i=>({itemId:i.itemId,name:i.name,quantity:i.quantity,price:saleValue(i),blocked:protectedItem(i,hero,adventure)})),ledger:(adventure.economy?.ledger||[]).slice(-12).reverse(),ledgerTotal:adventure.economy?.ledger?.length||0};
@@ -191,4 +197,4 @@ function advance(adventure){
     model().addEvent(adventure,'market_restock',market.id,adventure.language==='en'?`${market.name}: daily supplies arrived.`:`${market.name}: поступили дневные запасы.`);
   }
 }
-module.exports={marketSchema,commandSchema,validateMarkets,initialize,publicEconomy,apply,advance,money,price,saleValue,protectedItem,recordRulesMoney};
+module.exports={marketSchema,commandSchema,validateMarkets,initialize,publicEconomy,apply,advance,money,price,saleValue,protectedItem,recordRulesMoney,merchantAvailable};
