@@ -17,6 +17,8 @@ The main adventure opts into explicit player turn completion with `ui_player_tur
 
 The economy adapter imports the existing pure long-rest and state ability-check helpers (including bonus consumption and roll-log construction) through `entry.ts`; these exports do not modify their rules behavior. Market finances, stock, services and the optional comfortable-rest bonus are application mechanics in `src/adventure-economy.js`.
 
+The adapter additionally exports existing incapacitation and reaction-spending helpers for original casting and accurate UI action costs. This changes no upstream helper behavior. Catalog combat casts in the application now use the existing chooseAction path rather than the direct castSpell resolver; original spells synchronize spent slot resources into combatants before normal party synchronization.
+
 ## SRD attribution
 
 This work includes material from the System Reference Document 5.1 (SRD 5.1) by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License available at https://creativecommons.org/licenses/by/4.0/legalcode.

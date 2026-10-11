@@ -87,7 +87,14 @@ Remaining work includes a broader live adventure audit (combat, death and progre
 
 - Live Luna campaign «Компас над облаками»: Investigation 17/25 failed, History 7/5 succeeded, normal conversation left the delivery pending, and explicit UI handover removed the compass, saved it with Oren, raised trust/reputation once and granted 125 XP plus an original item. A server restart preserved the result. One optional world-development draft was rejected after the successful check; the mechanics persisted and subsequent play continued. Better schema feedback for such narrative drafts is still needed.
 
-### Optional artwork follow-up
+### Class and combat casting checkpoint
+
+- Catalog spell-panel casts now resolve as authoritative combat actions, so main/bonus/reaction spending, valid targets, turn ownership and victory XP/loot follow the same path as the dock. Public actions use engine cost metadata to hide options the current turn cannot pay. The hero sheet stays hero-only; another controllable caster retains its own dock actions.
+- Original spells spend the lowest suitable remaining slot, including higher pact slots, and synchronize both character/combatant resources. The original-cast marker is encounter-scoped; incapacitation uses the shared core helper. Higher payment does not invent stronger effects.
+- 145 tests, 63 JS syntax checks and isolated legacy smoke pass. New coverage advances all 12 class foundations to level three and reopens saves; Ki/Rage/Action Surge, bonus/reaction/area casts, allies, pact rest and one-time spell-panel victory rewards are tested. GPT-6.1 Sol high independently reviewed the work and wrote the three reaction/area/ally regressions.
+- Live Luna cleric Ilia used Healing Word at 5/10 HP, restored 10/10, spent a slot/bonus and retained the main action; Sacred Flame then spent it and dealt 1 damage. A later sword roll of 9 missed. This does not close all class/combat requirements. See CLASS_AND_COMBAT.md for remaining mixed-casting, area, progression and party limits.
+
+### Earlier artwork checkpoint
 
 - Scene, hero and NPC artwork can be uploaded, reused and unlinked, with durable bindings and storage quotas. Art stays outside text model context and does not change game mechanics. No extra dependencies or automatic artwork calls were added.
 - An explicit separately configured Images API adapter is implemented with a single request and bounded response, no OAuth/text-key fallback. Actual upload/reuse/unlink/hero binding and reload were verified in Lira's campaign. The generator uses mocked responses in tests; a real provider is not configured or verified. See ARTWORK.md for configuration and remaining gallery management.

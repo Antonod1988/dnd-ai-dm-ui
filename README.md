@@ -91,3 +91,5 @@ npm run smoke
 Quest mechanics, delivery evidence and alternative checks: [QUESTS.md](QUESTS.md).
 
 Optional artwork, local uploads and separately configured generation: [ARTWORK.md](ARTWORK.md).
+
+Class progression, combat casting and verification limits: [CLASS_AND_COMBAT.md](CLASS_AND_COMBAT.md).

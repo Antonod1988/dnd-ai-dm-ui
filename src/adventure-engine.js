@@ -72,12 +72,29 @@ async function publicView(service, state, adventure) {
   const origins=new Map((adventure.lootLedger||[]).map(record=>[record.itemId,record]));
   const cleanCharacter=character=>({...character,baseAc:character.ac,ac:core.effectiveArmorClass(character),inventory:character.inventory.map(({hiddenDescription,...item})=>({...item,description:loot.displayDescription(item,adventure.language),canUse:Boolean(core.modeledInventoryUseEffect(item,character.inventory)),origin:origins.get(item.itemId)}))});
   const configuration = ai.getAiConfig();
+  const castOptions=await srd.spellCastingOptions(state,service,{heroOnly:false}),castIds=new Set(castOptions.map(a=>`core:${a.id}`));
+  const costs=new Map(raw.actions.actions.map(a=>[a.id,a]));
+  const affordable=a=>{
+    if(!state.combat||!state.combat.turnBudget||!a.id.startsWith('core:'))return true;
+    const definition=costs.get(a.id.slice(5));if(!definition)return true;
+    let budget=state.combat.turnBudget;
+    for(const cost of definition.costs||[definition.cost]){
+      let spent;
+      if(cost==='action')spent=core.spendAction(budget,definition.actionKind||(/\.attack\./.test(a.id)?'attack':/\.cast_spell\./.test(a.id)?'cast_spell':'special'));
+      else if(cost==='bonus_action')spent=core.spendBonusAction(budget);
+      else if(cost==='reaction')spent=core.spendReaction(budget);
+      else if(cost==='movement'&&budget.movementFeet<=0)return false;
+      else if(cost==='object_interaction'&&!budget.objectInteraction)return false;
+      if(spent){if(!spent.ok)return false;budget=spent.budget;}
+    }
+    return true;
+  };
   return { ready: true, campaign: { id: state.campaign.id, title: adventure.title, revision: adventure.revision, turn: adventure.turn, day: adventure.day, hours: adventure.hours, worldIdea: adventure.worldIdea, tone: adventure.tone, language: adventure.language || 'ru' },
     hero: { ...cleanCharacter(hero), concept:adventure.heroConcept,classLabel: classNames[hero.classLevels?.[0]?.classId?.replace(/^class_/, '')] || hero.className.replace(' SRD', ''), raceLabel: raceNames[hero.raceId?.replace(/^race_/,'')] || raceNames[hero.ancestry.replace(/-/g,'_')] || hero.ancestry },
     party: state.party.members.map(cleanCharacter), scene: adventure.locations.find(n => n.id === adventure.currentLocationId),
     locations: adventure.locations, npcs: adventure.npcs.map(({receivedItems,...n})=>({...n,receivedCount:receivedItems?.length||0})), items: adventure.items.map(i=>access.publicItem(state,adventure,i)), quests: adventure.quests,questChecks:questChecks(state,adventure), journal: adventure.journal.slice(0,100), journalTotal:adventure.journal.length,
     notes:adventure.notes||[], facts: state.facts.filter(f=>f.id!=='hero_identity').map(f=>({...f,pinned:Boolean(f.pinned||(adventure.pinnedFactIds||[]).includes(f.id))})), messages: adventure.messages,
-    actions: choices(service, state, adventure).map(({ command, ...entry }) => entry), combat: raw.combat, turnBudget: raw.actions.turn,
+    actions: choices(service, state, adventure).filter(a=>affordable(a)&&(!/^core:combat\.(action|bonus|reaction)\.cast_spell\./.test(a.id)||castIds.has(a.id))).map(({ command, ...entry }) => entry), combat: raw.combat, turnBudget: raw.actions.turn,
     spellbook: {...raw.spellbook,spells:(raw.spellbook.spells||[]).filter(s=>s.accessible)}, createdSpells: adventure.createdSpells, rolls: raw.rolls, survival: adventure.survival, reputation: adventure.reputation,
     progression:{nextLevelXp:core.srdXpThresholds[hero.level]??null,levelStartXp:core.srdXpThresholds[hero.level-1]??0},
     economy:economy.publicEconomy(state,adventure),images:require('./adventure-images').publicImages(state,adventure),
@@ -254,7 +271,7 @@ async function perform(body, { seed } = {}) {
     const lootFocus=command.lootFocus?loot.focusSchema.parse(command.lootFocus):'healing';
     const plan = service.planGeneratedEncounter(state.campaign.id, { theme: command.theme || 'неожиданная опасность', difficulty: command.difficulty || 'easy', includeReward: false });
     const monsters = plan.monsters.map((m, i) => ({ ...m, name: command.enemyName ? `${command.enemyName}${i ? ` ${i + 1}` : ''}` : m.name }));
-    const started = await service.startGeneratedEncounter(state.campaign.id, monsters, seed); state = started.state;state.flags.ui_last_combat_outcome='ongoing';
+    const started = await service.startGeneratedEncounter(state.campaign.id, monsters, seed); state = started.state;state.flags.ui_last_combat_outcome='ongoing';delete state.flags.generated_leveled_spell_turn;
     proposed.activeEncounterId = crypto.randomUUID(); outcome.text = 'Начался бой. Инициатива и действия определены правилами.';
     const event=model.addEvent(proposed,'combat',proposed.activeEncounterId,outcome.text);
     proposed.activeEncounter={id:proposed.activeEncounterId,eventId:event.id,locationId:proposed.currentLocationId,theme:command.theme||'Добыча после столкновения',difficulty:command.difficulty||'easy',lootName:typeof command.lootName==='string'?command.lootName.slice(0,140):undefined,lootFocus,lootDropped:false};

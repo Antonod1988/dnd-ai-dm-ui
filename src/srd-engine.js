@@ -96,8 +96,15 @@ async function command(input, { seed } = {}) {
     case 'unattune_item':
       if(state.combat)error('Настройка на предмет требует спокойного времени вне боя.');
       result=await service[input.type==='attune_item'?'attuneItem':'unattuneItem'](id,String(input.itemId||''));break;
-    case 'cast_spell':
-      result = await service.castSpell(id, String(input.spellId || ''), input.targetId, seed); break;
+    case 'cast_spell': {
+      if(state.combat){
+        const target=state.combat.participants.find(p=>p.id===input.targetId||p.sourceCharacterId===input.targetId);
+        const options=(await spellCastingOptions(state,service)).filter(a=>a.spellId===input.spellId&&a.targetId===(target?.id||input.targetId));
+        if(!options.length)error('Заклинание сейчас недоступно для этой цели: проверьте ход, действие, дальность и ячейки.');
+        result=await service.chooseAction(id,options[0].id,seed);
+      }else result=await service.castSpell(id,String(input.spellId||''),input.targetId,seed);
+      break;
+    }
     case 'cast_created_spell': {
       const spell = (metadata(state).createdSpells || []).find(s => s.id === input.spellId);
       if (!spell) error('Это заклинание ещё не существует в кампании.');
@@ -112,6 +119,15 @@ async function command(input, { seed } = {}) {
   }
   const updated = service.loadCampaign(id);
   return { ...view(service, updated), resolution: { ok: result.ok !== false, message: result.message || result.effect?.summary || result.spell?.name || 'Действие разрешено.', events: result.events || (result.effect?[result.effect]:[]), check: typeof result.success === 'boolean' ? result : result.check || null } };
+}
+
+async function spellCastingOptions(state,service,{heroOnly=true}={}){
+  if(!state.combat)return [];
+  const rules=await core(),combat=rules.ensureTurnBudget(state.combat),actor=rules.currentCombatant(combat);
+  const characterId=actor.sourceCharacterId||actor.id;
+  if(actor.hp.current<=0||rules.isActionIncapacitated(actor)||!state.party.members.some(m=>m.id===characterId)||(heroOnly&&characterId!==state.party.heroId))return [];
+  const candidates=(service||await session()).getAvailableActions(state.campaign.id).actions;
+  return candidates.flatMap(a=>{const parsed=a.id.match(/^combat\.(action|bonus|reaction)\.cast_spell\.([^.]+)\.(.+)$/);if(!parsed)return [];const spent=parsed[1]==='bonus'?rules.spendBonusAction(combat.turnBudget,'cast_spell'):parsed[1]==='reaction'?rules.spendReaction(combat.turnBudget,'cast_spell'):rules.spendAction(combat.turnBudget,'cast_spell');return spent.ok?[{...a,spellId:parsed[2],targetId:parsed[3],cost:parsed[1]}]:[];});
 }
 
 async function registerSpell(campaignId, draft, { sourceEventId } = {}) {
@@ -130,4 +146,4 @@ async function registerSpell(campaignId, draft, { sourceEventId } = {}) {
 }
 
 async function closeSessions() { for (const promise of sessions.values()) (await promise).store.close(); sessions.clear(); }
-module.exports = { setupOptions, createCampaign, getState, command, registerSpell, session, closeSessions };
+module.exports = { setupOptions, createCampaign, getState, command, registerSpell, session, closeSessions,spellCastingOptions };

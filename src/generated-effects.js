@@ -65,17 +65,18 @@ async function castGeneratedSpell(original, spellInput, { casterId, targetId, se
   const hero = state.party.members.find(p => p.id === id);
   if (!hero?.spellcasting) throw new Error('This character has no spellcasting resource.');
   const actor = state.combat ? state.combat.participants.find(p => p.id === id || p.sourceCharacterId === id) : hero;
-  if (!actor || actor.hp.current <= 0 || actor.conditions.some(c => ['incapacitated', 'stunned', 'paralyzed', 'unconscious', 'dead'].includes(c))) throw new Error('Caster cannot act.');
+  if (!actor || actor.hp.current <= 0 || core.isActionIncapacitated(actor)) throw new Error('Caster cannot act.');
   if (state.combat) {
     state.combat = core.ensureTurnBudget(state.combat);
     if (core.currentCombatant(state.combat).id !== actor.id) throw new Error('Not this caster’s turn.');
     const spent = spell.cost === 'bonus_action' ? core.spendBonusAction(state.combat.turnBudget, 'cast_spell') : core.spendAction(state.combat.turnBudget, 'cast_spell');
     if (!spent.ok) throw new Error(spent.message);
     state.combat.turnBudget = spent.budget;
-    if (spell.level > 0 && state.flags.generated_leveled_spell_turn === `${state.combat.round}:${actor.id}`) throw new Error('A leveled generated spell was already cast this turn.');
+    if (spell.level > 0 && [`${state.combat.id}:${state.combat.round}:${actor.id}`,`${state.combat.round}:${actor.id}`].includes(state.flags.generated_leveled_spell_turn)) throw new Error('A leveled generated spell was already cast this turn.');
   }
-  const slot = hero.spellcasting.slots[String(spell.level)];
-  if (spell.level > 0 && (!slot || slot.current <= 0)) throw new Error('No spell slot for this spell level.');
+  const slotLevel=spell.level===0?0:Object.keys(hero.spellcasting.slots).map(Number).filter(level=>Number.isInteger(level)&&level>=spell.level&&level<=9&&hero.spellcasting.slots[String(level)].current>0).sort((a,b)=>a-b)[0];
+  const slot=hero.spellcasting.slots[String(slotLevel)];
+  if (spell.level > 0 && !slot) throw new Error('No spell slot at this spell level or higher.');
   const targetKey = spell.target === 'self' ? actor.id : targetId;
   let collection = state.combat ? state.combat.participants : state.party.members;
   const target = collection.find(p => p.id === targetKey || p.sourceCharacterId === targetKey);
@@ -87,8 +88,10 @@ async function castGeneratedSpell(original, spellInput, { casterId, targetId, se
   }
   if (spell.level > 0) {
     slot.current -= 1;
-    if (actor.spellcasting?.slots[String(spell.level)]) actor.spellcasting.slots[String(spell.level)].current = slot.current;
-    if (state.combat) state.flags.generated_leveled_spell_turn = `${state.combat.round}:${actor.id}`;
+    const resource=hero.resources.find(r=>r.id===`spell_slots_${slotLevel}`);if(resource)resource.current=slot.current;
+    const combatResource=actor.resources?.find(r=>r.id===`spell_slots_${slotLevel}`);if(combatResource)combatResource.current=slot.current;
+    if (actor.spellcasting?.slots[String(slotLevel)]) actor.spellcasting.slots[String(slotLevel)].current = slot.current;
+    if (state.combat) state.flags.generated_leveled_spell_turn = `${state.combat.id}:${state.combat.round}:${actor.id}`;
   }
   const rng = seed === undefined ? undefined : new core.SeededRng(seed);
   const dc = 8 + hero.proficiencyBonus + Math.floor((hero.abilities[hero.spellcasting.ability] - 10) / 2);
@@ -134,6 +137,6 @@ async function castGeneratedSpell(original, spellInput, { casterId, targetId, se
     }
   }
   if (state.combat) state = core.syncPartyFromCombat(state);
-  return { state, spell, events, save, slotLevel: spell.level };
+  return { state, spell, events, save, slotLevel };
 }
 module.exports = { validateSpell, castGeneratedSpell, spellSchema };

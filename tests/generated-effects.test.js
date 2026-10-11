@@ -29,6 +29,7 @@ test('no slots, missing target and incapacitated casters fail before state chang
   await assert.rejects(castGeneratedSpell(noSlots, healing, { targetId: 'hero' }));
   await assert.rejects(castGeneratedSpell(state(), healing, { targetId: 'invented' }));
   const fallen = state(); fallen.party.members[0].hp.current = 0; await assert.rejects(castGeneratedSpell(fallen, healing, { targetId: 'hero' }));
+  for(const condition of ['petrified','captured','possessed']){const blocked=state();blocked.party.members[0].conditions.push(condition);const original=JSON.stringify(blocked);await assert.rejects(castGeneratedSpell(blocked,healing,{targetId:'hero'}),/cannot act/);assert.equal(JSON.stringify(blocked),original);}
 });
 test('a new concentration spell replaces old concentration effects instead of stacking', async () => {
   const draft = { name: 'Кожа из лунного стекла', description: 'Тонкие стеклянные чешуйки защищают героя.', level: 1, rangeFeet: 0, target: 'self', durationTurns: 3, concentration: true, effects: [{ type: 'armor', amount: 1 }] };
