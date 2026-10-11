@@ -1,0 +1,21 @@
+{
+  "name": "dnd-ai-dm-ui",
+  "version": "0.2.0",
+  "private": false,
+  "description": "Playable alpha for a narrative-first AI-DM DnD-style RPG.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "check": "node scripts/check.js",
+    "smoke": "node scripts/smoke-test.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "jose": "^6.2.12"
+  },
+  "license": "MIT"
+}
