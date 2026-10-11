@@ -1,6 +1,7 @@
 const {z}=require('zod');
 const model=require('./adventure-model');
 const lore=require('./scene-checks');
+const access=require('./adventure-access');
 const key=z.string().min(1).max(100);
 const deliverySchema=z.object({type:z.literal('deliver'),questId:key,objectiveId:key,description:z.string().max(500).optional()}).strict();
 function readyObjectives(quest){return quest.status==='active'?quest.objectives.filter((o,i)=>!o.completed&&(!quest.sequential||quest.objectives.slice(0,i).every(p=>p.completed))):[];}
@@ -15,10 +16,14 @@ function available(service,state,adventure){
       const npc=adventure.npcs.find(n=>n.id===o.recipientId&&n.locationId===adventure.currentLocationId),item=carried(hero,o.targetId);
       if(npc&&item&&!item.attuned&&!Object.values(hero.equipment||{}).includes(item.itemId))actions.push({id:`deliver:${q.id}:${o.id}`,kind:'quest',questId:q.id,objectiveId:o.id,label:en?`Give ${item.name} to ${npc.name}`:`Передать ${item.name}: ${npc.name}`,command:{type:'deliver',questId:q.id,objectiveId:o.id}});
     }
-    if(o.kind==='check')for(const id of [o.targetId,...(o.alternativeTargetIds||[])]){
-      const definition=adventure.loreDefinitions.find(c=>c.id===id),check=checks.find(c=>c.id===adventure.loreCheckIds[id]);
+    if(o.kind==='check')for(const definition of access.methods(adventure,[o.targetId,...(o.alternativeTargetIds||[])])){
+      const id=definition.id,check=checks.find(c=>c.id===adventure.loreCheckIds[id]);
       if(definition?.trigger==='manual'&&definition.locationId===adventure.currentLocationId&&!check?.attempted&&(!definition.npcId||adventure.npcs.some(n=>n.id===definition.npcId&&n.locationId===adventure.currentLocationId)))actions.push({id:`scene-check:${id}`,kind:'quest',questId:q.id,objectiveId:o.id,label:`${definition.title} · ${definition.dc}`,command:{type:'scene_check',checkId:id}});
     }
+  }
+  for(const item of adventure.items.filter(i=>!i.collected&&i.locationId===adventure.currentLocationId))for(const c of item.access?.conditions||[]){
+    if(c.kind!=='check')continue;for(const d of access.methods(adventure,[c.targetId])){const attempt=checks.find(a=>a.id===adventure.loreCheckIds[d.id]);
+    if(d?.trigger==='manual'&&d.locationId===adventure.currentLocationId&&!attempt?.attempted&&(!d.npcId||adventure.npcs.some(n=>n.id===d.npcId&&n.locationId===adventure.currentLocationId))&&!actions.some(a=>a.id===`scene-check:${d.id}`))actions.push({id:`scene-check:${d.id}`,kind:'exploration',label:`${d.title} · ${d.dc}`,command:{type:'scene_check',checkId:d.id}});}
   }
   return actions;
 }
@@ -36,7 +41,7 @@ function deliver(state,adventure,input){
   const text=adventure.language==='en'?`${item.name} was given to ${npc.name}.`:`Предмет «${item.name}» передан: ${npc.name}.`;
   const event=model.addEvent(adventure,'deliver',objective.targetId,text,{recipientId:npc.id,questId:quest.id,objectiveId:objective.id,inventoryItemId:item.itemId});
   npc.receivedItems||=[];npc.receivedItems.push({item:transferred,eventId:event.id,turn:adventure.turn,fromId:hero.id});
-  npc.trust=Math.min(100,(npc.trust||0)+1);adventure.reputation[npc.locationId]=(adventure.reputation[npc.locationId]||0)+1;
+  npc.trust=Math.min(100,(npc.trust||0)+1);adventure.reputation[npc.locationId]=(Number.isFinite(adventure.reputation[npc.locationId])?adventure.reputation[npc.locationId]:0)+1;
   model.processQuestEvent(adventure,event);
   return {type:'deliver',text,recipientId:npc.id,itemId:objective.targetId};
 }
@@ -51,9 +56,9 @@ function reconcileEvidence(state,adventure){
         let event;
         if(objective.kind==='check'){
           const ids=[objective.targetId,...(objective.alternativeTargetIds||[])];
-          event=adventure.events.find(e=>e.kind==='check'&&e.success===true&&ids.includes(e.targetId));
+          event=adventure.events.find(e=>e.kind==='check'&&e.success===true&&access.targets(adventure,e.targetId).some(id=>ids.includes(id))&&access.successfulCheck(state,adventure,e.targetId));
         }else if(objective.kind==='acquire'&&carried(hero,objective.targetId))event=adventure.events.find(e=>e.kind==='acquire'&&e.targetId===objective.targetId);
-        if(event)model.processQuestEvent(adventure,event);
+        if(event)model.processQuestEvent(adventure,objective.kind==='check'?{...event,source:'scene_check'}:event);
       }
       if(quest.objectives.filter(o=>o.completed).length===before)break;
     }

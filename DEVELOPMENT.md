@@ -2,7 +2,7 @@
 
 User objective: a working, attractive D&D-style game UI, with reliable mechanics, AI-created adventures and economical long-campaign memory. The objective remains active until all requirements below have runtime evidence.
 
-Ordered milestones and acceptance criteria: [ROADMAP.md](ROADMAP.md). Current stage: playable single-player alpha (package 0.2.0). The `63ea265` checkpoint had 76 tests and successful Windows/Linux, Node 20/22 CI; the loot/progression follow-up had 79 tests; the economy follow-up passed 91 tests and Windows/Linux CI; the quest follow-up adds delivery and alternative checks (103 tests). Earlier counts below describe historical checkpoints.
+Ordered milestones and acceptance criteria: [ROADMAP.md](ROADMAP.md). Current stage: playable single-player alpha (package 0.2.0). The `63ea265` checkpoint had 76 tests and successful Windows/Linux, Node 20/22 CI; the loot/progression follow-up had 79 tests; the economy follow-up passed 91 tests and Windows/Linux CI; the quest follow-up passed 103 tests; the access/correction follow-up has 127 tests. Earlier counts below describe historical checkpoints.
 
 ## Required outcome
 
@@ -86,3 +86,13 @@ Remaining work includes a broader live adventure audit (combat, death and progre
 - Explicit locked-container/item-access conditions, quantities, cancellation/timed failure and arbitrary negotiation branches remain open. Older talk/report objectives retain their meaning; existing saves are not converted into different promises.
 
 - Live Luna campaign «Компас над облаками»: Investigation 17/25 failed, History 7/5 succeeded, normal conversation left the delivery pending, and explicit UI handover removed the compass, saved it with Oren, raised trust/reputation once and granted 125 XP plus an original item. A server restart preserved the result. One optional world-development draft was rejected after the successful check; the mechanics persisted and subsequent play continued. Better schema feedback for such narrative drafts is still needed.
+
+### Access conditions and bounded AI correction follow-up
+
+- Original world items can require a real scene-check success, reusable held key or actual victory, using any/all logic. Closed concealed finds expose only their container and conditions until eligible. Pickup is guarded in both actions and direct commands; attempts and access evidence survive reopening.
+- Generic ability rolls cannot impersonate scene checks when IDs happen to match. Earlier legitimate scene evidence is still recognized from the persisted ledger. References, duplicated conditions, self-dependencies and impossible key cycles are validated before world creation.
+- Narration and world creation receive at most one corrective request for an invalid structured draft, with bounded schema feedback. Rejected records are not applied. Explicit retry preserves the actual mechanics and records usage even when the provider is unavailable. Valid turns and local commerce avoid that extra request.
+- The current offline set has 127 tests; syntax and isolated legacy smoke pass. Richer physical obstacle primitives, quantitative obligations, negotiated branches, broader classes/progression, deeper relationships, survival/weather and optional images remain open.
+
+- Live Luna «Шкаф под парусами»: a concealed find stayed closed after Investigation 21/25. A natural player idea created a new History method (6/15, failure), and the old inventory method later succeeded at 22/5. Only then did «Медный язычок ветра» and its pickup appear. Return/delivery completed the task once with 125 XP and one saved NPC possession. The final context was 4,578 characters; the persisted provider counter recorded 13 calls, 35,651 input and 3,837 output tokens. Valid ordinary turns still use one narration request; freeform intent uses an additional request, with at most one correction per failed stage.
+- The find panel is collapsible to leave space for narration, stays within the narrow layout, and the story follows its end on resizing unless the player has scrolled away. Hidden/collected names, legal IDs that match object keys, and pickup during combat have explicit guards/tests.

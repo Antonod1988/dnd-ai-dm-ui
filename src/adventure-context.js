@@ -32,9 +32,9 @@ function contextFor(state,adventure,query='') {
     survival:adventure.survival.enabled?{foodDays:adventure.survival.foodDays,waterDays:adventure.survival.waterDays,hungerDays:adventure.survival.hungerDays}:undefined,
     combat:state.combat?{round:state.combat.round,actorId:state.combat.participants[state.combat.turnIndex]?.id,turnBudget:state.combat.turnBudget,
       participants:state.combat.participants.slice(0,10).map(p=>({id:p.id,name:clip(p.name,80),kind:p.kind,hp:p.hp,conditions:p.conditions}))}:undefined,
-    bookmarks:[],quests:[],checks:[],questIndex:[],questHistory:[],activeFacts:[],recollections:[],npcs:[],inventory:[],createdSpells:[],nearbyPlaces:[],recentDialogue:[],recentEvents:[],markets:[],transactions:[],
+    bookmarks:[],quests:[],checks:[],objects:[],questIndex:[],questHistory:[],activeFacts:[],recollections:[],npcs:[],inventory:[],createdSpells:[],nearbyPlaces:[],recentDialogue:[],recentEvents:[],markets:[],transactions:[],
     omitted:{quests:pending.length,facts:state.facts.length,notes:(adventure.notes||[]).length,archive:(adventure.archive||[]).length}};
-  const budgets={bookmarks:2800,quests:3200,checks:1600,questIndex:1400,questHistory:1000,activeFacts:2000,recollections:2000,npcs:1200,inventory:900,createdSpells:1400,nearbyPlaces:1000,recentDialogue:1200,recentEvents:1000,markets:1600,transactions:600};
+  const budgets={bookmarks:2800,quests:3200,checks:1600,objects:1100,questIndex:1400,questHistory:1000,activeFacts:2000,recollections:2000,npcs:1200,inventory:900,createdSpells:1400,nearbyPlaces:1000,recentDialogue:1200,recentEvents:1000,markets:1600,transactions:600};
   const append=(key,value)=>{
     packet[key].push(value);
     if(JSON.stringify(packet[key]).length>budgets[key]||JSON.stringify(packet).length>MAX_CHARS){packet[key].pop();return false;}
@@ -46,7 +46,9 @@ function contextFor(state,adventure,query='') {
     objectives:q.objectives.map(o=>({id:o.id,kind:o.kind,targetId:o.targetId,recipientId:o.recipientId,alternativeTargetIds:o.alternativeTargetIds,text:clip(o.text,120),completed:o.completed,evidenceEventId:o.evidenceEventId}))});
   const questTargets=new Set(packet.quests.flatMap(q=>q.objectives.flatMap(o=>[o.targetId,o.recipientId,...(o.alternativeTargetIds||[])])));
   const attempts=require('./scene-checks').publicChecks(state);
-  for(const d of adventure.loreDefinitions.filter(d=>questTargets.has(d.id)||(d.trigger==='manual'&&d.locationId===location.id)).slice(0,8)){const c=attempts.find(c=>c.id===adventure.loreCheckIds[d.id]);append('checks',{id:d.id,title:clip(d.title,100),locationId:d.locationId,npcId:d.npcId,skill:d.skill,dc:d.dc,trigger:d.trigger,attempted:Boolean(c?.attempted),success:c?.result?.success});}
+  for(const d of adventure.loreDefinitions.filter(d=>require('./adventure-access').targets(adventure,d.id).some(id=>questTargets.has(id))||(d.trigger==='manual'&&d.locationId===location.id)).map((d,index)=>({d,index,score:relevance({...d,text:d.prompt},query,scene)*4+(d.locationId===location.id?3:0)})).sort((a,b)=>b.score-a.score||a.index-b.index).slice(0,8).map(x=>x.d)){const c=attempts.find(c=>c.id===adventure.loreCheckIds[d.id]);append('checks',{id:d.id,alternativeFor:d.alternativeFor,title:clip(d.title,100),locationId:d.locationId,npcId:d.npcId,skill:d.skill,dc:d.dc,trigger:d.trigger,attempted:Boolean(c?.attempted),success:c?.result?.success});}
+  const access=require('./adventure-access');
+  for(const raw of adventure.items.filter(i=>!i.collected&&i.locationId===location.id).slice(0,6)){const i=access.publicItem(state,adventure,raw);append('objects',{id:i.id,name:clip(i.name,100),description:clip(i.description,180),available:i.accessState.available,access:i.accessState});}
   const people=adventure.npcs.map((n,index)=>({n,index,score:relevance({...n,text:`${n.role} ${n.personality}`},query,scene)*5+(n.locationId===location.id?5:0)+(questTargets.has(n.id)?3:0)})).sort((a,b)=>b.score-a.score||a.index-b.index);
   for(const {n} of people.slice(0,4))append('npcs',{id:n.id,name:clip(n.name,80),role:clip(n.role,140),locationId:n.locationId,location:clip(adventure.locations.find(l=>l.id===n.locationId)?.name,140),trust:n.trust,familiarity:n.familiarity});
   const recalled=recall(adventure.archive||[],query,scene,4).filter(m=>query.trim()&&relevance(m,query,scene)>0);
@@ -57,7 +59,7 @@ function contextFor(state,adventure,query='') {
   const economy=require('./adventure-economy'),commerce=economy.publicEconomy(state,adventure);
   for(const market of commerce.markets.slice(0,3)){
     const offers=market.offers.map((o,index)=>({o,index,score:relevance({...o,text:o.description},query,scene)})).sort((a,b)=>b.score-a.score||a.index-b.index).slice(0,4).map(({o})=>({id:o.id,name:clip(o.name,80),kind:o.kind,price:o.price,stock:o.stock,targetId:o.targetId}));
-    append('markets',{id:market.id,name:clip(market.name,100),livelihood:clip(market.livelihood,180),shortage:clip(market.shortage,160),discount:market.discount,standing:adventure.reputation[market.locationId]||0,offers,choices:market.encounter&&!market.encounter.resolved?market.encounter.choices.map(c=>({id:c.id,label:clip(c.label,80)})):[]});
+    append('markets',{id:market.id,name:clip(market.name,100),livelihood:clip(market.livelihood,180),shortage:clip(market.shortage,160),discount:market.discount,standing:Number.isFinite(adventure.reputation[market.locationId])?adventure.reputation[market.locationId]:0,offers,choices:market.encounter&&!market.encounter.resolved?market.encounter.choices.map(c=>({id:c.id,label:clip(c.label,80)})):[]});
   }
   for(const row of commerce.ledger.slice(0,3))append('transactions',{turn:row.turn,marketId:row.marketId,kind:row.kind,amount:row.amount,balance:row.balance,text:clip(row.text,160)});
   for(const q of ranked.filter(q=>!packet.quests.some(s=>s.id===q.id)).slice(0,20))append('questIndex',{id:q.id,title:clip(q.title,80),status:q.status,next:clip(q.objectives.find(o=>!o.completed)?.text,100)});

@@ -55,7 +55,8 @@ async function triggerSceneChecks(service, campaignId, { sceneId, trigger, subje
 }
 function publicChecks(state) {
   const ledger = read(state);
+  const attempts=new Map();for(const a of ledger.attempts)if(!attempts.has(a.checkId))attempts.set(a.checkId,a);
   return ledger.definitions.map(check => ({ id: check.id, sceneId: check.sceneId, trigger: check.trigger, title: check.title, prompt: check.prompt, skill: check.skill,
-    attempted: ledger.attempts.some(a => a.checkId === check.id), ...(!ledger.attempts.some(a => a.checkId === check.id) ? {} : { result: ledger.attempts.find(a => a.checkId === check.id) }) }));
+    attempted: attempts.has(check.id), ...(attempts.has(check.id)?{result:attempts.get(check.id)}:{}) }));
 }
 module.exports = { registerSceneCheck, triggerSceneChecks, publicChecks, definitionSchema };

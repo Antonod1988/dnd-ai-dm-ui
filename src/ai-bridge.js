@@ -102,11 +102,11 @@ async function generateStructured(type, promptPayload, fallbackFactory) {
   try {
     const text = await callConfiguredProvider(config, prompt, type);
     const draft = parseJsonLoose(text);
-    if(['master_question','adventure_narration'].includes(type)&&(!draft||typeof draft==='string')) {
+    if(['master_question','adventure_narration','adventure_narration_repair'].includes(type)&&(!draft||typeof draft==='string')) {
       const answer=(typeof draft==='string'?draft:String(text||'')).trim();
       if(answer&&answer.length<=6000&&!/^[\[{]|^```/.test(answer))return {narration:answer};
     }
-    if ((!draft || typeof draft !== 'object' || Array.isArray(draft)) && config.provider === 'chatgpt') throw new Error('ChatGPT вернул некорректные данные. Повторите запрос.');
+    if ((!draft || typeof draft !== 'object' || Array.isArray(draft)) && config.provider === 'chatgpt') throw Object.assign(new Error('ChatGPT вернул некорректные данные. Повторите запрос.'),{code:'INVALID_AI_DRAFT',draftText:String(text||'').slice(0,4000)});
     return draft || fallbackFactory();
   } catch (error) {
     if (config.provider === 'chatgpt') throw Object.assign(error, { status: 502 });

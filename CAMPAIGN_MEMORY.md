@@ -8,6 +8,7 @@ The full journal, recent dialogue and older dialogue archive remain in the local
 - Relevant unfinished quest objectives, exact delivery recipients, declared alternative check IDs/attempt results and their recorded completion evidence. A compact index covers additional quests when space permits. Previously completed quests can be recalled with their actual status and reward flag.
 - Player bookmarks, confirmed discoveries and relevant excerpts of older dialogue, including their speaker and turn.
 - Nearby people and routes, selected inventory and created spells, a short recent dialogue window and the latest events.
+- Nearby world objects with actual access state. Concealed finds contribute their visible container and conditions, not their unopened contents.
 - Exact wallet balance, selected local market offers and at most three relevant receipts. Unpaid information remains hidden. Purchased information retains its attribution and rumor status.
 
 The packet has a hard 12,000-character budget and smaller budgets for individual sections. It is assembled by relevance and priority. A long history therefore does not mean resending every previous turn. This is retrieval and structured context reduction, rather than a paid AI summary after every turn.
@@ -38,3 +39,11 @@ The memory panel shows the current context size, archive and journal counts. For
 ## Mechanics checked alongside memory
 
 Combat rounds advance six seconds; rests and travel advance their defined duration. Existing finite spell effects expire during exploration, and effective armor class appears in the sheet. A dying hero has a death-save action; a stable hero can wait to recover, while a dead hero cannot use that path. The stable recovery rule (1 HP after 1d4 hours) follows the [2014 Basic Rules](https://www.dndbeyond.com/sources/dnd/basic-rules-2014/combat).
+
+## Invalid AI drafts
+
+Valid narration uses one request. An invalid structured intent, narration or world proposal can receive one bounded correction request with schema/reference feedback. No mechanics are replayed. Rejected world records are validated before application; an unresolved report remains retryable. Retry keeps the actual outcome and saves diagnostics and reported usage. Transport outages do not trigger a repair loop. Ordinary transactions remain local and call neither narration nor correction.
+
+Feedback is bounded to six issues, short messages and a truncated rejected draft. This is exceptional schema repair, not a periodic summary or a second request after every turn. Counts reported by the provider include correction requests that were persisted; unsuccessful initial world creation still has no campaign record.
+
+A synthetic registry with a 600-method chain retains access proof and selects the relevant late approach within the same context limit. Lookups use bounded indexes and keep the saved source unchanged. This is an offline fixture, not 600 real provider requests.

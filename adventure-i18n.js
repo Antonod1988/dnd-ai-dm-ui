@@ -1,6 +1,8 @@
 // UI labels are translated locally. Story content is generated in the campaign's language.
 const uiLanguage = new URLSearchParams(location.search).get('lang') === 'en' ? 'en' : 'ru';
 const englishLabels = {
+  'Нужная подсказка':'Required clue','Нужный предмет':'Required item','Препятствие':'Obstacle',
+  'Предметы в сцене':'Scene objects','ПРЕДМЕТЫ РЯДОМ':'NEARBY OBJECTS','Нужны все условия':'All conditions are required','Достаточно одного способа':'Any one approach is enough','Проверка':'Check','Победа':'Victory','Ключ':'Key','Пока недоступно':'Not yet accessible','Взять':'Take',
   'Адресат':'Recipient','Передача заберёт предмет из инвентаря. Разговор сам по себе её не заменяет.':'Handing it over removes the item from your inventory. Conversation alone does not hand it over.','Этот подход не помог. Можно попробовать другой способ.':'This approach failed. You can try a different method.',
   'Расходуется':'Consumed on use','Путь к ночлегу':'Travel to the lodging','Требует настройки':'Requires attunement','Льготные цены':'Better prices',
   'Перемещение':'Travel','мин.':'min.',

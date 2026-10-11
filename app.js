@@ -61,7 +61,7 @@ function render(view) {
   $('#timeBadge').textContent = `День ${view.campaign.day} · ${Math.floor(minutes/60).toString().padStart(2,'0')}:${(minutes%60).toString().padStart(2,'0')}`;
   $('#combatBadge').hidden = !view.combat;
   $('#aiButton').textContent = view.provider.configured ? `AI: ${view.provider.model || view.provider.id}` : 'Подключить AI';
-  renderHero(view); renderMessages(view); renderActions(view); renderMap(view); renderQuests(view); renderJournal(view); renderPeople(view); renderCombat(view);renderTown(view);
+  renderHero(view); renderMessages(view); renderActions(view);renderSceneObjects(view); renderMap(view); renderQuests(view); renderJournal(view); renderPeople(view); renderCombat(view);renderTown(view);
   $('#retryNarration').hidden = !view.pendingNarration; showSection(currentSection); showSheet(currentSheet); localizeUi();
 }
 function renderHero(view) {
@@ -119,7 +119,15 @@ function label(v) {
     .replace(/^Search opening: /,'Найти уязвимость: ').replace(/^Help against /,'Помочь против: ').replace(/^Grapple: /,'Захватить: ').replace(/^Shove Prone: /,'Сбить с ног: ').replace(/^Shove Away: /,'Оттолкнуть: ').replace(/^Withdraw (\d+) ft$/,'Отойти на $1 фт.')
     .replace(/^Cast /,'Применить ').replace(/^Use (.+)$/,(_,item)=>`Использовать ${names[item]||item}`).replace(/^Move /,'Переместиться ');
 }
-function renderActions(view) { $('#actionDock').innerHTML=view.actions.map(a=>`<button data-action="${esc(a.id)}" title="${esc(label(a.label))}">${esc(label(a.label))}</button>`).join(''); }
+function renderSceneObjects(view){
+  const objects=view.items.filter(i=>!i.collected&&i.locationId===view.scene.id),panel=$('#sceneObjects');panel.hidden=!objects.length;
+  const blocked=view.combat||view.hero.hp.current<=0||view.hero.conditions.some(c=>['dead','unconscious','incapacitated','paralyzed','stunned'].includes(c));
+  panel.innerHTML=`<summary>${T('ПРЕДМЕТЫ РЯДОМ')} · ${objects.length}${objects.length===1?` · ${esc(objects[0].name)}`:''}</summary>`+objects.map(i=>{
+    const state=i.accessState||{available:true,conditions:[]};
+    return `<article class="scene-object ${state.available?'available':'locked'}"><div><h3>${esc(i.name)}</h3><p>${esc(i.description)}</p>${!state.available?`<p class="object-rule">${T(state.mode==='all'?'Нужны все условия':'Достаточно одного способа')}</p><ul>${state.conditions.map(c=>{const target=c.kind==='check'?view.questChecks?.find(d=>d.id===c.targetId)||view.loreChecks.find(d=>d.definitionId===c.targetId):c.kind==='victory'?view.locations.find(l=>l.id===c.targetId):view.items.find(item=>item.id===c.targetId);return `<li>${c.fulfilled?'✓':'○'} ${T(c.kind==='check'?'Проверка':c.kind==='victory'?'Победа':'Ключ')}: ${esc(target?.title||target?.name||c.label||T(c.kind==='check'?'Нужная подсказка':c.kind==='item'?'Нужный предмет':'Препятствие'))}</li>`;}).join('')}</ul>`:''}</div>${state.available?`<button data-action="pickup:${esc(i.id)}" ${blocked?'disabled':''}>${T('Взять')}: ${esc(i.name)}</button>`:`<span class="object-status">${T('Пока недоступно')}</span>`}</article>`;
+  }).join('');
+}
+function renderActions(view) { $('#actionDock').innerHTML=view.actions.filter(a=>!a.id.startsWith('pickup:')).map(a=>`<button data-action="${esc(a.id)}" title="${esc(label(a.label))}">${esc(label(a.label))}</button>`).join(''); }
 function renderMap(view) {
   const seen=new Set(),edges=[],places=new Map(view.locations.map(l=>[l.id,l]));
   for(const node of view.locations) for(const id of node.connectsTo) { const key=[node.id,id].sort().join(':'); if(seen.has(key))continue;seen.add(key);const other=places.get(id);if(other)edges.push(`<line x1="${node.x}%" y1="${node.y}%" x2="${other.x}%" y2="${other.y}%" stroke="#695b43" stroke-width="1.5" stroke-dasharray="4 5"/>`); }
@@ -130,7 +138,8 @@ function renderQuests(view) {
   $('#questList').innerHTML=view.quests.map(q=>`<article class="quest-card ${esc(q.status)}"><span class="quest-status">${T({offered:'ПРЕДЛОЖЕНИЕ',active:'В ПУТИ',completed:'ЗАВЕРШЕНО',failed:'НЕ ВЫПОЛНЕНО'}[q.status])}</span><h3>${esc(q.title)}</h3><p>${esc(q.summary)}</p><ul class="objectives">${q.objectives.map(o=>{
     const next=q.status==='active'&&!o.completed&&(!q.sequential||q.objectives.slice(0,q.objectives.indexOf(o)).every(p=>p.completed));
     const npc=o.recipientId&&view.npcs.find(n=>n.id===o.recipientId),place=npc&&view.locations.find(l=>l.id===npc.locationId);
-    const methods=(view.questChecks||[]).filter(c=>[o.targetId,...(o.alternativeTargetIds||[])].includes(c.id));
+    const ids=new Set([o.targetId,...(o.alternativeTargetIds||[])]);for(let pass=0;pass<(view.questChecks||[]).length;pass++)for(const c of view.questChecks||[])if(ids.has(c.alternativeFor))ids.add(c.id);
+    const methods=(view.questChecks||[]).filter(c=>ids.has(c.id));
     const attempts=methods.filter(c=>c.attempted);
     const actions=view.actions.filter(a=>a.questId===q.id&&a.objectiveId===o.id);
     return `<li class="${o.completed?'done':next?'current':''}"><span>${o.completed?'✓':next?'◆':'○'}</span><div>${esc(o.text)}${!o.completed&&npc?`<p class="objective-detail">${T('Адресат')}: ${esc(npc.name)} · ${esc(place?.name||'')}</p>`:''}${!o.completed&&o.kind==='check'?methods.map(c=>`<p class="objective-detail">${esc(c.title)} · ${T(skillLabels[c.skill]||c.skill)} ${c.dc} · ${esc(view.locations.find(l=>l.id===c.locationId)?.name||'')}${c.attempted?` · ${T(c.success?'Успех':'Неудача')} (${c.total}/${c.dc})`:''}</p>`).join(''):''}${next&&attempts.some(c=>!c.success)&&methods.some(c=>!c.attempted)?`<p class="objective-hint">${T('Этот подход не помог. Можно попробовать другой способ.')}</p>`:''}${next&&o.kind==='deliver'?`<p class="objective-hint">${T('Передача заберёт предмет из инвентаря. Разговор сам по себе её не заменяет.')}</p>`:''}${actions.length?`<div class="objective-actions">${actions.map(a=>`<button data-action="${esc(a.id)}">${esc(a.label)}</button>`).join('')}</div>`:''}</div></li>`;
@@ -228,6 +237,9 @@ async function init() {
   $('#closeSpellWorkshop').addEventListener('click',()=>$('#spellWorkshop').close());
   $('#spellDraftForm').addEventListener('submit',async event=>{event.preventDefault();if(busy)return;setBusy(true);$('#spellDraftStatus').textContent='Мастер подбирает эффект и цену заклинания…';try{spellPreview(await request('spell/draft',{campaignId:currentView.campaign.id,idea:$('#spellIdea').value}));$('#spellDraftStatus').textContent='Предложение готово. Проверь эффект перед добавлением.';}catch(e){$('#spellDraftStatus').textContent=e.message;}finally{setBusy(false);}});
   $('#learnSpell').addEventListener('click',async()=>{if(busy||!draftSpell)return;setBusy(true);try{const result=await request('spell/learn',{campaignId:currentView.campaign.id,draft:draftSpell});if(result.ready){render(result);$('#spellWorkshop').close();showSheet('spells');toast('Заклинание добавлено в книгу героя.');}else spellPreview(result);}catch(e){toast(e.message);}finally{setBusy(false);}});
+  const storyFeed=$('#storyFeed');let followStoryEnd=true;
+  storyFeed.addEventListener('scroll',()=>{followStoryEnd=storyFeed.scrollHeight-storyFeed.clientHeight-storyFeed.scrollTop<32;},{passive:true});
+  new ResizeObserver(()=>{if(followStoryEnd)requestAnimationFrame(()=>{storyFeed.scrollTop=storyFeed.scrollHeight;});}).observe(storyFeed);
   try{const options=await request('setup');for(const [selector,key]of[['#classSelect','classes'],['#raceSelect','races'],['#backgroundSelect','backgrounds']])$(selector).replaceChildren(...options[key].map(o=>new Option(T(o.label),o.id)));$('#classSelect').value='wizard';$('#raceSelect').value='human';$('#backgroundSelect').value='sage';}catch(e){$('#creationStatus').textContent=e.message;}
   await refreshState(); localizeUi();
 }
