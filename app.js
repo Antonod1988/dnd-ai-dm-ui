@@ -4,6 +4,7 @@ let currentSection = 'story';
 let currentSheet = 'inventory';
 let inventoryFilter='all';
 let draftSpell = null;
+let imageTarget=null;
 let pendingTargetCommand = null;
 let creatingNew = false;
 let intentMode='action';
@@ -61,7 +62,7 @@ function render(view) {
   $('#timeBadge').textContent = `День ${view.campaign.day} · ${Math.floor(minutes/60).toString().padStart(2,'0')}:${(minutes%60).toString().padStart(2,'0')}`;
   $('#combatBadge').hidden = !view.combat;
   $('#aiButton').textContent = view.provider.configured ? `AI: ${view.provider.model || view.provider.id}` : 'Подключить AI';
-  renderHero(view); renderMessages(view); renderActions(view);renderSceneObjects(view); renderMap(view); renderQuests(view); renderJournal(view); renderPeople(view); renderCombat(view);renderTown(view);
+  renderHero(view); renderMessages(view); renderActions(view);renderSceneObjects(view); renderMap(view); renderQuests(view); renderJournal(view); renderPeople(view); renderCombat(view);renderTown(view);renderArt(view);
   $('#retryNarration').hidden = !view.pendingNarration; showSection(currentSection); showSheet(currentSheet); localizeUi();
 }
 function renderHero(view) {
@@ -173,7 +174,42 @@ async function memoryChange(route,data) {
   try{render(await request(`memory/${route}`,{...data,campaignId:currentView.campaign.id,expectedRevision:currentView.campaign.revision,operationId:crypto.randomUUID()}));await loadJournal(true);return true;}
   catch(error){toast(error.message);return false;}finally{setBusy(false);}
 }
-function renderPeople(view) { $('#peopleList').innerHTML=view.npcs.map(n=>`<article class="world-card"><p class="eyebrow">${n.locationId===view.scene.id?'РЯДОМ':esc(view.locations.find(l=>l.id===n.locationId)?.name||'')}</p><h3>${esc(n.name)}</h3><p>${esc(n.role)}</p><p>${esc(n.personality)}</p><p class="relationship">Знакомство: ${n.familiarity} · Доверие: ${n.trust}</p>${n.locationId===view.scene.id?`<button data-action="talk:${esc(n.id)}" ${view.combat?'disabled':''}>Поговорить</button>`:''}</article>`).join('') || '<p class="empty">Новые лица появятся по мере знакомства с миром.</p>'; }
+function renderPeople(view) { $('#peopleList').innerHTML=view.npcs.map(n=>`<article class="world-card">${artAsset(view,'npc',n.id)?`<img class="npc-portrait" src="${esc(artAsset(view,'npc',n.id).url)}" alt="${esc(n.name)}" loading="lazy">`:''}<p class="eyebrow">${n.locationId===view.scene.id?'РЯДОМ':esc(view.locations.find(l=>l.id===n.locationId)?.name||'')}</p><h3>${esc(n.name)}</h3><p>${esc(n.role)}</p><p>${esc(n.personality)}</p><p class="relationship">Знакомство: ${n.familiarity} · Доверие: ${n.trust}</p><button class="subtle" data-npc-art="${esc(n.id)}">${T('Портрет')}</button>${n.locationId===view.scene.id?`<button data-action="talk:${esc(n.id)}" ${view.combat?'disabled':''}>Поговорить</button>`:''}</article>`).join('') || '<p class="empty">Новые лица появятся по мере знакомства с миром.</p>'; }
+function artAsset(view,target,id){return view.images?.assets.find(a=>a.id===view.images.bindings[`${target}:${id}`]);}
+function renderArt(view){
+  const scene=artAsset(view,'scene',view.scene.id),hero=artAsset(view,'hero',view.hero.id);
+  $('#sceneArt').hidden=!scene;$('#sceneArt').innerHTML=scene?`<img src="${esc(scene.url)}" alt="${esc(view.scene.name)}"><figcaption>${esc(view.scene.name)}</figcaption>`:'';
+  if(hero)$('#heroSigil').innerHTML=`<img src="${esc(hero.url)}" alt="${esc(view.hero.name)}">`;
+  if($('#imageWorkshop').open)renderImageGallery();
+}
+function renderImageGallery(){
+  if(!imageTarget||!currentView?.images)return;
+  const art=currentView.images,selected=artAsset(currentView,imageTarget.target,imageTarget.targetId);
+  $('#imageStorage').textContent=`${art.assets.length} / ${art.limits.count} · ${(art.bytes/1048576).toFixed(1)} / ${art.limits.campaignBytes/1048576} MB · ${T('До 5 МБ на картинку')}`;
+  $('#unlinkImage').disabled=!selected||busy;
+  $('#imageGallery').innerHTML=art.assets.map(a=>`<button class="gallery-image ${selected?.id===a.id?'selected':''}" data-image-bind="${esc(a.id)}" ${busy?'disabled':''}><img src="${esc(a.url)}" alt="" loading="lazy"><span>${esc(a.name)}</span>${selected?.id===a.id?`<small>${T('Выбрано')}</small>`:''}</button>`).join('')||`<p class="muted">${T('Картинок пока нет. Загрузи первую.')}</p>`;
+  $('#imageProviderStatus').textContent=art.provider.configured?`${art.provider.billing} · ${art.provider.model}. ${T('Отдельный запрос к провайдеру картинок; возможна оплата по его тарифам.')}`:T('Генератор не настроен. Свои картинки доступны без него.');
+  $('#generateImage').disabled=busy||!art.provider.configured;
+  $('#imageUpload').disabled=busy;
+  localizeUi($('#imageWorkshop'));
+}
+function openArt(target,targetId,title,description){if(busy||!currentView?.ready)return;imageTarget={target,targetId};$('#imageTargetTitle').textContent=title;$('#imagePrompt').value=description||title;$('#imageStatus').textContent='';$('#imageUpload').value='';$('#imageWorkshop').showModal();renderImageGallery();}
+async function imageMutation(route,extra){if(busy||!imageTarget)return;setBusy(true);renderImageGallery();$('#imageStatus').textContent=T(route==='generate'?'Генератор рисует…':'Сохраняется картинка…');try{render(await request(`images/${route}`,{...extra,...imageTarget,campaignId:currentView.campaign.id,expectedRevision:currentView.campaign.revision,operationId:crypto.randomUUID()}));$('#imageStatus').textContent=T('Картинка сохранена.');}catch(error){$('#imageStatus').textContent=error.message;}finally{setBusy(false);renderImageGallery();}}
+function initArt(){
+  $('#openSceneArt').addEventListener('click',()=>openArt('scene',currentView.scene.id,currentView.scene.name,currentView.scene.description));
+  $('#heroSigil').addEventListener('click',()=>openArt('hero',currentView.hero.id,currentView.hero.name,currentView.hero.concept));
+  $('#peopleList').addEventListener('click',event=>{const button=event.target.closest('[data-npc-art]');if(button){const npc=currentView.npcs.find(n=>n.id===button.dataset.npcArt);openArt('npc',npc.id,npc.name,`${npc.role}. ${npc.personality}`);}});
+  $('#closeImageWorkshop').addEventListener('click',()=>{if(!busy)$('#imageWorkshop').close();});
+  $('#imageWorkshop').addEventListener('cancel',event=>{if(busy)event.preventDefault();});
+  $('#imageGallery').addEventListener('click',event=>{const button=event.target.closest('[data-image-bind]');if(button)imageMutation('bind',{imageId:button.dataset.imageBind});});
+  $('#unlinkImage').addEventListener('click',()=>imageMutation('bind',{imageId:null}));
+  $('#generateImage').addEventListener('click',()=>imageMutation('generate',{prompt:$('#imagePrompt').value,confirmedBilling:true}));
+  $('#imageUpload').addEventListener('change',async event=>{
+    const selected=event.target.files[0];if(!selected||busy)return;const uploadTarget=imageTarget,uploadCampaign=currentView.campaign.id;
+    if(!['image/png','image/jpeg','image/webp'].includes(selected.type)||selected.size>5*1048576){$('#imageStatus').textContent=T('Нужна PNG, JPEG или WebP до 5 МБ.');return;}
+    try{const bitmap=await createImageBitmap(selected);const pixels=bitmap.width*bitmap.height;bitmap.close();if(pixels>32e6)throw new Error(T('Слишком большое разрешение картинки.'));const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=()=>reject(new Error(T('Не удалось прочитать картинку.')));reader.readAsDataURL(selected);});if(imageTarget!==uploadTarget||currentView.campaign.id!==uploadCampaign)return;await imageMutation('upload',{name:selected.name.slice(0,120),mime:selected.type,data});}catch(error){$('#imageStatus').textContent=error.message;}finally{event.target.value='';}
+  });
+}
 function renderTown(view){
   const economy=view.economy||{coins:0,markets:[],ledger:[],sellable:[]};$('#townCoins').textContent=economy.coins;
   $('#townStatus').textContent=T(view.combat?'Во время боя сделки недоступны.':'Цены и доступные запасы указаны ниже.');
@@ -204,6 +240,7 @@ function spellPreview(data) {
   $('#spellDraftCard').innerHTML=`<article class="spell-preview"><h3>${esc(data.spell.name)}</h3><p>${esc(data.spell.description)}</p><p>${esc(spellCaption(data.spell))} · ${T(data.spell.cost==='action'?'действие':'бонусное действие')}</p><p>${T('Цель')}: ${T(data.spell.target==='self'?'Только герой':'Существо')} · ${T('Длительность')}: ${data.spell.durationTurns?`${data.spell.durationTurns} ${T('раундов')}`:T('Мгновенно')}${data.spell.concentration?` · ${T('Концентрация')}`:''}</p>${data.spell.saveAbility?`<p>${T('Спасбросок')}: ${esc(uiLanguage==='en'?data.spell.saveAbility.toUpperCase():abilityLabels[data.spell.saveAbility])}</p>`:''}${data.spell.effects.map(e=>`<p>${esc({damage:'Урон',healing:'Лечение',temporary_hp:'Временные HP',condition:'Состояние',armor:'Защита',speed:'Скорость',resistance:'Сопротивление',utility:'Эффект',skill_bonus:'Бонус навыка',remove_condition:'Снятие состояния'}[e.type]||e.type)}: <code>${esc(e.dice||e.condition||e.feature||e.amount||e.feet||e.damageType)}</code></p>`).join('')}</article>`; localizeUi($('#spellWorkshop'));
 }
 async function init() {
+  initArt();
   const languageLink=document.createElement('a');languageLink.className='subtle';languageLink.href=uiLanguage==='en'?'/?lang=ru':'/?lang=en';languageLink.textContent=uiLanguage==='en'?'RU':'EN';languageLink.setAttribute('aria-label','Switch interface language');document.querySelector('.header-actions').prepend(languageLink);
   if(uiLanguage==='en') { $('#createForm [name=location]').value='The threshold of a new world'; $('#createForm [name=heroName]').placeholder='Mira'; $('#worldSubtitle').textContent=T('Мир, который начинается с твоей идеи'); }
   document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>showSection(b.dataset.view)));

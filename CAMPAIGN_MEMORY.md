@@ -2,6 +2,8 @@
 
 The full journal, recent dialogue and older dialogue archive remain in the local campaign store. Model context is a separate, disposable view of that history. Building it never rewrites the history or the rules state.
 
+Artwork stays outside the text context: no image bytes, gallery labels or binding metadata are sent to the game master. Generation is a separate explicit request; campaign text counters exclude image-provider costs. See [ARTWORK.md](ARTWORK.md).
+
 ## What goes to the game master
 
 - Current world and hero concept; exact HP, armor class, abilities, resources, spell slots, conditions and combat turn.

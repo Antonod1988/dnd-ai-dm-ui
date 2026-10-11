@@ -60,15 +60,18 @@ async function route(req, res, serialize) {
   if (req.method === 'GET' && url.pathname === '/api/adventure/setup') return sendJson(res, 200, await require('./adventure-engine').setup());
   if (req.method === 'GET' && url.pathname === '/api/adventure/history') return sendJson(res,200,await serialize(()=>require('./adventure-memory').history(url.searchParams.get('campaignId')||undefined,{query:url.searchParams.get('query')||'',offset:url.searchParams.get('offset'),limit:url.searchParams.get('limit')})));
   if (req.method === 'GET' && url.pathname === '/api/adventure/state') return sendJson(res, 200, await serialize(() => require('./adventure-engine').getView(url.searchParams.get('campaignId') || undefined)));
+  if(req.method==='GET'&&url.pathname==='/api/adventure/images/file') {const image=await serialize(()=>require('./adventure-images').read(url.searchParams.get('campaignId'),url.searchParams.get('imageId')));res.writeHead(200,{'content-type':image.mime,'content-length':image.bytes.length});res.end(image.bytes);return;}
   if (req.method === 'GET' && url.pathname === '/api/adventure/discussion/status') return sendJson(res, 200, await serialize(() => require('./adventure-discussion').status(url.searchParams.get('campaignId') || undefined)));
   if (req.method === 'GET' && url.pathname === '/api/discussion/status') return sendJson(res, 200, await serialize(() => require('./discussion-service').status()));
   if (req.method === 'GET' && url.pathname === '/api/dnd/state') return sendJson(res, 200, await serialize(() => require('./srd-engine').getState(url.searchParams.get('campaignId') || undefined)));
   if (req.method === 'POST') {
     if (!req.headers['content-type']?.startsWith('application/json')) return sendJson(res, 415, { error: 'Expected JSON' });
     let body;
-    try { body = JSON.parse(await readBody(req)); } catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
+    try { body = JSON.parse(await readBody(req,url.pathname==='/api/adventure/images/upload'?7*1024*1024:64*1024)); } catch(error) { return sendJson(res, error.status||400, { error: error.status?error.message:'Invalid JSON' }); }
     if (!body || typeof body !== 'object' || Array.isArray(body)) return sendJson(res, 400, { error: 'Expected object' });
     const adventure = require('./adventure-engine');
+    const imageRoute={'/api/adventure/images/upload':'upload','/api/adventure/images/bind':'bind','/api/adventure/images/generate':'generate'}[url.pathname];
+    if(imageRoute)return sendJson(res,200,await serialize(()=>require('./adventure-images')[imageRoute](body)));
     const adventureRoutes = { '/api/adventure/create': () => adventure.create(body), '/api/adventure/act': () => adventure.perform(body), '/api/adventure/select': () => adventure.select(body.campaignId), '/api/adventure/narration': () => adventure.retryNarration(body.campaignId), '/api/adventure/spell/draft': () => adventure.spellDraft(body.campaignId, body.idea), '/api/adventure/spell/learn': () => adventure.learnSpell(body.campaignId, body.draft) };
     if (adventureRoutes[url.pathname]) return sendJson(res, 200, await serialize(adventureRoutes[url.pathname]));
     if(url.pathname==='/api/adventure/question')return sendJson(res,200,await serialize(()=>adventure.ask(body)));
@@ -108,14 +111,12 @@ async function route(req, res, serialize) {
   sendJson(res, 404, { error: 'Not found' });
 }
 
-async function readBody(req) {
-  let length = 0; const chunks = [];
-  for await (const chunk of req) {
-    length += chunk.length;
-    if (length > 64 * 1024) throw Object.assign(new Error('Request too large'), { status: 413 });
-    chunks.push(chunk);
-  }
-  return Buffer.concat(chunks).toString('utf8');
+async function readBody(req,maxBytes=64*1024) {
+  return new Promise((resolve,reject)=>{
+    let length=0,chunks=[];
+    const receive=chunk=>{length+=chunk.length;if(length>maxBytes){chunks=[];req.off('data',receive);req.resume();reject(Object.assign(new Error('Request too large'),{status:413}));return;}chunks.push(chunk);};
+    req.on('data',receive);req.once('end',()=>resolve(Buffer.concat(chunks).toString('utf8')));req.once('error',reject);req.once('aborted',()=>reject(Object.assign(new Error('Request interrupted'),{status:400})));
+  });
 }
 function sendJson(res, status, payload) {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });

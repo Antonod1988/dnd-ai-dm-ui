@@ -80,7 +80,7 @@ async function publicView(service, state, adventure) {
     actions: choices(service, state, adventure).map(({ command, ...entry }) => entry), combat: raw.combat, turnBudget: raw.actions.turn,
     spellbook: {...raw.spellbook,spells:(raw.spellbook.spells||[]).filter(s=>s.accessible)}, createdSpells: adventure.createdSpells, rolls: raw.rolls, survival: adventure.survival, reputation: adventure.reputation,
     progression:{nextLevelXp:core.srdXpThresholds[hero.level]??null,levelStartXp:core.srdXpThresholds[hero.level-1]??0},
-    economy:economy.publicEconomy(state,adventure),
+    economy:economy.publicEconomy(state,adventure),images:require('./adventure-images').publicImages(state,adventure),
     loreChecks: lore.publicChecks(state).filter(c => c.sceneId === adventure.currentLocationId).map(c=>({...c,definitionId:Object.keys(adventure.loreCheckIds).find(id=>adventure.loreCheckIds[id]===c.id)})), memory: contextFor(state, adventure).metrics,
     provider: { id: configuration.provider, model: configuration.modelLabel, configured: ai.isConfigured(configuration), usage: configuration.usage },
     inferenceUsage:adventure.usage||null,pendingNarration: Boolean(adventure.pendingNarration), campaigns: service.listCampaigns().map(c => ({ id: c.id, title: c.title })) };

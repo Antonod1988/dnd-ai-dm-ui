@@ -87,6 +87,12 @@ Remaining work includes a broader live adventure audit (combat, death and progre
 
 - Live Luna campaign «Компас над облаками»: Investigation 17/25 failed, History 7/5 succeeded, normal conversation left the delivery pending, and explicit UI handover removed the compass, saved it with Oren, raised trust/reputation once and granted 125 XP plus an original item. A server restart preserved the result. One optional world-development draft was rejected after the successful check; the mechanics persisted and subsequent play continued. Better schema feedback for such narrative drafts is still needed.
 
+### Optional artwork follow-up
+
+- Scene, hero and NPC artwork can be uploaded, reused and unlinked, with durable bindings and storage quotas. Art stays outside text model context and does not change game mechanics. No extra dependencies or automatic artwork calls were added.
+- An explicit separately configured Images API adapter is implemented with a single request and bounded response, no OAuth/text-key fallback. Actual upload/reuse/unlink/hero binding and reload were verified in Lira's campaign. The generator uses mocked responses in tests; a real provider is not configured or verified. See ARTWORK.md for configuration and remaining gallery management.
+- The current offline set has 134 tests and syntax checks cover 61 JavaScript files. Broader classes/combat, deeper relationships, weather, image-provider runtime verification and remote cooperative play remain open.
+
 ### Access conditions and bounded AI correction follow-up
 
 - Original world items can require a real scene-check success, reusable held key or actual victory, using any/all logic. Closed concealed finds expose only their container and conditions until eligible. Pickup is guarded in both actions and direct commands; attempts and access evidence survive reopening.
