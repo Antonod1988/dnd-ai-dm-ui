@@ -1,6 +1,12 @@
 // UI labels are translated locally. Story content is generated in the campaign's language.
 const uiLanguage = new URLSearchParams(location.search).get('lang') === 'en' ? 'en' : 'ru';
 const englishLabels = {
+  'Расходуется':'Consumed on use','Путь к ночлегу':'Travel to the lodging','Требует настройки':'Requires attunement','Льготные цены':'Better prices',
+  'Перемещение':'Travel','мин.':'min.',
+  'СВЕДЕНИЯ ОТ СОБЕСЕДНИКА':'REPORTED INFORMATION',
+  'Поселение':'Settlement','Местные возможности':'Local opportunities','Торговля, полезные услуги и дела поселения.':'Trade, useful services, and local concerns.','Монеты':'Coins','монет':'coins','Во время боя сделки недоступны.':'Transactions are unavailable during combat.','Цены и доступные запасы указаны ниже.':'Prices and available stock are listed below.','Дефицит':'In short supply','Недостаточно монет':'Not enough coins','Запасы закончились':'Out of stock','Здоровье уже восстановлено':'Health is already restored','Герой не может совершить сделку':'The hero cannot trade right now','Местные торговцы':'Local traders','Доверие':'Trust','Осталось':'Remaining','Купить':'Buy','Выбрать':'Choose','Продать вещи':'Sell items','У торговца':'Trader funds','Продать одну':'Sell one','Покупка':'Purchase','Сделка сохранена.':'Transaction saved.',
+  'Доходы и расходы':'Income and spending','Последние сделки. Полная история остаётся в журнале.':'Recent transactions. The complete history stays in the journal.','Сделок пока нет.':'No transactions yet.','Нет свободных вещей для продажи. Экипировка и предметы задач защищены.':'No spare items to sell. Equipped gear and quest objects are protected.','Здесь пока нет торговцев и услуг. Ищи поселения или знакомься с местными.':'No traders or services here yet. Look for settlements or meet the locals.',
+  'ПОМОЩЬ ЗАСЧИТАНА':'HELP RECOGNIZED','МЕСТНАЯ ВСТРЕЧА':'LOCAL ENCOUNTER','Доверие выросло. Условия торговли улучшены.':'Trust improved. Trading conditions are better.','Успех':'Success','Неудача':'Failure','Еда и вода на три дня':'Food and water for three days','8 часов отдыха · +1d4 к следующей проверке':'8 hours of rest · +1d4 to the next ability check','Восстановить до 8 HP':'Restore up to 8 HP','Получить и записать сведения':'Learn and record information','Перемещение за 15 минут':'Travel in 15 minutes','Свойства предмета указаны в инвентаре':'Item properties are shown in your inventory',
   'Все вещи':'All items','Добыча':'Loot','Фильтр вещей':'Inventory filter','Новые находки появятся после исследования и выполнения задач.':'New finds appear through exploration and quests.',
   'До следующего уровня':'To the next level','Достигнут максимальный уровень':'Maximum level reached','Опыт до следующего уровня':'Experience toward the next level',
   'Обычный':'Common','Необычный':'Uncommon','Редкий':'Rare','Очень редкий':'Very rare','Легендарный':'Legendary','Награда за задачу':'Quest reward','Добыча после боя':'Battle loot','Находка':'Discovery','Ход':'Turn','Экипировано':'Equipped','Настроиться · 1 ч.':'Attune · 1 hr','Прекратить настройку':'End attunement','зарядов':'charges',
@@ -61,6 +67,7 @@ function T(value) {
   const patterns = [
     [/^День (\d+) · (.+)$/, 'Day $1 · $2'], [/^(\d+) ур\.$/, 'Level $1'], [/^ХОД (\d+)$/, 'TURN $1'],
     [/^Ячейки (\d+) уровня$/, 'Level $1 slots'], [/^Контекст мастера: ([\d\s,]+) символов$/, 'GM context: $1 characters'],
+    [/^Пополнить припасы · (\d+) монеты$/, 'Restock supplies · $1 coins'],
     [/^Еда: (\d+) дн\. · Вода: (\d+) дн\.$/, 'Food: $1 days · Water: $2 days'],
     [/^Знакомство: (\d+) · Доверие: (-?\d+)$/, 'Familiarity: $1 · Trust: $2'], [/^Поговорить: (.+)$/, 'Talk: $1'], [/^Пойти: (.+)$/, 'Travel: $1'], [/^Взять: (.+)$/, 'Pick up: $1'],
     [/^Раунд (\d+)$/, 'Round $1'], [/^Действие (.) · Бонус (.) · (\d+) фт\.$/, 'Action $1 · Bonus $2 · $3 ft.'], [/^При смерти · успехи (\d)\/3 · неудачи (\d)\/3$/, 'Dying · successes $1/3 · failures $2/3']

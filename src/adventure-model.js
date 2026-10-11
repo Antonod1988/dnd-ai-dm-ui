@@ -1,6 +1,7 @@
 const { z } = require('zod');
 const crypto = require('node:crypto');
 const loot=require('./adventure-loot');
+const economy=require('./adventure-economy');
 const key = z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,59}$/);
 const short = z.string().trim().min(1).max(140);
 const paragraph = z.string().trim().min(1).max(1200);
@@ -10,7 +11,7 @@ const itemSchema = z.object({ id: key, name: short, description: z.string().max(
 const objectiveSchema = z.object({ text: z.string().min(1).max(240), kind: z.enum(['visit', 'talk', 'check', 'victory', 'acquire']), targetId: key.optional() }).strict();
 const questSchema = z.object({ id: key, title: short, summary: paragraph, giverId: key.optional(), objectives: z.array(objectiveSchema).min(1).max(5), sequential: z.boolean().default(true), rewardTheme: z.string().max(140).default('полезная находка'),rewardName:z.string().trim().min(1).max(80).optional(),rewardFocus:loot.focusSchema.optional() }).strict();
 const loreSchema = z.object({ id: key, locationId: key, trigger: z.enum(['enter', 'inspect', 'dialogue']), npcId: key.optional(), skill: z.enum(['history', 'arcana', 'religion', 'nature', 'perception', 'investigation', 'insight', 'survival']), dc: z.number().int().min(5).max(25), title: short, prompt: z.string().min(1).max(300), discoveredFact: z.string().min(1).max(650) }).strict();
-const seedSchema = z.object({ title: short, opening: z.string().min(1).max(2400), startLocationId: key, locations: z.array(nodeSchema).min(1).max(8), npcs: z.array(npcSchema).max(8).default([]), items: z.array(itemSchema).max(8).default([]), quests: z.array(questSchema).max(4).default([]), checks: z.array(loreSchema).max(8).default([]) }).strict();
+const seedSchema = z.object({ title: short, opening: z.string().min(1).max(2400), startLocationId: key, locations: z.array(nodeSchema).min(1).max(8), npcs: z.array(npcSchema).max(8).default([]), items: z.array(itemSchema).max(8).default([]), quests: z.array(questSchema).max(4).default([]), checks: z.array(loreSchema).max(8).default([]),markets:z.array(economy.marketSchema).max(5).default([]) }).strict();
 function validateSeed(draft) {
   const seed = seedSchema.parse(draft);
   validateReferences(seed, { locations: [], npcs: [], loreDefinitions: [] });
@@ -20,6 +21,7 @@ function validateSeed(draft) {
   return seed;
 }
 function validateReferences(patch, current) {
+  economy.validateMarkets(patch,current);
   const locations = new Set([...(current.locations || []), ...(patch.locations || [])].map(l => l.id));
   const npcs = new Set([...(current.npcs || []), ...(patch.npcs || [])].map(n => n.id));
   const checks = new Set([...(current.loreDefinitions || []), ...(patch.checks || [])].map(c => c.id));
@@ -39,7 +41,7 @@ function validateReferences(patch, current) {
     }
   }
 }
-const developmentSchema = z.object({ locations: z.array(nodeSchema).max(3).default([]), npcs: z.array(npcSchema).max(3).default([]), items: z.array(itemSchema).max(3).default([]), quests: z.array(questSchema).max(2).default([]), checks: z.array(loreSchema).max(3).default([]) }).strict();
+const developmentSchema = z.object({ locations: z.array(nodeSchema).max(3).default([]), npcs: z.array(npcSchema).max(3).default([]), items: z.array(itemSchema).max(3).default([]), quests: z.array(questSchema).max(2).default([]), checks: z.array(loreSchema).max(3).default([]),markets:z.array(economy.marketSchema).max(2).default([]) }).strict();
 function validateDevelopments(draft, adventure) {
   const patch = developmentSchema.parse(draft || {}); validateReferences(patch, adventure);
   return patch;
@@ -53,7 +55,7 @@ function makeAdventure(seed, input) {
     quests: seed.quests.map(q => makeQuest(q)), loreDefinitions: seed.checks,
     loreCheckIds: {}, createdSpells: [], messages: [], archive: [], events: [], journal: [], appliedOperations: [],
     survival: { enabled: Boolean(input.survival), foodDays: 3, waterDays: 3, hungerDays: 0, thirstDays: 0 }, reputation: {},
-    notes: [], pinnedFactIds: [],lootLedger:[],sceneImageId: null, pendingNarration: null, operations: 0
+    notes: [], pinnedFactIds: [],lootLedger:[],marketDefinitions:seed.markets,economy:null,sceneImageId: null, pendingNarration: null, operations: 0
   };
   for (const location of adventure.locations) for (const neighbor of location.connectsTo) { const other = adventure.locations.find(l => l.id === neighbor); if (!other.connectsTo.includes(location.id)) other.connectsTo.push(location.id); }
   return adventure;
@@ -98,6 +100,7 @@ function applyDevelopments(adventure, draft) {
   for (const item of patch.items) if (!adventure.items.some(i => i.id === item.id)) adventure.items.push({ ...item, collected: false });
   for (const quest of patch.quests) if (!adventure.quests.some(q => q.id === quest.id)) adventure.quests.push(makeQuest(quest));
   for (const check of patch.checks) if (!adventure.loreDefinitions.some(c => c.id === check.id)) adventure.loreDefinitions.push(check);
+  adventure.marketDefinitions||=[];for(const market of patch.markets)if(!adventure.marketDefinitions.some(m=>m.id===market.id))adventure.marketDefinitions.push(market);
   return patch;
 }
 function fallbackSeed(input) {
@@ -116,4 +119,4 @@ function fallbackSeed(input) {
     quests: [{ id: 'first-route', title: 'За знакомым пределом', summary: 'Добраться до неизвестного рубежа и разобраться в старом знаке.', giverId: 'guide', objectives: [{ text: 'Добраться до рубежа', kind: 'visit', targetId: 'threshold' }, { text: 'Разобраться в старом знаке', kind: 'check', targetId: 'old-sign' }], rewardTheme: 'Память о первом открытии' }],
     checks: [{ id: 'old-sign', locationId: 'threshold', trigger: 'inspect', skill: 'history', dc: 10, title: 'Старый знак', prompt: 'На поверхности виден почти стёртый знак.', discoveredFact: 'Этот путь прежде соединял поселения, которые теперь считаются потерянными.' }] });
 }
-module.exports = { seedSchema, validateSeed, validateDevelopments, makeAdventure, fallbackSeed, addMessage, addEvent, processQuestEvent, applyDevelopments };
+module.exports = { seedSchema,developmentSchema, validateSeed, validateDevelopments, makeAdventure, fallbackSeed, addMessage, addEvent, processQuestEvent, applyDevelopments };

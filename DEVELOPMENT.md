@@ -2,7 +2,7 @@
 
 User objective: a working, attractive D&D-style game UI, with reliable mechanics, AI-created adventures and economical long-campaign memory. The objective remains active until all requirements below have runtime evidence.
 
-Ordered milestones and acceptance criteria: [ROADMAP.md](ROADMAP.md). Current stage: playable single-player alpha (package 0.2.0). The `63ea265` checkpoint had 76 tests and successful Windows/Linux, Node 20/22 CI; the loot/progression follow-up has 79 local tests and a real completed adventure. Earlier counts below describe historical checkpoints.
+Ordered milestones and acceptance criteria: [ROADMAP.md](ROADMAP.md). Current stage: playable single-player alpha (package 0.2.0). The `63ea265` checkpoint had 76 tests and successful Windows/Linux, Node 20/22 CI; the loot/progression follow-up had 79 tests; the economy follow-up has 91 tests and real completed adventure/economy scenarios. Earlier counts below describe historical checkpoints.
 
 ## Required outcome
 
@@ -32,7 +32,7 @@ Latest user clarification: maximize narrative freedom in any world co-created by
 
 ## Completion evidence still required
 
-The main UI, map and campaign flow are integrated. Remaining acceptance work includes a complete live adventure with combat/progression, richer generated item mechanics and quest cases, consequential relationships/reputation, weather/survival depth, optional image controls, and broader long-session runtime validation. Cooperative networking is researched, not implemented. Passing the previous alpha tests does not prove the complete objective.
+The main UI, map and campaign flow are integrated. A complete first-level adventure with growth and a basic economy have live evidence. Remaining acceptance work includes broader combat/class/progression coverage, richer generated item mechanics and quest cases, deeper relationships/reputation, weather/survival depth, optional image controls, and broader long-session runtime validation. Cooperative networking is researched, not implemented. Passing the previous alpha tests does not prove the complete objective.
 
 ## Current checkpoint — 2026-10-11
 
@@ -67,4 +67,13 @@ Remaining work includes a broader live adventure audit (combat, death and progre
 - XP gains and level changes are journaled; the sheet shows progress to the next level. Model narration receives actual inventory deltas, separate ground loot, and current time. Plain prose is accepted for narration only; world/intent/spell drafts remain structured.
 - A complete offline adventure uses an unmodified fighter, real attacks, two five-step tasks, pickup/use, level 2, rest, and SQLite reopening. Separate tests cover a real equipped generated weapon, retreat without battle loot, and item action/bonus budgets. Total 79 tests; syntax and isolated smoke pass.
 - Real GPT-6-Luna campaign «Дорога над облаками»: History 15 vs 10, an ordinary longsword attack 22 vs AC 13 with 8 damage, confirmed victory, 25 XP + 2 coins, one collected battle find, return/report, both tasks rewarded once, level 2 with 375 XP and 20/20 HP, Action Surge, long rest and successful server restart. Three earlier format failures were retried without repeating actions; plain-prose handling was then improved.
-- Economy/settlements were added as a requirement. The design and acceptance checks are in [LOOT_AND_ECONOMY.md](LOOT_AND_ECONOMY.md); trading, meaningful services and distinct markets are not implemented yet. The full objective remains active.
+- Economy/settlements were added as a requirement. The design and acceptance checks are in [LOOT_AND_ECONOMY.md](LOOT_AND_ECONOMY.md); At that checkpoint trading, meaningful services and distinct markets were not yet implemented; the follow-up below records their implementation. The full objective remains active.
+
+### Economy and settlements follow-up
+
+- Distinct AI-created markets and optional traveling traders are integrated into the shared campaign. Stock, trader funds, price/rarity rules, purchases, sale protection, charged resale, and receipts are authoritative data. No extra AI request is needed for ordinary transactions.
+- Lodging provides real rest plus one consumed +1d4 check bonus; a declared inn is visited through the known route. Paid information is hidden until payment and retained as attributed information, not confirmed lore. Transport supports reachable destinations and proportional route time/cost.
+- Local help resolves a persisted skill attempt or a two-coin contribution. Success changes NPC trust, local reputation, prices and stock once. Daily restocking follows game time, not UI refresh.
+- Money history includes commerce and rule-based changes. UI has wallet, effects/duration before purchase, trader funds, sale controls, local encounters and recent receipts. Full receipt events remain searchable in the journal; bounded context retains exact coins and only selected market/history records.
+- Live Luna world «Свет над тихими облаками»: two markets, a named inn, Investigation 9 vs 12 including the paid +2 bonus, a distinct donation approach, price reduction 5→4, purchase, paid rumor, a zero balance followed by sale restoring 3 coins, and the purchased shield changing AC 12→13. Shopping kept the AI counter unchanged. The second town has scarce medicine at 12 and a 30-minute ferry at 6; insufficient funds were rejected without a state change. Earned loot in the earlier Rook campaign was sold for 3 coins, 12→15, with no AI call.
+- This closes the basic economy slice, not all social/world consequences. Complex trade, commodity obligations, training/repair, travel risk, weather and optional images remain open. The full objective remains active.

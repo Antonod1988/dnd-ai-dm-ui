@@ -45,6 +45,7 @@ test('an unmodified hero completes exploration, normal combat, rewards, level gr
   assert.equal(view.combat,null,'the real encounter must end');
   assert.ok(view.journal.some(e=>e.kind==='victory'),'retreat must not count as victory');
   assert.ok(view.hero.xp>startXp,'the encounter must award earned XP');
+  assert.ok(view.economy.ledger.some(row=>row.kind==='rules'&&row.amount>0),'earned combat coins appear in the money history');
   const victory=narrated.find(o=>o.lootOnGround);assert.ok(victory.inventoryChanges.some(i=>i.id==='gold_piece'&&i.after>i.before));assert.equal(victory.lootOnGround.mechanics.type,'armor_class_bonus');
   const dropped=view.items.filter(i=>i.origin?.kind==='combat');assert.equal(dropped.length,1);assert.equal(dropped[0].collected,false);
   await srd.closeSessions();view=await adventure.getView(view.campaign.id);

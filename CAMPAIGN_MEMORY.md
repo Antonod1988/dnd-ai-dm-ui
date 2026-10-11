@@ -8,6 +8,7 @@ The full journal, recent dialogue and older dialogue archive remain in the local
 - Relevant unfinished quest objectives and their recorded completion evidence. A compact index covers additional quests when space permits. Previously completed quests can be recalled with their actual status and reward flag.
 - Player bookmarks, confirmed discoveries and relevant excerpts of older dialogue, including their speaker and turn.
 - Nearby people and routes, selected inventory and created spells, a short recent dialogue window and the latest events.
+- Exact wallet balance, selected local market offers and at most three relevant receipts. Unpaid information remains hidden. Purchased information retains its attribution and rumor status.
 
 The packet has a hard 12,000-character budget and smaller budgets for individual sections. It is assembled by relevance and priority. A long history therefore does not mean resending every previous turn. This is retrieval and structured context reduction, rather than a paid AI summary after every turn.
 
@@ -27,7 +28,7 @@ The memory panel shows the current context size, archive and journal counts. For
 
 - A 600-turn rules-backed adventure fixture retains all 601 messages and all 600 events; an early promise/password is recalled from the archive. The context stays within its budget without mutating the source.
 - A relevant active quest after 80 earlier quests is selected. Completed quest status and the reward flag remain recoverable.
-- A 200-turn run executes the actual adventure controller and reopens SQLite halfway through and at the end. All 401 messages and 201 journal events persist, HP/XP remain stable, and an early promise is recalled from the stored archive.
+- A 200-turn run executes the actual adventure controller and reopens SQLite halfway through and at the end. All 401 messages and 202 journal events (200 actions, one initial visit, one daily market restock) persist, HP/XP remain stable, and an early promise is recalled from the stored archive.
 - Short names and words such as “Bob” and “key” are recalled without treating “monkey” as a match; speaker names participate in retrieval. Distant NPCs and late inventory items can enter the packet by relevance.
 - Notes and pin changes persist through reopening, reject stale revisions, and replay without duplicating a note or calling AI.
 - Full-journal search finds an old entry beyond the initial 100-row view. Pagination returns every stored event exactly once.

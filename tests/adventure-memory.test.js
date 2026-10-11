@@ -91,7 +91,10 @@ test('200 executed adventure turns survive reopening SQLite with complete dialog
   }
   await srd.closeSessions();const loaded=await engine.loaded(view.campaign.id);
   assert.equal(loaded.adventure.messages.length+loaded.adventure.archive.length,401);
-  assert.equal(loaded.adventure.journal.length,201);assert.equal(loaded.adventure.turn,201);
+  assert.equal(loaded.adventure.journal.filter(e=>e.kind==='story').length,200);
+  assert.equal(loaded.adventure.journal.filter(e=>e.kind==='visit').length,1);
+  assert.equal(loaded.adventure.journal.filter(e=>e.kind==='market_restock').length,1);
+  assert.equal(loaded.adventure.journal.length,202);assert.equal(loaded.adventure.turn,201);
   assert.equal(loaded.state.party.members[0].hp.current,beforeHp);assert.equal(loaded.state.party.members[0].xp,beforeXp);
   assert.ok(contextFor(loaded.state,loaded.adventure,'Что обещала капитану Тарену и какой пароль?').packet.recollections.some(m=>m.text.includes('ПАРУС-17')));
 });

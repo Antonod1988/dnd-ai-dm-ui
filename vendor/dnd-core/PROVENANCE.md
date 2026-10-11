@@ -15,6 +15,8 @@ The adapter also imports the existing effective-armor and removed-effect conditi
 
 The main adventure opts into explicit player turn completion with `ui_player_turn_control`: spending an action preserves the living player's remaining bonus action/movement until End Turn. Other callers retain the snapshot's automatic behavior. Typed inventory defense/attack/save bonuses can also be prepared outside combat, using the same consumption and duration fields; combat effects are mirrored into the party sheet. The adapter routes combat inventory use through the existing action-cost resolver. XP thresholds and inventory merging are exported for progression UI and durable loot.
 
+The economy adapter imports the existing pure long-rest and state ability-check helpers (including bonus consumption and roll-log construction) through `entry.ts`; these exports do not modify their rules behavior. Market finances, stock, services and the optional comfortable-rest bonus are application mechanics in `src/adventure-economy.js`.
+
 ## SRD attribution
 
 This work includes material from the System Reference Document 5.1 (SRD 5.1) by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.1 is licensed under the Creative Commons Attribution 4.0 International License available at https://creativecommons.org/licenses/by/4.0/legalcode.

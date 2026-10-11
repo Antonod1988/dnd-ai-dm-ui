@@ -15,3 +15,5 @@ export { calculateSrdArmorClass } from './src/core/rulesets/srd5e2014/character-
 export { modeledInventoryUseEffect } from './src/core/content/items.js';
 export { sideDefeated, effectiveArmorClass } from './src/core/rules/combat.js';
 export { cleanRemovedEffectConditions } from './src/core/rules/effects.js';
+export { longRest } from './src/core/rules/rests.js';
+export { rollStateAbilityCheck, abilityCheckRollLogs } from './src/core/narrative/scene-checks.js';

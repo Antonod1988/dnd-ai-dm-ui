@@ -41,3 +41,12 @@ test('HTTP notes, pinning and full journal search use revision checks without ta
   const stale=await post('/api/adventure/memory/pin',{campaignId:view.campaign.id,expectedRevision:note.expectedRevision,operationId:crypto.randomUUID(),kind:'note',recordId:view.notes[0].id,pinned:false});assert.equal(stale.status,409);
   const search=await fetch(url+`/api/adventure/history?campaignId=${encodeURIComponent(view.campaign.id)}&query=${encodeURIComponent('капитану Тарену')}`).then(r=>r.json());assert.equal(search.total,1);assert.equal(search.entries[0].kind,'player_note');
 });
+test('concurrent HTTP purchases are serialized and cannot spend the same revision twice',async()=>{
+  const created=await post('/api/adventure/create',{heroName:'Торговец',worldIdea:'Город мастеров и дороги к поселениям',survival:true});assert.equal(created.status,200);view=created.body;
+  const market=view.economy.markets[0],offer=market.offers.find(o=>o.kind==='supplies');
+  const command={type:'trade',marketId:market.id,offerId:offer.id,direction:'buy',quantity:1};
+  const body={campaignId:view.campaign.id,expectedRevision:view.campaign.revision,operationId:crypto.randomUUID(),command};
+  const results=await Promise.all([post('/api/adventure/act',body),post('/api/adventure/act',{...body,operationId:crypto.randomUUID()})]);
+  assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
+  const saved=await fetch(url+`/api/adventure/state?campaignId=${view.campaign.id}`).then(r=>r.json());assert.equal(saved.economy.coins,8);assert.equal(saved.economy.ledgerTotal,1);assert.equal(saved.survival.foodDays,6);assert.equal(saved.economy.markets[0].offers.find(o=>o.id===offer.id).stock,2);
+});

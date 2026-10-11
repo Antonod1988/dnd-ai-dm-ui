@@ -25,10 +25,11 @@ function setBusy(value, message = 'Мастер готовит ответ…') {
   $('#createButton').disabled = value; $('#playerIntent').disabled = value; $('#intentForm button').disabled = value;
   document.body.classList.toggle('is-busy', value);
 }
-async function act(payload) {
+async function act(payload,{stay=false}={}) {
   if (busy || !currentView?.ready) return false;
   setBusy(true);
-  try { render(await request('act', { ...payload, campaignId:currentView.campaign.id, expectedRevision:currentView.campaign.revision, operationId:crypto.randomUUID() })); showSection('story'); return true; }
+  const section=currentSection;
+  try { render(await request('act', { ...payload, campaignId:currentView.campaign.id, expectedRevision:currentView.campaign.revision, operationId:crypto.randomUUID() })); showSection(stay?section:'story'); return true; }
   catch (error) { toast(error.message); await refreshState(); return false; }
   finally { setBusy(false); }
 }
@@ -39,7 +40,7 @@ async function askMaster(input) {
 }
 function showSection(section) {
   currentSection = section;
-  for (const name of ['story','map','quests','journal','people']) $(`#${name}View`).hidden = name !== section;
+  for (const name of ['story','map','quests','journal','people','town']) $(`#${name}View`).hidden = name !== section;
   document.querySelectorAll('[data-view]').forEach(button => button.classList.toggle('active', button.dataset.view === section));
 }
 function showSheet(name) {
@@ -60,7 +61,7 @@ function render(view) {
   $('#timeBadge').textContent = `День ${view.campaign.day} · ${Math.floor(minutes/60).toString().padStart(2,'0')}:${(minutes%60).toString().padStart(2,'0')}`;
   $('#combatBadge').hidden = !view.combat;
   $('#aiButton').textContent = view.provider.configured ? `AI: ${view.provider.model || view.provider.id}` : 'Подключить AI';
-  renderHero(view); renderMessages(view); renderActions(view); renderMap(view); renderQuests(view); renderJournal(view); renderPeople(view); renderCombat(view);
+  renderHero(view); renderMessages(view); renderActions(view); renderMap(view); renderQuests(view); renderJournal(view); renderPeople(view); renderCombat(view);renderTown(view);
   $('#retryNarration').hidden = !view.pendingNarration; showSection(currentSection); showSheet(currentSheet); localizeUi();
 }
 function renderHero(view) {
@@ -97,9 +98,9 @@ function inventoryCard(item,view){
   const effect=item.mechanics?.use,attack=item.mechanics?.equip?.attack;
   const effectNames={healing:'Лечение',temporary_hp:'Временные HP',remove_condition:'Снятие состояния',armor_class_bonus:'Защита',attack_roll_bonus:'Бонус атаки',ability_check_bonus:'Бонус проверки',saving_throw_bonus:'Бонус спасброска'};
   const property=effect?`${T(effectNames[effect.type]||effect.type)}: ${effect.dice||effect.amount||T(conditionLabels[effect.condition]||effect.condition)}${effect.durationTurns?` · ${effect.durationTurns} ${T('раундов')}`:''}`:attack?`${T('Урон')}: ${attack.damageDice}${attack.damageBonus?` +${attack.damageBonus}`:''}${attack.weaponBonus?` · +${attack.weaponBonus} ${T('к атаке')}`:''}`:'';
-  const origin=item.origin,originName=origin?.kind==='quest'?view.quests.find(q=>q.id===origin.questId)?.title:view.locations.find(l=>l.id===origin?.locationId)?.name;
+  const origin=item.origin,originName=origin?.kind==='quest'?view.quests.find(q=>q.id===origin.questId)?.title:origin?.kind==='purchase'?origin.marketName:view.locations.find(l=>l.id===origin?.locationId)?.name;
   const equipped=Object.values(view.hero.equipment||{}).includes(item.itemId),blocked=(item.requiresAttunement&&!item.attuned)||(item.charges&&item.charges.current<item.charges.costPerUse)||(view.combat&&!view.actions.some(a=>a.id===`core:combat.action.use_item.${item.itemId}`||a.id===`core:combat.bonus.class_feature.feature_fast_hands_use_item.${item.itemId}`));
-  return `<article class="item-card"><div class="item-heading"><h4>${esc(label(item.name))} <small>×${item.quantity}</small></h4>${item.rarity?`<span class="rarity rarity-${esc(item.rarity)}">${T(({common:'Обычный',uncommon:'Необычный',rare:'Редкий',very_rare:'Очень редкий',legendary:'Легендарный'})[item.rarity]||item.rarity)}</span>`:''}</div><p>${esc(item.description)}</p>${property?`<p class="item-mechanics">${esc(property)}</p>`:''}${origin?`<p class="item-origin">${T(origin.kind==='quest'?'Награда за задачу':origin.kind==='combat'?'Добыча после боя':'Находка')}: ${esc(originName||'')} · ${T('Ход')} ${origin.turn}</p>`:''}${equipped?`<p class="item-equipped">${T('Экипировано')}</p>`:''}<div class="mini-actions">${item.canUse?`<button data-command="use_item" data-item="${esc(item.itemId)}" ${blocked?'disabled':''}>Использовать</button>`:''}${item.tags.some(t=>['weapon','armor','shield','focus'].includes(t))?`<button data-command="equip_item" data-item="${esc(item.itemId)}" ${blocked?'disabled':''}>Надеть / взять</button>`:''}${item.requiresAttunement?`<button data-command="${item.attuned?'unattune_item':'attune_item'}" data-item="${esc(item.itemId)}" ${view.combat?'disabled':''}>${T(item.attuned?'Прекратить настройку':'Настроиться · 1 ч.')}</button>`:''}${item.charges?`<small>${item.charges.current}/${item.charges.max} ${T('зарядов')}</small>`:''}</div></article>`;
+  return `<article class="item-card"><div class="item-heading"><h4>${esc(label(item.name))} <small>×${item.quantity}</small></h4>${item.rarity?`<span class="rarity rarity-${esc(item.rarity)}">${T(({common:'Обычный',uncommon:'Необычный',rare:'Редкий',very_rare:'Очень редкий',legendary:'Легендарный'})[item.rarity]||item.rarity)}</span>`:''}</div><p>${esc(item.description)}</p>${property?`<p class="item-mechanics">${esc(property)}</p>`:''}${origin?`<p class="item-origin">${T(origin.kind==='quest'?'Награда за задачу':origin.kind==='combat'?'Добыча после боя':origin.kind==='purchase'?'Покупка':'Находка')}: ${esc(originName||'')} · ${T('Ход')} ${origin.turn}</p>`:''}${equipped?`<p class="item-equipped">${T('Экипировано')}</p>`:''}<div class="mini-actions">${item.canUse?`<button data-command="use_item" data-item="${esc(item.itemId)}" ${blocked?'disabled':''}>Использовать</button>`:''}${item.tags.some(t=>['weapon','armor','shield','focus'].includes(t))?`<button data-command="equip_item" data-item="${esc(item.itemId)}" ${blocked?'disabled':''}>Надеть / взять</button>`:''}${item.requiresAttunement?`<button data-command="${item.attuned?'unattune_item':'attune_item'}" data-item="${esc(item.itemId)}" ${view.combat?'disabled':''}>${T(item.attuned?'Прекратить настройку':'Настроиться · 1 ч.')}</button>`:''}${item.charges?`<small>${item.charges.current}/${item.charges.max} ${T('зарядов')}</small>`:''}</div></article>`;
 }
 function spellCaption(spell) {
   const level=Number(spell.level||0);
@@ -131,7 +132,7 @@ function renderJournal(view) {
   const version=`${view.campaign.id}:${view.campaign.revision}`;
   if(historyVersion!==version){historyVersion=version;historyRequest++;historyPage=null;}
   $('#notesList').innerHTML=(view.notes||[]).filter(n=>n.text.toLowerCase().includes(query)).slice().reverse().map(n=>`<article class="journal-entry"><small>${T('Запись игрока')}${n.pinned?' · ★':''}</small><p>${esc(n.text)}</p><button class="subtle" data-memory-pin="${esc(n.id)}" data-memory-kind="note" data-pinned="${n.pinned?'false':'true'}">${T(n.pinned?'Открепить':'Закрепить')}</button></article>`).join('')||`<p class="empty">${T('Здесь можно хранить цели, обещания и свои догадки.')}</p>`;
-  $('#factsList').innerHTML=view.facts.filter(f=>f.text.toLowerCase().includes(query)).slice(-200).reverse().map(f=>`<article class="journal-entry"><small>ПРОВЕРЕННОЕ ОТКРЫТИЕ${f.pinned?' · ★':''}</small><p>${esc(f.text)}</p><button class="subtle" data-memory-pin="${esc(f.id)}" data-memory-kind="fact" data-pinned="${f.pinned?'false':'true'}">${T(f.pinned?'Открепить':'Закрепить')}</button></article>`).join('') || '<p class="empty">Открытия появятся после исследований.</p>';
+  $('#factsList').innerHTML=view.facts.filter(f=>f.text.toLowerCase().includes(query)).slice(-200).reverse().map(f=>`<article class="journal-entry"><small>${T(f.tags?.includes('rumor')?'СВЕДЕНИЯ ОТ СОБЕСЕДНИКА':'ПРОВЕРЕННОЕ ОТКРЫТИЕ')}${f.pinned?' · ★':''}</small><p>${esc(f.text)}</p><button class="subtle" data-memory-pin="${esc(f.id)}" data-memory-kind="fact" data-pinned="${f.pinned?'false':'true'}">${T(f.pinned?'Открепить':'Закрепить')}</button></article>`).join('') || '<p class="empty">Открытия появятся после исследований.</p>';
   const entries=historyPage?.entries||view.journal.filter(e=>e.text.toLowerCase().includes(query));
   $('#journalList').innerHTML=entries.map(e=>`<article class="journal-entry"><small>ХОД ${e.turn}</small>${esc(e.text)}</article>`).join('') || '<p class="empty">Подходящих записей нет.</p>';
   $('#journalCount').textContent=`${T('Показано записей')}: ${entries.length} / ${historyPage?.total??view.journalTotal}`;
@@ -155,6 +156,19 @@ async function memoryChange(route,data) {
   catch(error){toast(error.message);return false;}finally{setBusy(false);}
 }
 function renderPeople(view) { $('#peopleList').innerHTML=view.npcs.map(n=>`<article class="world-card"><p class="eyebrow">${n.locationId===view.scene.id?'РЯДОМ':esc(view.locations.find(l=>l.id===n.locationId)?.name||'')}</p><h3>${esc(n.name)}</h3><p>${esc(n.role)}</p><p>${esc(n.personality)}</p><p class="relationship">Знакомство: ${n.familiarity} · Доверие: ${n.trust}</p>${n.locationId===view.scene.id?`<button data-action="talk:${esc(n.id)}" ${view.combat?'disabled':''}>Поговорить</button>`:''}</article>`).join('') || '<p class="empty">Новые лица появятся по мере знакомства с миром.</p>'; }
+function renderTown(view){
+  const economy=view.economy||{coins:0,markets:[],ledger:[],sellable:[]};$('#townCoins').textContent=economy.coins;
+  $('#townStatus').textContent=T(view.combat?'Во время боя сделки недоступны.':'Цены и доступные запасы указаны ниже.');
+  const descriptions={supplies:'Еда и вода на три дня',lodging:'8 часов отдыха · +1d4 к следующей проверке',healing:'Восстановить до 8 HP',rumor:'Получить и записать сведения',transport:'Перемещение за 15 минут'};
+  $('#marketList').innerHTML=economy.markets.map(m=>`<article class="market-card"><header><div><p class="eyebrow">${esc(view.npcs.find(n=>n.id===m.merchantId)?.name||T('Местные торговцы'))}</p><h3>${esc(m.name)}</h3></div>${m.discount?`<span class="market-benefit">${T('Доверие')} · ${T('Льготные цены')}</span>`:''}</header><p>${esc(m.livelihood)}</p>${m.shortage?`<p class="market-shortage"><strong>${T('Дефицит')}:</strong> ${esc(m.shortage)}</p>`:''}<div class="market-offers">${m.offers.map(o=>{
+    const use=o.mechanics,type={healing:'Лечение',temporary_hp:'Временные HP',armor_class_bonus:'Защита',ability_check_bonus:'Бонус проверки',attack_roll_bonus:'Бонус атаки',saving_throw_bonus:'Бонус спасброска',remove_condition:'Снятие состояния'}[use?.type];
+    const effect=type?`${T(type)}: ${use.dice||use.amount||T(conditionLabels[use.condition]||use.condition)}${use.durationTurns?` · ${use.durationTurns} ${T('раундов')}`:''}${use.consume?` · ${T('Расходуется')}`:''}`:use?.damageDice?`${T('Урон')}: ${use.damageDice}`:o.kind==='transport'?`${T('Перемещение')}: ${o.travelMinutes} ${T('мин.')}`:T(descriptions[o.kind]||'Свойства предмета указаны в инвентаре');
+    const unavailable=view.combat?'Во время боя сделки недоступны.':view.hero.hp.current<=0?'Герой не может совершить сделку':o.stock<=0?'Запасы закончились':economy.coins<o.price?'Недостаточно монет':o.kind==='healing'&&view.hero.hp.current>=view.hero.hp.max?'Здоровье уже восстановлено':'';
+    const disabled=Boolean(unavailable);
+    return `<section class="market-offer"><div><h4>${esc(o.name)}</h4><p>${esc(o.description)}</p><p class="offer-effect">${esc(effect)}</p>${o.arrivalMinutes?`<p class="offer-effect">${T('Путь к ночлегу')}: ${o.arrivalMinutes} ${T('мин.')} · ${esc(view.locations.find(l=>l.id===o.targetId)?.name||'')}</p>`:''}${o.requiresAttunement?`<p class="offer-effect">${T('Требует настройки')}</p>`:''}${o.charges?`<p class="offer-effect">${o.charges.current}/${o.charges.max} ${T('зарядов')}</p>`:''}<small>${T('Осталось')}: ${o.stock}</small>${unavailable?`<p class="muted">${T(unavailable)}</p>`:''}</div><button data-market="${esc(m.id)}" data-offer="${esc(o.id)}" data-commerce="${['goods','supplies'].includes(o.kind)?'buy':'service'}" ${disabled?'disabled':''}>${T(['goods','supplies'].includes(o.kind)?'Купить':'Выбрать')} · ${o.price}</button></section>`;
+  }).join('')}</div><details class="sell-panel"><summary>${T('Продать вещи')} · ${T('У торговца')}: ${m.cash} ${T('монет')}</summary>${economy.sellable.filter(i=>!i.blocked).map(i=>`<div class="sell-row"><span>${esc(label(i.name))} <small>×${i.quantity}</small></span><button data-commerce="sell" data-market="${esc(m.id)}" data-sell-item="${esc(i.itemId)}" ${view.combat||view.hero.hp.current<=0||m.cash<i.price?'disabled':''}>${T('Продать одну')} · +${i.price}</button></div>`).join('')||`<p class="muted">${T('Нет свободных вещей для продажи. Экипировка и предметы задач защищены.')}</p>`}</details>${m.encounter?`<section class="market-encounter"><p class="eyebrow">${T(m.encounter.resolved?'ПОМОЩЬ ЗАСЧИТАНА':'МЕСТНАЯ ВСТРЕЧА')}</p><h4>${esc(m.encounter.title)}</h4><p>${esc(m.encounter.description)}</p>${m.encounter.resolved?`<p class="market-benefit">${T('Доверие выросло. Условия торговли улучшены.')}</p>`:m.encounter.choices.map(c=>{const attempted=m.encounter.attempts.find(a=>a.choiceId===c.id);return `<button data-commerce="choice" data-market="${esc(m.id)}" data-choice="${esc(c.id)}" ${view.combat||view.hero.hp.current<=0||attempted||(c.kind==='donate'&&economy.coins<2)?'disabled':''}>${esc(c.label)}${c.kind==='check'?` · ${T(uiLanguage==='en'?c.skill:skillLabels[c.skill])} ${c.dc}`:' · 2'}${attempted?` · ${T(attempted.success?'Успех':'Неудача')}`:''}</button>`;}).join('')}</section>`:''}</article>`).join('')||`<p class="empty">${T('Здесь пока нет торговцев и услуг. Ищи поселения или знакомься с местными.')}</p>`;
+  $('#transactionList').innerHTML=economy.ledger.map(row=>`<article class="transaction-row"><span>${esc(row.text)}<small>${T('Ход')} ${row.turn} · ${esc(row.marketName)}</small></span><strong class="${row.amount>0?'income':'expense'}">${row.amount>0?'+':''}${row.amount}</strong></article>`).join('')||`<p class="muted">${T('Сделок пока нет.')}</p>`;
+}
 function renderCombat(view) {
   const bar=$('#combatBar');bar.hidden=!view.combat;if(!view.combat){bar.replaceChildren();return;}
   const current=view.combat.participants[view.combat.turnIndex];
@@ -185,6 +199,10 @@ async function init() {
   document.querySelectorAll('[data-intent-mode]').forEach(button=>button.addEventListener('click',()=>{intentMode=button.dataset.intentMode;document.querySelectorAll('[data-intent-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.intentMode===intentMode)));$('#playerIntent').placeholder=T(intentMode==='question'?'Спроси о мире, правилах или прошлых событиях…':'Что делает твой герой?');}));
   $('#intentForm').addEventListener('submit',async event=>{event.preventDefault();const input=$('#playerIntent').value.trim();if(input&&await(intentMode==='question'?askMaster(input):act({input})))$('#playerIntent').value='';});
   document.addEventListener('click',async event=>{
+    const commerce=event.target.closest('[data-commerce]');if(commerce&&!commerce.disabled){
+      const kind=commerce.dataset.commerce;const command=kind==='choice'?{type:'market_choice',marketId:commerce.dataset.market,choiceId:commerce.dataset.choice}:kind==='service'?{type:'service',marketId:commerce.dataset.market,offerId:commerce.dataset.offer}:{type:'trade',direction:kind,marketId:commerce.dataset.market,...(kind==='sell'?{itemId:commerce.dataset.sellItem}:{offerId:commerce.dataset.offer}),quantity:1};
+      if(await act({command},{stay:true}))toast(currentView.messages.at(-1)?.text||T('Сделка сохранена.'));return;
+    }
     const filter=event.target.closest('[data-inventory-filter]');if(filter){inventoryFilter=filter.dataset.inventoryFilter;renderHero(currentView);localizeUi($('#characterSheet'));return;}
     const pin=event.target.closest('[data-memory-pin]');if(pin){await memoryChange('pin',{recordId:pin.dataset.memoryPin,kind:pin.dataset.memoryKind,pinned:pin.dataset.pinned==='true'});return;}
     const a=event.target.closest('[data-action]');if(a){await act({actionId:a.dataset.action,input:a.textContent.trim()});return;}
