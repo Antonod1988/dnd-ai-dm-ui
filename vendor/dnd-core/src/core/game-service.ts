@@ -4342,11 +4342,15 @@ export class RpgGameService {
     );
     const dayState = addEncounterToAdventuringDay(state, xpBudget);
     const companionAutomatic = runCompanionAutomaticTurns(state, combat, encounterRng);
+    const automaticFlags = { ...dayState.flags };
+    for (const key of ['ui_companion_orders', 'ui_companion_order_results']) {
+      if (Object.prototype.hasOwnProperty.call(companionAutomatic.state.flags, key)) automaticFlags[key] = companionAutomatic.state.flags[key];
+    }
     const updated = {
       ...state,
       flags: scoutedSurprise
-        ? { ...dayState.flags, open_world_next_generated_encounter_surprise_enemies: false }
-        : dayState.flags,
+        ? { ...automaticFlags, open_world_next_generated_encounter_surprise_enemies: false }
+        : automaticFlags,
       party: companionAutomatic.state.party,
       rollLog: companionAutomatic.state.rollLog,
       combat: companionAutomatic.combat,

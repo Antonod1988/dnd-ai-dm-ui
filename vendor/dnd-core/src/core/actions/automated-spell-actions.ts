@@ -3919,17 +3919,18 @@ function markSpellName(spellId: AutomatedSrdMarkSpellId): string {
   return spellId === "spell_hex" ? "Hex" : "Hunter's Mark";
 }
 
-function automatedSrdAreaTargets(
+export function automatedSrdAreaTargets(
   combat: CombatState,
   sourceId: string,
   spellId: AutomatedSrdAreaLikeSpellId,
   options: { includeAllies?: boolean } = {}
 ): Combatant[] {
   const bands = automatedSrdAreaTargetBands(spellId);
+  const includeAllies = options.includeAllies ?? (spellId === "spell_sleep" || spellId === "spell_color_spray");
   return combat.participants.filter(
     (participant) =>
       participant.id !== sourceId &&
-      (participant.kind === "enemy" || options.includeAllies) &&
+      (participant.kind === "enemy" || includeAllies) &&
       !isDefeated(participant) &&
       bands.includes(combatDistanceBand(combat, sourceId, participant.id)) &&
       combatCover(combat, sourceId, participant.id) !== "total"

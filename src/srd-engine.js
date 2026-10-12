@@ -132,7 +132,9 @@ async function spellCastingOptions(state,service,{heroOnly=true}={}){
   const characterId=actor.sourceCharacterId||actor.id;
   if(actor.hp.current<=0||rules.isActionIncapacitated(actor)||!state.party.members.some(m=>m.id===characterId)||(heroOnly&&characterId!==state.party.heroId))return [];
   const candidates=(service||await session()).getAvailableActions(state.campaign.id).actions;
-  return candidates.flatMap(a=>{const parsed=a.id.match(/^combat\.(action|bonus|reaction)\.cast_spell\.([^.]+)\.(.+)$/);if(!parsed)return [];const spent=parsed[1]==='bonus'?rules.spendBonusAction(combat.turnBudget,'cast_spell'):parsed[1]==='reaction'?rules.spendReaction(combat.turnBudget,'cast_spell'):rules.spendAction(combat.turnBudget,'cast_spell');return spent.ok?[{...a,spellId:parsed[2],targetId:parsed[3],cost:parsed[1]}]:[];});
+  return candidates.flatMap(a=>{const parsed=a.id.match(/^combat\.(action|bonus|reaction)\.cast_spell\.([^.]+)\.(.+)$/);if(!parsed)return [];const spent=parsed[1]==='bonus'?rules.spendBonusAction(combat.turnBudget,'cast_spell'):parsed[1]==='reaction'?rules.spendReaction(combat.turnBudget,'cast_spell'):rules.spendAction(combat.turnBudget,'cast_spell');
+    const targets=['spell_sleep','spell_color_spray'].includes(parsed[2])?rules.automatedSrdAreaTargets(combat,actor.id,parsed[2]):null;
+    return spent.ok?[{...a,spellId:parsed[2],targetId:parsed[3],cost:parsed[1],...(targets?{area:{targeting:'caster_distance_bands',candidateTargets:true},affectedIds:targets.map(p=>p.id),mayAffectAllies:targets.some(p=>p.kind!=='enemy')}:{})}]:[];});
 }
 
 async function registerSpell(campaignId, draft, { sourceEventId } = {}) {

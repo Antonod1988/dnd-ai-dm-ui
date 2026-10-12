@@ -10,7 +10,7 @@ function fixture(classId='wizard'){
   const actor=core.characterToCombatant(ally),player=core.characterToCombatant(hero);
   const foe={...structuredClone(player),id:'foe',sourceCharacterId:undefined,kind:'enemy',name:'Foe',hp:{current:100,max:100,temp:0},ac:10,tactics:{}};
   const combat=core.ensureTurnBudget({id:'fight',round:1,turnIndex:0,participants:[actor,foe,player],log:[],environment:{id:'test',name:'Test',description:'',victory:[],defeat:[],escape:[]}});
-  return {campaign:{id:'test',rules:{zeroHpPolicy:'standard5e'}},party:{heroId:hero.id,members:[hero,ally]},flags:{ui_companion_ai_ids:JSON.stringify([ally.id])},rollLog:[],combat};
+  return {campaign:{id:'test',rules:{zeroHpPolicy:'standard5e'}},currentScene:{id:'test'},party:{heroId:hero.id,members:[hero,ally]},flags:{ui_companion_ai_ids:JSON.stringify([ally.id])},rollLog:[],combat};
 }
 function run(state,seed='caster-proof'){
   const rng=new core.SeededRng(seed),hook=core.createCompanionAutomaticHook(state,rng);
@@ -18,6 +18,110 @@ function run(state,seed='caster-proof'){
   return {turn,...hook.result(turn?.combat||state.combat)};
 }
 function preference(state,mode,targetId,combatId=state.combat.id){state.flags.ui_companion_orders=JSON.stringify({'npc-caster':{mode,...(targetId?{targetId}:{}),...(mode==='focus'?{combatId}:{})}});return state;}
+function exactCast(state,spellId,targetId='foe',cost='action',directiveId='exact-1'){
+  state.flags.ui_companion_orders=JSON.stringify({'npc-caster':{mode:'cast',spellActionId:`combat.${cost}.cast_spell.${spellId}.${targetId}`,directiveId,combatId:state.combat.id}});return state;
+}
+function learn(state,...spells){const c=state.party.members[1];c.spellcasting.known=[...new Set([...c.spellcasting.known,...spells])];c.spellcasting.prepared=[...new Set([...c.spellcasting.prepared,...spells.filter(id=>!['spell_fire_bolt','spell_sacred_flame'].includes(id))])];return state;}
+function directiveResult(result){return JSON.parse(result.state.flags.ui_companion_order_results)['npc-caster'];}
+
+test('exact spell-order preview is pure, uses the NPC repertoire and executes neither immediately nor on another human turn',()=>{
+  const state=exactCast(learn(fixture(),'spell_sleep'),'spell_sleep'),before=structuredClone(state);
+  state.combat.turnIndex=2;const pending=structuredClone(state);
+  const preview=core.companionSpellOrderOptions(state,'npc-caster',{preview:true});assert.ok(preview.some(o=>o.id==='combat.action.cast_spell.spell_sleep.foe'));assert.deepEqual(state,pending);
+  assert.deepEqual(core.companionSpellOrderOptions(state,'npc-caster'),[]);assert.deepEqual(core.companionSpellOrderOptions(state,'hero',{preview:true}),[]);
+  const unchanged=run(state);assert.equal(unchanged.rollLogs.length,0);assert.equal(unchanged.state.flags.ui_companion_order_results,undefined);assert.equal(unchanged.state.flags.ui_companion_orders,state.flags.ui_companion_orders);
+  for(const member of before.party.members){const actual=unchanged.state.party.members.find(m=>m.id===member.id);assert.deepEqual(actual.hp,member.hp);assert.deepEqual(actual.resources,member.resources);assert.deepEqual(actual.inventory,member.inventory);assert.deepEqual(actual.spellcasting,member.spellcasting);}
+});
+
+test('exact Sleep uses the real upstream area effect and one slot, records consumption and never substitutes the default offensive spell',()=>{
+  const state=exactCast(learn(fixture(),'spell_sleep'),'spell_sleep');state.combat.participants[1].hp={current:4,max:4,temp:0};state.combat.distances={'npc-caster':{hero:'out_of_range'}};const original=structuredClone(state),result=run(state,'exact-sleep');
+  assert.deepEqual(state,original);assert.equal(result.combat.participants[1].hp.current,4);assert.ok(result.combat.participants[1].conditions.includes('unconscious'));assert.equal(result.combat.turnBudget.action,false);assert.equal(result.combat.turnBudget.bonusAction,true);assert.equal(result.state.party.members[1].spellcasting.slots['1'].current,1);
+  assert.equal(result.rollLogs.length,1);assert.equal(result.rollLogs[0].label,'spell_sleep');assert.equal(directiveResult(result).status,'resolved');assert.equal(directiveResult(result).spellActionId,'combat.action.cast_spell.spell_sleep.foe');assert.deepEqual(JSON.parse(result.state.flags.ui_companion_orders)['npc-caster'],{mode:'auto'});
+});
+
+test('exact control and offense preserve the selected catalog spell and real target, rather than automatic damage priorities',()=>{
+  const state=exactCast(learn(fixture(),'spell_hold_person'),'spell_hold_person');state.party.members[1].level=3;state.party.members[1].spellcasting.slots['2']={current:2,max:2};state.party.members[1].resources.push({id:'spell_slots_2',current:2,max:2,refresh:'long_rest'});state.combat.participants[0]=core.characterToCombatant(state.party.members[1]);
+  const rng={next:()=>0.01},hook=core.createCompanionAutomaticHook(state,rng),turn=hook.beforeAutomaticActor({combat:state.combat,actor:state.combat.participants[0],rng,rules:state.campaign.rules}),held=hook.result(turn.combat);
+  assert.equal(directiveResult(held).status,'resolved');assert.ok(held.combat.participants[1].conditions.includes('paralyzed'));assert.equal(held.combat.participants[1].hp.current,100);assert.equal(held.state.party.members[1].spellcasting.slots['2'].current,1);
+  const damage=fixture(),other={...structuredClone(damage.combat.participants[1]),id:'other-foe',hp:{current:1,max:1,temp:0}};damage.combat.participants.push(other);exactCast(damage,'spell_magic_missile','foe');const hit=run(damage);
+  assert.ok(hit.combat.participants[1].hp.current<100);assert.equal(hit.combat.participants.find(p=>p.id==='other-foe').hp.current,1);assert.equal(directiveResult(hit).status,'resolved');assert.equal(hit.rollLogs.some(l=>l.label==='spell_sleep'),false);
+});
+
+test('Sleep and Color Spray expose actual creature candidates around the caster and require explicit consent for ally risk',()=>{
+  for(const [spellId,condition] of [['spell_sleep','unconscious'],['spell_color_spray','blinded']]){
+    const state=exactCast(learn(fixture(),spellId),spellId);state.combat.participants[1].hp={current:4,max:4,temp:0};state.party.members[0].hp.current=1;state.combat.participants[2]=core.characterToCombatant(state.party.members[0]);
+    const option=core.companionSpellOrderOptions(state,'npc-caster').find(o=>o.id===`combat.action.cast_spell.${spellId}.foe`);assert.equal(option.area.targeting,'caster_distance_bands');assert.equal(option.area.candidateTargets,true);assert.deepEqual(option.affectedIds,['foe','hero']);assert.equal(option.mayAffectAllies,true);
+    const refusal=run(state);assert.equal(directiveResult(refusal).status,'refused');assert.match(directiveResult(refusal).message,/allies/);assert.equal(refusal.rollLogs.length,0);assert.equal(refusal.state.party.members[1].spellcasting.slots['1'].current,2);assert.equal(refusal.combat.turnBudget.action,true);assert.equal(refusal.combat.participants[1].hp.current,4);
+    const order=JSON.parse(state.flags.ui_companion_orders);order['npc-caster'].allowFriendlyFire=true;state.flags.ui_companion_orders=JSON.stringify(order);const allowed=run(state,`allowed-${spellId}`);assert.equal(directiveResult(allowed).status,'resolved');assert.equal(allowed.state.party.members[1].spellcasting.slots['1'].current,1);assert.ok(allowed.combat.participants[1].conditions.includes(condition));assert.ok(allowed.combat.participants[2].conditions.includes(condition));assert.equal(allowed.combat.participants[0].conditions.includes(condition),false);assert.equal(allowed.combat.participants[2].hp.current,1);
+  }
+});
+
+test('an ally entering the Sleep area after a safe preview invalidates the exact directive before dice, action or slot spending',()=>{
+  const state=exactCast(learn(fixture(),'spell_sleep'),'spell_sleep');state.combat.distances={'npc-caster':{hero:'out_of_range'}};const option=core.companionSpellOrderOptions(state,'npc-caster',{preview:true}).find(o=>o.id==='combat.action.cast_spell.spell_sleep.foe');assert.equal(option.mayAffectAllies,false);assert.deepEqual(option.affectedIds,['foe']);
+  state.combat.distances['npc-caster'].hero='near';const result=run(state);assert.equal(directiveResult(result).status,'refused');assert.equal(result.rollLogs.length,0);assert.equal(result.combat.turnBudget.action,true);assert.equal(result.state.party.members[1].spellcasting.slots['1'].current,2);assert.equal(result.combat.participants[1].hp.current,100);
+});
+
+test('common Sleep and Color Spray solvers include nearby allies for hero casts, preserve cover/range and consume their real slots',()=>{
+  for(const [spellId,condition] of [['spell_sleep','unconscious'],['spell_color_spray','blinded']]){const state=learn(fixture(),spellId),caster=state.party.members[1],actor=state.combat.participants[0];state.combat.participants[0]={...actor,kind:'player'};state.combat.participants[1].hp={current:4,max:4,temp:0};state.combat.participants[2].hp.current=1;
+    const result=core.resolveAutomatedSrdCombatSpellTurnAction({combat:state.combat,actorId:actor.id,actionId:`combat.action.cast_spell.${spellId}.foe`,members:state.party.members,rng:new core.SeededRng('common-area'),rules:state.campaign.rules});assert.equal(result.ok,true);assert.ok(result.combat.participants[1].conditions.includes(condition));assert.ok(result.combat.participants[2].conditions.includes(condition));assert.equal(result.combat.participants[0].conditions.includes(condition),false);assert.equal(result.partyMembers.find(m=>m.id===caster.id).spellcasting.slots['1'].current,1);
+    state.combat.cover={'npc-caster':{hero:'total'}};const covered=core.resolveAutomatedSrdCombatSpellTurnAction({combat:state.combat,actorId:actor.id,actionId:`combat.action.cast_spell.${spellId}.foe`,members:state.party.members,rng:new core.SeededRng('common-area'),rules:state.campaign.rules});assert.equal(covered.ok,true);assert.equal(covered.combat.participants[2].conditions.includes(condition),false);
+  }
+});
+
+test('readied Counterspell interrupts a permitted Sleep area before any friend or foe receives its condition',()=>{
+  const state=exactCast(learn(fixture(),'spell_sleep'),'spell_sleep'),order=JSON.parse(state.flags.ui_companion_orders);order['npc-caster'].allowFriendlyFire=true;state.flags.ui_companion_orders=JSON.stringify(order);const foe=state.combat.participants[1];foe.resources=[{id:'spell_slots_3',current:1,max:1,refresh:'long_rest'}];foe.tactics={readiedAction:'spell_counterspell',readiedTriggerType:'target_casts_spell',readiedTriggerTargetId:'npc-caster',readiedReactionTargetId:'npc-caster'};const result=run(state);assert.equal(directiveResult(result).status,'refused');assert.equal(result.combat.participants.some(p=>p.conditions.includes('unconscious')),false);assert.equal(result.combat.participants[1].resources[0].current,0);assert.equal(result.state.party.members[1].spellcasting.slots['1'].current,2);assert.equal(result.combat.turnBudget.action,false);
+});
+
+test('real Healing Word restores a wounded positive-HP sleeper without removing magical unconsciousness, its condition source or Sleep effect',()=>{
+  const sleep=learn(fixture(),'spell_sleep');sleep.combat.participants[2].hp.current=3;sleep.party.members[0].hp.current=3;
+  const asleep=core.resolveAutomatedSrdCombatSpellTurnAction({combat:sleep.combat,actorId:'npc-caster',actionId:'combat.action.cast_spell.spell_sleep.foe',members:sleep.party.members,rng:{next:()=>0.99},rules:sleep.campaign.rules});assert.equal(asleep.ok,true);
+  const patient=asleep.combat.participants.find(p=>p.id==='hero');assert.equal(patient.hp.current,3);assert.ok(patient.conditions.includes('unconscious'));assert.ok(patient.activeEffects.some(e=>e.spellId==='spell_sleep'));
+  const state=exactCast(fixture('cleric'),'spell_healing_word','hero','bonus');state.combat.participants[2]=structuredClone(patient);state.party.members[0]=structuredClone(asleep.partyMembers.find(m=>m.id==='hero'));
+  const original=structuredClone(state),healed=run(state);assert.deepEqual(state,original);const after=healed.combat.participants.find(p=>p.id==='hero');assert.ok(after.hp.current>3);assert.ok(after.conditions.includes('unconscious'));assert.deepEqual(after.activeEffects,patient.activeEffects);assert.deepEqual(after.conditionInstances,patient.conditionInstances);assert.equal(directiveResult(healed).status,'resolved');assert.equal(healed.state.party.members[1].spellcasting.slots['1'].current,1);assert.equal(healed.combat.participants[1].hp.current,100);
+});
+
+test('ordinary 0-HP healing revives and resets death saves, while zero gain, healing prevention and dead bodies preserve every life field',()=>{
+  const state=dyingCompanion(fixture(),1,2),patient=state.combat.participants[0],original=structuredClone(patient),revived=core.applyHealing(patient,3);assert.deepEqual(patient,original);assert.equal(revived.hp.current,3);assert.equal(revived.deathSaves,undefined);assert.equal(revived.conditions.includes('unconscious'),false);assert.equal(revived.conditions.includes('dying'),false);
+  for(const [target,amount] of [[patient,0],[patient,-1],[patient,NaN],[{...patient,activeEffects:[{id:'no-heal',healingPrevented:true}]},5],[{...patient,conditions:['dead','unconscious'],deathSaves:{...patient.deathSaves,dead:true}},5]]){const before=structuredClone(target),result=core.applyHealing(target,amount);assert.equal(result,target);assert.deepEqual(result,before);}
+});
+
+test('an exact bonus healing order heals only the selected wounded ally and leaves its main action idle; a now-healed target refuses',()=>{
+  const state=exactCast(fixture('cleric'),'spell_healing_word','hero','bonus');state.party.members[0].hp.current=1;state.combat.participants[2]=core.characterToCombatant(state.party.members[0]);const result=run(state);
+  assert.ok(result.state.party.members[0].hp.current>1);assert.equal(result.combat.participants[1].hp.current,100);assert.equal(result.combat.turnBudget.action,true);assert.equal(result.combat.turnBudget.bonusAction,false);assert.equal(result.state.party.members[1].spellcasting.slots['1'].current,1);assert.equal(directiveResult(result).status,'resolved');assert.equal(result.rollLogs.length,1);
+  const full=exactCast(fixture('cleric'),'spell_healing_word','hero','bonus'),denied=run(full);assert.equal(directiveResult(denied).status,'refused');assert.equal(denied.rollLogs.length,0);assert.deepEqual(denied.combat.turnBudget,full.combat.turnBudget);assert.equal(denied.state.party.members[1].spellcasting.slots['1'].current,2);assert.equal(denied.combat.participants[1].hp.current,100);
+});
+
+test('spent slots, preparation, absent/dead/moved/covered/charmed targets, wrong cost and combat epoch consume orders without substitute attacks',()=>{
+  const changes=[s=>{s.party.members[1].spellcasting.slots['1'].current=0;s.combat.participants[0].resources.find(r=>r.id==='spell_slots_1').current=0;},s=>s.party.members[1].spellcasting.prepared=[],s=>s.combat.participants=s.combat.participants.filter(p=>p.id!=='foe'),s=>s.combat.participants[1].conditions=['dead'],s=>s.combat.cover={'npc-caster':{foe:'total'}},s=>s.combat.distances={'npc-caster':{foe:'out_of_range'}},s=>{s.combat.participants[0].conditions=['charmed'];s.combat.participants[0].conditionInstances=[{id:'charm',condition:'charmed',sourceId:'foe'}];},s=>s.combat.turnBudget.action=false,s=>s.combat.participants[0].conditions=['stunned'],s=>s.combat.id='another-fight',s=>exactCast(s,'spell_magic_missile','foe','bonus'),s=>exactCast(s,'spell_unknown','foe')];
+  for(const change of changes){const state=exactCast(fixture(),'spell_magic_missile');change(state);const before=structuredClone(state),result=run(state);assert.deepEqual(state,before);assert.equal(directiveResult(result).status,'refused');assert.equal(result.turn.handled,true);assert.equal(result.rollLogs.length,0);assert.deepEqual(result.state.party.members[1].inventory,before.party.members[1].inventory);assert.deepEqual(result.combat.turnBudget,before.combat.turnBudget);assert.equal(result.combat.participants.find(p=>p.id==='foe')?.hp.current,before.combat.participants.find(p=>p.id==='foe')?.hp.current);}
+  const touch=exactCast(learn(fixture('cleric'),'spell_inflict_wounds'),'spell_inflict_wounds');touch.combat.distances={'npc-caster':{foe:'near'}};const result=run(touch);assert.equal(directiveResult(result).status,'refused');assert.equal(result.rollLogs.length,0);assert.equal(core.combatDistanceBand(result.combat,'npc-caster','foe'),'near');
+});
+
+test('consumed directive survives JSON reopen and a replay cannot cast again or launch replacement offense',()=>{
+  const state=exactCast(fixture(),'spell_magic_missile');state.flags.other_flag='preserved';const result=run(state),reopened=JSON.parse(JSON.stringify(result.state));reopened.combat.turnBudget=undefined;reopened.combat=core.ensureTurnBudget(reopened.combat);reopened.flags.ui_companion_orders=state.flags.ui_companion_orders;
+  const before=structuredClone(reopened),replay=run(reopened);assert.equal(replay.rollLogs.length,0);assert.equal(replay.state.party.members[1].spellcasting.slots['1'].current,1);assert.equal(replay.combat.participants[1].hp.current,before.combat.participants[1].hp.current);assert.deepEqual(directiveResult(replay),directiveResult(result));assert.equal(replay.state.flags.other_flag,'preserved');assert.equal(Object.keys(JSON.parse(replay.state.flags.ui_companion_order_results)).length,1);
+});
+
+test('catalog reaction actions and corrupted one-shot directive metadata refuse rather than reverting to destructive auto behavior',()=>{
+  for(const patch of [{spellActionId:'combat.reaction.cast_spell.spell_hellish_rebuke.foe'},{spellActionId:'x'.repeat(401)},{directiveId:42},{extraDamage:10000}]){const state=exactCast(fixture(),'spell_magic_missile'),order=JSON.parse(state.flags.ui_companion_orders);Object.assign(order['npc-caster'],patch);state.flags.ui_companion_orders=JSON.stringify(order);const result=run(state);assert.equal(directiveResult(result).status,'refused');assert.equal(result.rollLogs.length,0);assert.equal(result.combat.participants[1].hp.current,100);assert.equal(result.state.party.members[1].spellcasting.slots['1'].current,2);}
+  const human=exactCast(fixture(),'spell_magic_missile');human.party.members[1].kind='player';human.combat.participants[0].kind='player';const result=run(human);assert.equal(result.turn,undefined);assert.equal(result.state.flags.ui_companion_order_results,undefined);assert.equal(result.rollLogs.length,0);
+});
+
+test('exact directive resolves Counterspell once and consumes it as interrupted without damage or replacement magic',()=>{
+  const state=exactCast(fixture(),'spell_magic_missile'),foe=state.combat.participants[1];foe.resources=[{id:'spell_slots_3',current:1,max:1,refresh:'long_rest'}];foe.tactics={readiedAction:'spell_counterspell',readiedTriggerType:'target_casts_spell',readiedTriggerTargetId:'npc-caster',readiedReactionTargetId:'npc-caster'};
+  const result=run(state);assert.equal(directiveResult(result).status,'refused');assert.match(directiveResult(result).message,/Counterspell/);assert.equal(result.combat.participants[1].hp.current,100);assert.equal(result.combat.participants[1].resources[0].current,0);assert.equal(result.combat.participants[1].tactics.reactionSpent,true);assert.equal(result.combat.turnBudget.action,false);assert.equal(result.state.party.members[1].spellcasting.slots['1'].current,2);assert.equal(result.combat.log.filter(l=>l.actorId==='foe'&&l.body.includes('Counterspell')).length,1);
+});
+
+test('both turn-start and spell-trigger readied incapacitation consume the exact directive once, preserving unspent slots/items',()=>{
+  for(const trigger of ['hostile_turn_start','target_casts_spell']){const state=exactCast(fixture(),'spell_magic_missile'),foe=state.combat.participants[1];foe.attacks=[{id:'directive-interrupt',name:'Interrupted',ability:'str',damageDice:'20d6',damageType:'bludgeoning',range:'melee',proficient:true}];foe.tactics={readiedAction:'directive-interrupt',readiedTriggerType:trigger,readiedTriggerTargetId:'npc-caster',readiedReactionTargetId:'npc-caster'};let result;
+    for(let n=0;n<25&&!result;n++){const candidate=run(state,`directive-interrupt-${n}`);if(candidate.state.party.members[1].hp.current===0)result=candidate;}
+    assert.ok(result);assert.equal(directiveResult(result).status,'refused');assert.equal(result.rollLogs.filter(l=>l.label.startsWith('Ready directive-interrupt')).length,1);assert.equal(result.state.party.members[1].spellcasting.slots['1'].current,2);assert.deepEqual(result.state.party.members[1].inventory,state.party.members[1].inventory);assert.equal(result.combat.participants[1].hp.current,100);assert.equal(result.combat.turnBudget.action,trigger==='hostile_turn_start');
+  }
+});
+
+test('nonreviving real death-save turn cancels exact order, while natural20 can execute the selected spell on that same turn',()=>{
+  for(const natural of [5,20]){const state=exactCast(dyingCompanion(fixture()),'spell_magic_missile');state.combat.participants=[state.combat.participants[0],state.combat.participants[2],state.combat.participants[1]];const before=structuredClone(state),result=core.runCompanionAutomaticTurns(state,state.combat,{next:()=>((natural-1)+0.1)/20});assert.deepEqual(state,before);assert.equal(result.rollLogs.filter(l=>l.label==='Death Saving Throw').length,1);assert.equal(directiveResult(result).status,natural===20?'resolved':'refused');assert.equal(result.state.party.members[1].spellcasting.slots['1'].current,natural===20?1:2);assert.equal(result.state.party.members[1].inventory.find(i=>i.itemId==='healing_potion').quantity,1);assert.equal(result.combat.participants[result.combat.turnIndex].kind,'player');if(natural===20)assert.ok(result.combat.participants.find(p=>p.id==='foe').hp.current<100);else assert.equal(result.combat.participants.find(p=>p.id==='foe').hp.current,100);}
+});
 test('defend resolves real Dodge and its main-action cost for a noncaster without creating AC or damage',()=>{
   const state=preference(fixture('fighter'),'defend'),before=structuredClone(state),result=run(state);assert.deepEqual(state,before);assert.equal(result.turn.handled,true);assert.equal(result.combat.turnBudget.action,false);assert.equal(result.combat.turnBudget.bonusAction,true);assert.equal(result.combat.participants[0].tactics.dodging,true);assert.equal(result.combat.participants[0].ac,before.combat.participants[0].ac);assert.equal(result.combat.participants[1].hp.current,100);assert.ok(result.combat.log.some(l=>l.title==='Caster: dodge'));
 });
@@ -218,4 +322,29 @@ test('a dying registered NPC at actual generated-battle startup rolls once and s
   assert.equal(started.state.rollLog.filter(l=>l.actorId===ally.id&&l.label==='Death Saving Throw').length,1);
   const saved=started.state.party.members.find(p=>p.id===ally.id),reopened=service.loadCampaign(state.campaign.id).party.members.find(p=>p.id===ally.id);
   assert.deepEqual(reopened.hp,saved.hp);assert.deepEqual(reopened.deathSaves,saved.deathSaves);assert.equal(reopened.spellcasting.slots['1'].current,0);
+});
+
+test('actual service end-turn persists exact order consumption and replay protection without overwriting unrelated campaign flags',async()=>{
+  const dataDir=await fs.mkdtemp(path.join(os.tmpdir(),'dnd-exact-order-service-')),local=await core.RpgGameService.create(dataDir);
+  try{
+    let state=await local.startCampaign({heroName:'Order hero',heroClass:'fighter'});const hero=state.party.members[0];hero.abilities.dex=50;hero.hp={current:100,max:100,temp:0};
+    const ally=core.createSrdLevelOneCharacter({id:'npc-caster',name:'Ordered caster',classId:'wizard',raceId:'human'});ally.kind='ally';ally.abilities.dex=1;ally.hp={current:100,max:100,temp:0};state.party.members.push(ally);
+    Object.assign(state.flags,{ui_companion_ai_ids:JSON.stringify([ally.id]),ui_player_turn_control:true,ui_adventure:'campaign-metadata-preserved',custom_script_flag:'script-preserved',ui_bound_npc_combat_snapshot:'previous-terminal-snapshot'});
+    await local.store.saveGameState(state,{snapshot:false});state=(await local.startGeneratedEncounter(state.campaign.id,[{name:'Order sentinel',role:'brute',tier:3}],'order-service-start')).state;
+    assert.equal(state.combat.participants[state.combat.turnIndex].id,hero.id);const enemy=state.combat.participants.find(p=>p.kind==='enemy');exactCast(state,'spell_magic_missile',enemy.id,'action','persisted-directive');const queued=state.flags.ui_companion_orders;
+    await local.store.saveGameState(state,{snapshot:false});const acted=await local.chooseAction(state.campaign.id,'combat.end_turn','ordered-service-turn');state=acted.state;let result=JSON.parse(state.flags.ui_companion_order_results)[ally.id];
+    assert.equal(result.directiveId,'persisted-directive');assert.equal(result.status,'resolved');assert.equal(state.party.members.find(m=>m.id===ally.id).spellcasting.slots['1'].current,1);assert.deepEqual(JSON.parse(state.flags.ui_companion_orders)[ally.id],{mode:'auto'});
+    for(const [key,value] of Object.entries({ui_adventure:'campaign-metadata-preserved',custom_script_flag:'script-preserved',ui_bound_npc_combat_snapshot:'previous-terminal-snapshot'}))assert.equal(state.flags[key],value);
+    const reopened=local.loadCampaign(state.campaign.id);assert.deepEqual(JSON.parse(reopened.flags.ui_companion_order_results)[ally.id],result);assert.deepEqual(JSON.parse(reopened.flags.ui_companion_orders)[ally.id],{mode:'auto'});
+    reopened.flags.ui_companion_orders=queued;const oldEnemyHp=reopened.combat.participants.find(p=>p.id===enemy.id).hp.current;await local.store.saveGameState(reopened,{snapshot:false});const replay=await local.chooseAction(state.campaign.id,'combat.end_turn','replayed-service-turn');assert.equal(replay.state.party.members.find(m=>m.id===ally.id).spellcasting.slots['1'].current,1);assert.equal(replay.state.combat.participants.find(p=>p.id===enemy.id).hp.current,oldEnemyHp);assert.deepEqual(JSON.parse(replay.state.flags.ui_companion_orders)[ally.id],{mode:'auto'});assert.deepEqual(JSON.parse(replay.state.flags.ui_companion_order_results)[ally.id],result);
+  }finally{local.store.close();await fs.rm(dataDir,{recursive:true,force:true});}
+});
+
+test('actual generated encounter opening persists a stale exact directive refusal and preserves adventure/day/custom flags',async()=>{
+  const dataDir=await fs.mkdtemp(path.join(os.tmpdir(),'dnd-opening-order-service-')),local=await core.RpgGameService.create(dataDir);
+  try{
+    const state=await local.startCampaign({heroName:'Opening hero',heroClass:'fighter'});state.party.members[0].abilities.dex=1;state.party.members[0].hp={current:100,max:100,temp:0};const ally=core.createSrdLevelOneCharacter({id:'npc-caster',name:'Opening caster',classId:'wizard',raceId:'human'});ally.kind='ally';ally.abilities.dex=50;ally.hp={current:100,max:100,temp:0};state.party.members.push(ally);
+    Object.assign(state.flags,{ui_companion_ai_ids:JSON.stringify([ally.id]),ui_companion_orders:JSON.stringify({[ally.id]:{mode:'cast',spellActionId:'combat.action.cast_spell.spell_magic_missile.enemy_generated_1',directiveId:'stale-opening',combatId:'previous-combat'} }),ui_adventure:'opening-metadata',custom_script_flag:'opening-script',ui_player_turn_control:true});await local.store.saveGameState(state,{snapshot:false});const started=await local.startGeneratedEncounter(state.campaign.id,[{name:'Opening sentinel',role:'brute',tier:3}],'opening-order');
+    const result=JSON.parse(started.state.flags.ui_companion_order_results)[ally.id];assert.equal(result.status,'refused');assert.equal(result.directiveId,'stale-opening');assert.equal(started.state.party.members.find(m=>m.id===ally.id).spellcasting.slots['1'].current,2);assert.deepEqual(JSON.parse(started.state.flags.ui_companion_orders)[ally.id],{mode:'auto'});assert.equal(started.state.flags.ui_adventure,'opening-metadata');assert.equal(started.state.flags.custom_script_flag,'opening-script');assert.equal(started.state.flags.ui_companion_ai_ids,state.flags.ui_companion_ai_ids);assert.deepEqual(JSON.parse(local.loadCampaign(state.campaign.id).flags.ui_companion_order_results)[ally.id],result);
+  }finally{local.store.close();await fs.rm(dataDir,{recursive:true,force:true});}
 });

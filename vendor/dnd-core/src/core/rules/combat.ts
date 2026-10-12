@@ -1991,14 +1991,17 @@ export function applyHealing(target, amount) {
     }
     const current = Math.min(effectiveHitPointMaximum(target), target.hp.current + amount);
     if (current <= target.hp.current) return target;
+    const revived = target.hp.current <= 0;
     const healed = {
         ...target,
         hp: {
             ...target.hp,
             current
         },
-        conditions: target.conditions.filter((condition) => condition !== "unconscious" && condition !== "dying"),
-        deathSaves: undefined
+        conditions: revived
+            ? target.conditions.filter((condition) => condition !== "unconscious" && condition !== "dying")
+            : target.conditions,
+        deathSaves: revived ? undefined : target.deathSaves
     };
     return syncConditionInstancesWithConditions(healed);
 }

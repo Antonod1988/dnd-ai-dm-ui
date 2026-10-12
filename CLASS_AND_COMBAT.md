@@ -22,5 +22,5 @@ Live GPT-6-Luna campaign **Огонь на мосту**, hero **Илия**: a re
 
 - The current generated-spell leveled-cast marker and catalog casting do not yet share a complete SRD bonus-action spell restriction. Broader mixed casting, concentration interactions and high-level features require more coverage.
 - Area spells use the core's distance bands from the caster. An enemy-labeled choice does not reposition the area around that enemy; arbitrary area anchoring and tactical coordinates are not implemented.
-- NPC relationship records are not yet full playable mechanical companions. The allied-caster regression protects the existing party model but does not claim remote cooperative play.
+- Persistent mechanical companions and exact one-shot known-spell orders are integrated. They use their own slots/actions, while humans remain controlled by their player. See [COMPANIONS.md](COMPANIONS.md) and [EXACT_COMPANION_ORDERS.md](EXACT_COMPANION_ORDERS.md). This does not claim remote cooperative play or all class tactics.
 - The current class fixtures do not prove every subclass, defeat/revival branch or high-level combination. Live class/adventure testing continues.

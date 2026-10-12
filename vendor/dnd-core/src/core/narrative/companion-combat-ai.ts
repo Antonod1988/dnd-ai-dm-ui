@@ -1,12 +1,13 @@
 import type { Character, CombatState, Combatant, GameState, RollLogEntry, RulesConfig } from '../types.js';
 import { rollExpression, type Rng } from '../dice.js';
-import { availableAutomatedSrdSpells, automatedSrdSpellLevel, type AutomatedSrdSpellId } from '../rulesets/srd5e2014/spell-engine.js';
-import { getAutomatedSrdSpellAction, resolveAutomatedSrdCombatSpellTurnAction } from '../actions/automated-spell-actions.js';
+import { availableAutomatedSrdSpells, automatedSrdAreaTargetBands, automatedSrdSpellLevel, type AutomatedSrdAreaLikeSpellId, type AutomatedSrdSpellId } from '../rulesets/srd5e2014/spell-engine.js';
+import { automatedSrdAreaTargets, getAutomatedSrdSpellAction, resolveAutomatedSrdCombatSpellTurnAction } from '../actions/automated-spell-actions.js';
 import { resolveDeathSaveTurnAction } from '../actions/death-save-actions.js';
-import { applyAiMovementToAttackRange, applyAiStandUp, applyHealing, combatCover, combatDistanceBand, combatantStatusFlags, isAttackInDistanceBand, needsDeathSave, resolveReadiedReactionsWithRollLogs, runAutomaticTurns, syncCombatantToCharacter } from '../rules/combat.js';
+import { applyAiMovementToAttackRange, applyAiStandUp, applyHealing, combatCover, combatDistanceBand, combatantStatusFlags, ensureTurnBudget, isAttackInDistanceBand, needsDeathSave, resolveReadiedReactionsWithRollLogs, runAutomaticTurns, syncCombatantToCharacter } from '../rules/combat.js';
 import { effectiveHitPointMaximum, isCharmedBySource } from '../rules/conditions.js';
 import { syncPartyFromCombat } from './consequence-engine.js';
-import { hasAvailableAction, spendAction } from '../rulesets/srd5e2014/action-economy.js';
+import { hasAvailableAction, spendAction, spendBonusAction } from '../rulesets/srd5e2014/action-economy.js';
+import { buildTurnView } from './option-builder.js';
 import { resolveRegisteredStandardCombatAction } from '../actions/standard-combat-actions.js';
 import { canUseSrdAttackWithEquipment } from '../rulesets/srd5e2014/character-builder.js';
 import { canSpendInventoryItemUse, hasAmmunitionForAttack, inventoryItemForAttack, itemCatalog, modeledInventoryUseEffect, spendInventoryItemUse } from '../content/items.js';
@@ -14,13 +15,56 @@ import { canSpendInventoryItemUse, hasAmmunitionForAttack, inventoryItemForAttac
 const healing: AutomatedSrdSpellId[] = ['spell_healing_word', 'spell_cure_wounds'];
 const damage = new Set(['spell_magic_missile', 'spell_sacred_flame', 'spell_toll_the_dead', 'spell_poison_spray', 'spell_vicious_mockery', 'spell_dissonant_whispers']);
 const melee = new Set(['spell_shocking_grasp', 'spell_inflict_wounds', 'spell_vampiric_touch']);
-type CompanionOrder={mode:'auto'|'conserve'|'defend'|'support'|'focus';targetId?:string;combatId?:string};
+type CompanionOrder={mode:'auto'|'conserve'|'defend'|'support'|'focus'|'cast';targetId?:string;combatId?:string;spellActionId?:string;directiveId?:string;allowFriendlyFire?:boolean};
+type CastOrderResult={directiveId:string;combatId:string;spellActionId:string;status:'resolved'|'refused';message:string};
+const ordinarySpellAction=/^combat\.(action|bonus)\.cast_spell\.([^.]+)\.([^.]+)$/;
 function orders(state:GameState):Record<string,CompanionOrder>{
   const raw=state.flags.ui_companion_orders;if(typeof raw!=='string'||raw.length>3000)return {};
   try{const value=JSON.parse(raw);if(!value||Array.isArray(value)||typeof value!=='object'||Object.keys(value).length>3)return {};
-    for(const [id,order] of Object.entries(value) as [string,CompanionOrder][]){if(!id||id.length>160||!order||typeof order!=='object'||!['auto','conserve','defend','support','focus'].includes(order.mode)||Object.keys(order).some(k=>!['mode','targetId','combatId'].includes(k))||order.targetId!==undefined&&(typeof order.targetId!=='string'||!order.targetId||order.targetId.length>160)||order.combatId!==undefined&&(typeof order.combatId!=='string'||!order.combatId||order.combatId.length>160))return {};}
+    for(const [id,order] of Object.entries(value) as [string,CompanionOrder][]){
+      if(!id||id.length>160||!order||typeof order!=='object'||!['auto','conserve','defend','support','focus','cast'].includes(order.mode))return {};
+      const invalid=Object.keys(order).some(k=>!['mode','targetId','combatId','spellActionId','directiveId','allowFriendlyFire'].includes(k))||order.targetId!==undefined&&(typeof order.targetId!=='string'||!order.targetId||order.targetId.length>160)||order.combatId!==undefined&&(typeof order.combatId!=='string'||!order.combatId||order.combatId.length>160)||order.spellActionId!==undefined&&(typeof order.spellActionId!=='string'||order.spellActionId.length>400)||order.directiveId!==undefined&&(typeof order.directiveId!=='string'||order.directiveId.length>100)||order.allowFriendlyFire!==undefined&&(order.mode!=='cast'||typeof order.allowFriendlyFire!=='boolean');
+      if(invalid){
+        // A corrupted one-shot directive must not silently become an automatic attack.
+        if(order.mode!=='cast')return {};
+        value[id]={mode:'cast',spellActionId:'',directiveId:typeof order.directiveId==='string'?order.directiveId.slice(0,100):'',combatId:typeof order.combatId==='string'?order.combatId.slice(0,160):''};
+      }
+    }
     return value;
   }catch{return {};}
+}
+
+/** A UI preview changes only a disposable view's actor and budget. It never casts or rolls. */
+export function companionSpellOrderOptions(state:GameState,npcId:string,{preview=false}:{preview?:boolean}={}) {
+  const combat=state.combat,actor=combat?.participants.find(p=>p.id===npcId);
+  const member=state.party.members.find(m=>m.id===npcId&&m.kind==='ally');
+  if(!combat||!actor||actor.kind!=='ally'||!enabledIds(state).has(npcId)||!member||(actor.sourceCharacterId||actor.id)!==member.id||actor.hp.current<=0||combatantStatusFlags(actor).cannotAct||!combat.participants.some(p=>p.kind==='enemy'&&combatantStatusFlags(p).validAttackTarget)||!preview&&combat.participants[combat.turnIndex]?.id!==npcId)return [];
+  const caster=syncCombatantToCharacter(member,actor),known=availableAutomatedSrdSpells(caster);
+  const actorIndex=combat.participants.findIndex(p=>p.id===npcId);
+  const viewCombat=ensureTurnBudget({...combat,round:combat.round+(preview&&actorIndex<=combat.turnIndex?1:0),turnIndex:actorIndex,turnBudget:preview?undefined:combat.turnBudget,participants:combat.participants.map(p=>p.id===npcId?{...p,kind:'player' as const}:p)});
+  const viewState={...state,party:{...state.party,members:state.party.members.map(m=>m.id===npcId?caster:m)},combat:viewCombat};
+  return buildTurnView(viewState).options.filter(option=>{
+    const parsed=option.id.match(ordinarySpellAction);
+    if(!parsed||option.id.length>400||!known.includes(parsed[2] as AutomatedSrdSpellId))return false;
+    const spellId=parsed[2] as AutomatedSrdSpellId,target=combat.participants.find(p=>p.id===parsed[3]);
+    if(!target||target.conditions.some(c=>['dead','fled','captured'].includes(c))||target.deathSaves?.dead||target.kind==='enemy'&&(!combatantStatusFlags(target).validAttackTarget||isCharmedBySource(actor,target.id))||!slotAvailable(caster,spellId)||!reaches(combat,npcId,target.id,spellId))return false;
+    if(healing.includes(spellId)&&applyHealing(target,1).hp.current<=target.hp.current)return false;
+    return parsed[1]==='bonus'?spendBonusAction(viewCombat.turnBudget!,spellId).ok:spendAction(viewCombat.turnBudget!,'cast_spell').ok;
+  }).map(option=>{
+    const spellId=option.id.match(ordinarySpellAction)![2] as AutomatedSrdSpellId;
+    const kind=getAutomatedSrdSpellAction(spellId).kind;
+    if(!['sleep','color_spray','area_damage','area_control'].includes(kind))return option;
+    const areaSpellId=spellId as AutomatedSrdAreaLikeSpellId,candidates=automatedSrdAreaTargets(combat,npcId,areaSpellId);
+    return {...option,area:{targeting:'caster_distance_bands' as const,bands:[...automatedSrdAreaTargetBands(areaSpellId)],selection:kind==='sleep'||kind==='color_spray'?'creatures_except_caster':'base_enemy_candidates',candidateTargets:true},affectedIds:candidates.map(p=>p.id),mayAffectAllies:candidates.some(p=>p.kind!=='enemy')};
+  });
+}
+
+function castOrderResults(state:GameState):Map<string,CastOrderResult>{
+  const raw=state.flags.ui_companion_order_results;
+  if(typeof raw!=='string'||raw.length>4000)return new Map();
+  try{const value=JSON.parse(raw);if(!value||Array.isArray(value)||typeof value!=='object'||Object.keys(value).length>3)return new Map();
+    return new Map(Object.entries(value).filter(([id,r]:[string,any])=>id.length>0&&id.length<=160&&r&&typeof r==='object'&&typeof r.directiveId==='string'&&r.directiveId.length<=100&&typeof r.combatId==='string'&&r.combatId.length<=160&&typeof r.spellActionId==='string'&&r.spellActionId.length<=400&&['resolved','refused'].includes(r.status)&&typeof r.message==='string'&&r.message.length<=400).map(([id,r]:[string,any])=>[id,{directiveId:r.directiveId,combatId:r.combatId,spellActionId:r.spellActionId,status:r.status,message:r.message}]));
+  }catch{return new Map();}
 }
 function enabledIds(state: GameState): Set<string> {
   const raw=state.flags.ui_companion_ai_ids;
@@ -41,20 +85,53 @@ function reaches(combat: CombatState, actorId: string, targetId: string, spellId
 export function createCompanionAutomaticHook(state: GameState, rng: Rng) {
   const ids=enabledIds(state);
   const preferences=orders(state);
+  const directiveResults=castOrderResults(state);
+  let ordersChanged=false;
   let members=state.party.members;
   const rollLogs: RollLogEntry[]=[];
+  const consumeCast=(actorId:string,combat:CombatState,status:'resolved'|'refused',message:string)=>{
+    const order=preferences[actorId];if(order?.mode!=='cast')return combat;
+    preferences[actorId]={mode:'auto'};ordersChanged=true;
+    const previous=directiveResults.get(actorId);
+    if(previous?.directiveId===order.directiveId&&previous.combatId===order.combatId)return combat;
+    directiveResults.set(actorId,{directiveId:order.directiveId||'',combatId:order.combatId||'',spellActionId:order.spellActionId||'',status,message:message.slice(0,400)});
+    const actor=combat.participants.find(p=>p.id===actorId);
+    return {...combat,log:[...combat.log,{id:`companion-directive-${actorId}-${combat.round}-${combat.log.length}`,ts:new Date().toISOString(),round:combat.round,actorId,title:`${actor?.name||actorId}: spell order ${status}`,body:message.slice(0,400)}]};
+  };
   const beforeAutomaticDeathSave=({combat,actor}: {combat:CombatState;actor:Combatant;rules:RulesConfig;rng:Rng})=>{
     if(combat.participants[combat.turnIndex]?.id!==actor.id||actor.kind!=='ally'||!ids.has(actor.id)||!needsDeathSave(actor)||!members.some(m=>m.id===actor.id&&m.kind==='ally'&&(actor.sourceCharacterId||actor.id)===m.id))return undefined;
     const saved=resolveDeathSaveTurnAction({combat,actorId:actor.id,actionId:`combat.death_save.${actor.id}`,rng});
     if(!saved.handled||!saved.ok)return undefined;
     rollLogs.push(...saved.rollLogs);
-    return {combat:{...saved.combat,log:[...saved.combat.log,{id:`companion-death-${actor.id}-${combat.round}-${combat.log.length}`,ts:new Date().toISOString(),round:combat.round,actorId:actor.id,title:`${actor.name}: Death Saving Throw`,body:saved.message}]}};
+    let next={...saved.combat,log:[...saved.combat.log,{id:`companion-death-${actor.id}-${combat.round}-${combat.log.length}`,ts:new Date().toISOString(),round:combat.round,actorId:actor.id,title:`${actor.name}: Death Saving Throw`,body:saved.message}]};
+    if(next.participants.find(p=>p.id===actor.id)!.hp.current<=0)next=consumeCast(actor.id,next,'refused',`${actor.name} remains at 0 HP after the death save and cannot execute the spell order.`);
+    return {combat:next};
   };
   const beforeAutomaticActor=({combat: original,actor: supplied}: {combat:CombatState;actor:Combatant;rules:RulesConfig;rng:Rng}) => {
-    if(original.participants[original.turnIndex]?.id!==supplied.id||supplied.kind!=='ally'||!ids.has(supplied.id)||supplied.hp.current<=0||combatantStatusFlags(supplied).cannotAct)return undefined;
+    if(original.participants[original.turnIndex]?.id!==supplied.id||supplied.kind!=='ally'||!ids.has(supplied.id))return undefined;
     const character=members.find(m=>m.kind==='ally'&&m.id===supplied.id&&(supplied.sourceCharacterId||supplied.id)===m.id);
     if(!character)return undefined;
     let order=preferences[supplied.id]||{mode:'auto'};
+    if(order.mode==='cast'){
+      const previous=directiveResults.get(supplied.id);
+      if(previous?.directiveId===order.directiveId&&previous.combatId===order.combatId)return {handled:true,combat:consumeCast(supplied.id,original,'refused','This spell directive has already been consumed.')};
+      if(order.combatId!==original.id||!order.directiveId||!order.spellActionId||!ordinarySpellAction.test(order.spellActionId))return {handled:true,combat:consumeCast(supplied.id,original,'refused','The spell order is invalid or belongs to another combat.')};
+      if(supplied.hp.current<=0||combatantStatusFlags(supplied).cannotAct)return {handled:true,combat:consumeCast(supplied.id,original,'refused',`${supplied.name} cannot act and cannot execute the spell order.`)};
+      const ready=resolveReadiedReactionsWithRollLogs(original,supplied.id,rng,state.campaign.rules,'hostile_turn_start');
+      rollLogs.push(...ready.rollLogs);
+      const actor=ready.combat.participants.find(p=>p.id===supplied.id);
+      if(!actor||actor.hp.current<=0||combatantStatusFlags(actor).cannotAct)return {handled:true,combat:consumeCast(supplied.id,ready.combat,'refused','A readied reaction prevents the companion from executing the spell order.')};
+      const current=syncCombatantToCharacter(character,actor);members=members.map(m=>m.id===current.id?current:m);
+      const selected=companionSpellOrderOptions({...state,party:{...state.party,members},combat:ready.combat},supplied.id).find(o=>o.id===order.spellActionId);
+      if(!selected)return {handled:true,combat:consumeCast(supplied.id,ready.combat,'refused','The exact spell or target is no longer available: check preparation, slots, action budget, target state, range and cover.')};
+      if('mayAffectAllies' in selected&&selected.mayAffectAllies&&order.allowFriendlyFire!==true)return {handled:true,combat:consumeCast(supplied.id,ready.combat,'refused','The spell area now includes allies; this directive does not allow friendly-fire risk.')};
+      const cast=resolveAutomatedSrdCombatSpellTurnAction({combat:ready.combat,actorId:supplied.id,actionId:order.spellActionId,members,rng,rules:state.campaign.rules});
+      if(!cast.handled)return {handled:true,combat:consumeCast(supplied.id,ready.combat,'refused','The exact spell action is not supported.')};
+      if(!cast.ok)return {handled:true,combat:consumeCast(supplied.id,cast.combat,'refused',cast.message)};
+      members=cast.partyMembers;rollLogs.push(...cast.rollLogs);
+      return {handled:true,combat:consumeCast(supplied.id,cast.combat,cast.interrupted?'refused':'resolved',cast.message)};
+    }
+    if(supplied.hp.current<=0||combatantStatusFlags(supplied).cannotAct)return undefined;
     if(order.mode==='focus'){
       const target=original.participants.find(p=>p.id===order.targetId);
       if(order.combatId!==original.id||!target||target.kind!=='enemy'||!combatantStatusFlags(target).validAttackTarget||target.conditions.some(c=>['fled','captured'].includes(c))||isCharmedBySource(supplied,target.id)||combatCover(original,supplied.id,target.id)==='total'||combatDistanceBand(original,supplied.id,target.id)==='out_of_range')order={mode:'auto'};
@@ -167,7 +244,8 @@ export function createCompanionAutomaticHook(state: GameState, rng: Rng) {
     return changed?{handled:mainUsed,combat}:undefined;
   };
   const result=(combat:CombatState)=>{
-    const updated=syncPartyFromCombat({...state,party:{...state.party,members},combat,rollLog:[...state.rollLog,...rollLogs]});
+    const flags=ordersChanged?{...state.flags,ui_companion_orders:JSON.stringify(preferences),ui_companion_order_results:JSON.stringify(Object.fromEntries([...directiveResults].filter(([id])=>ids.has(id)).slice(-3)))}:state.flags;
+    const updated=syncPartyFromCombat({...state,flags,party:{...state.party,members},combat,rollLog:[...state.rollLog,...rollLogs]});
     return {state:updated,combat,partyMembers:updated.party.members,rollLogs:[...rollLogs]};
   };
   return {beforeAutomaticActor,beforeAutomaticDeathSave,result};

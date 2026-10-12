@@ -1,6 +1,8 @@
 // UI labels are translated locally. Story content is generated in the campaign's language.
 const uiLanguage = new URLSearchParams(location.search).get('lang') === 'en' ? 'en' : 'ru';
 const englishLabels = {
+  'Итог попытки':'Attempt outcome',
+  'Точное заклинание':'Exact spell','Заклинание и цель':'Spell and target','Ожидает своего хода':'Waiting for their turn','Поручить заклинание':'Queue spell','Разрешаю риск для союзников':'Allow risk to allies','Возможные цели':'Possible targets','Поручение разрешено':'Order resolved','Поручение отменено':'Order cancelled','Поручение не удалось':'Order could not be executed','Одна попытка на настоящем ходу спутника. Если условия изменятся, поручение может не выполниться.':'One attempt on the companion\'s actual turn. Changed conditions may prevent execution.','Поручено выбранное заклинание. Смена обычного режима отменит это поручение.':'The selected spell is queued. Changing the ordinary preference cancels this order.','Зона рядом со спутником. Выбранный противник не задаёт её центр.':'The area is near the companion. The selected enemy does not set its center.','Область рядом с заклинателем, а не вокруг выбранного противника.':'The area is near the caster rather than centered on the selected enemy.',
   'Отправить вопрос':'Send question',
   'Выборка для последнего AI-запроса':'Selection for the last AI request','Найдено событий хроники':'Chronicle events retrieved','Отрывков прошлых разговоров':'Excerpts of past conversations','Это размер выбранных данных; инструкции и ответ учитываются отдельно.':'This is the size of selected data; instructions and the response are counted separately.',
   'Мои записи и напоминания':'My notes and reminders',

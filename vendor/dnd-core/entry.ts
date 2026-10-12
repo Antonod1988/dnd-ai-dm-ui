@@ -23,10 +23,13 @@ export { spendObjectInteraction } from './src/core/rulesets/srd5e2014/action-eco
 export { isCharmedBySource } from './src/core/rules/conditions.js';
 export { startCombat, runAutomaticTurns } from './src/core/rules/combat.js';
 export { hasPendingDeathSaves, focusNextDeathSaveTurn } from './src/core/rules/combat.js';
-export { createCompanionAutomaticHook, runCompanionAutomaticTurns } from './src/core/narrative/companion-combat-ai.js';
+export { createCompanionAutomaticHook, runCompanionAutomaticTurns, companionSpellOrderOptions } from './src/core/narrative/companion-combat-ai.js';
 export { syncCombatantToCharacter } from './src/core/rules/combat.js';
 export { rollDeathSave as rollSrdDeathSave, applyDeathSaveResult, createDeathSaveState, stabilizeDeathSaveState, stabilizeDyingTarget } from './src/core/rulesets/srd5e2014/death-saves.js';
 export { hasSrdHalflingLucky } from './src/core/rules/checks.js';
 export { hasGeneratedFeatPresetOnTarget } from './src/core/homebrew/generated-feats.js';
 export { canSpendInventoryItemUse, spendInventoryItemUse } from './src/core/content/items.js';
 export { availableAutomatedSrdSpells } from './src/core/rulesets/srd5e2014/spell-engine.js';
+export { buildTurnView } from './src/core/narrative/option-builder.js';
+export { createTurnBudget } from './src/core/rulesets/srd5e2014/action-economy.js';
+export { automatedSrdAreaTargets, resolveAutomatedSrdCombatSpellTurnAction } from './src/core/actions/automated-spell-actions.js';

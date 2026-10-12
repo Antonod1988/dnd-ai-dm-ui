@@ -4,7 +4,7 @@ const {targets}=require('./adventure-access');
 // Retrieval reads the durable journal, but only the matching mechanical event
 // supplies outcome details. It never reads dialogue plans, lore bodies or saves.
 const RESOLVED = new Set(('visit talk inspect acquire deliver quest_accept quest_reward quest_failed check victory defeat retreat combat combat_end npc_combat npc_combat_end social companion_recruit companion_dismiss party_item party_gear party_order first_aid rest death_save use_item equip_item attune_item unattune_item cast_spell cast_created_spell companion_action environment_interaction effects_expired xp_gain level_up economy market_restock survival action_refused narration_failure loot_found spell_learned supplies action medical_death_save medical_stable_recovery medical_stable_recovery_scheduled').split(' '));
-const IDS = ['targetId','actorId','speakerId','dialogueId','proposalId','actionId','recipientId','itemId','fromId','toId','questId','objectiveId','evidenceEventId'];
+const IDS = ['targetId','actorId','npcId','speakerId','dialogueId','proposalId','actionId','spellActionId','directiveId','combatId','recipientId','itemId','fromId','toId','questId','objectiveId','evidenceEventId'];
 const STOP = new Set(('the a an and or to of in on at for with is was were be been i we you my our it this that what how when where why who about remember recall please tell happened here scene current now all me do did мне мы я ты вы что как когда где почему кто о об про и в на с у а это этот было был были здесь сейчас напомни вспомни пожалуйста расскажи произошло происходило место сцена текущая мой наш').split(' '));
 function string(value, max=200) {
   return typeof value==='string' && value.length>0 && value.length<=max && !/[\u0000-\u001f\u007f]/.test(value) ? value : undefined;
@@ -23,7 +23,7 @@ function provenance(event) {
   if(event.kind==='player_note'||event.source==='player_note')return {source:'player_note',confidence:'player_note'};
   if(['story','dialogue_interjection','player_speech'].includes(event.kind)||event.source==='player_statement'||event.source==='player_claim'||event.role==='player')return {source:'player_statement',confidence:'player_claim'};
   if(['npc_speech','companion_speech','dialogue_line','dialogue_speech'].includes(event.kind)||event.role==='npc'||event.role==='companion'||event.source==='speaker_claim'||event.source==='reported_information')return {source:'reported_information',confidence:'reported'};
-  if(RESOLVED.has(event.kind)||(event.kind==='dialogue_decision'&&['accepted','rejected'].includes(event.decision)))return {source:'resolved_event',confidence:'confirmed'};
+  if(RESOLVED.has(event.kind)||event.kind==='party_order_result'||(event.kind==='dialogue_decision'&&['accepted','rejected'].includes(event.decision)))return {source:'resolved_event',confidence:'confirmed'};
   return {source:'unverified_event',confidence:'unverified'};
 }
 function evidenceIndex(adventure) {
@@ -50,10 +50,12 @@ function compact(entry,event,evidence,adventure) {
   const origin=event||entry;
   // A migrated journal's optional details have no authoritative event to back
   // them. Preserve identity only; never upgrade its claimed decision/result.
-  for(const key of event?IDS:['targetId'])if(string(origin[key]))record[key]=origin[key];
+  for(const key of event?IDS:['targetId'])if(string(origin[key],key==='spellActionId'?400:200))record[key]=origin[key];
   if(event) {
     if(record.source==='resolved_event') {
       if(typeof event.success==='boolean')record.success=event.success;
+    if(typeof event.instructionOnly==='boolean')record.instructionOnly=event.instructionOnly;
+    if(event.kind==='party_order_result'&&['resolved','refused','cancelled'].includes(event.status))record.status=event.status;
       if(Number.isSafeInteger(event.quantity)&&event.quantity>0)record.quantity=event.quantity;
       if(event.kind==='dialogue_decision'&&['accepted','rejected'].includes(event.decision))record.decision=event.decision;
     }

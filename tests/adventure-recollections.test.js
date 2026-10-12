@@ -1,6 +1,11 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {journalMemory}=require('../src/adventure-recollections');
+test('queued spell instruction and actual terminal outcome retain distinct provenance and exact actor/cast identities',()=>{
+  const {state,adventure}=setup();add(adventure,{id:'queued',turn:1,kind:'party_order',targetId:'iris',npcId:'iris',spellActionId:'combat.action.cast_spell.spell_sleep.foe',directiveId:'d1',instructionOnly:true,text:'Iris is asked to cast Sleep later.'});
+  add(adventure,{id:'refused',turn:2,kind:'party_order_result',targetId:'iris',actorId:'iris',spellActionId:'combat.action.cast_spell.spell_sleep.foe',directiveId:'d1',instructionOnly:false,status:'refused',text:'Sleep was refused because the area changed.'});
+  const found=journalMemory(state,adventure,'Iris Sleep');assert.equal(found.find(e=>e.id==='queued').instructionOnly,true);const result=found.find(e=>e.id==='refused');assert.equal(result.source,'resolved_event');assert.equal(result.instructionOnly,false);assert.equal(result.status,'refused');assert.equal(result.actorId,'iris');assert.equal(result.spellActionId,'combat.action.cast_spell.spell_sleep.foe');
+});
 function setup(){return {state:{party:{heroId:'hero',members:[{id:'hero',name:'Mira',inventory:[]}]}},adventure:{events:[],journal:[],quests:[],npcs:[{id:'iris',name:'Iris'}],items:[]}};}
 function add(adventure,event){adventure.events.push(event);adventure.journal.unshift({id:event.id,kind:event.kind,turn:event.turn,text:event.text,targetId:event.targetId});return event;}
 function noise(adventure){for(let i=0;i<610;i++)add(adventure,{id:`noise-${i}`,turn:i+10,kind:'inspect',targetId:'inn',text:'The ordinary inn is quiet.'});}

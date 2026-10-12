@@ -28,6 +28,8 @@ Nonfocus preferences survive travel and dismissal/rejoining. Only explicitly reg
 
 ## Memory and remaining scope
 
+Exact one-shot known-spell orders are now a separate Party control, with current target/resource preview and saved resolved/refused/cancelled outcomes. See [EXACT_COMPANION_ORDERS.md](EXACT_COMPANION_ORDERS.md). The five preferences above remain ongoing modes.
+
 Full transfer provenance is local. The selected model packet receives compact current ownership and preferences; a query may select relevant party items within a 1,600-character ownership slice and the existing 12,000-character total packet. This is a character bound, not an exact billed-token guarantee.
 
-Exact named-spell orders, original spell selection under NPC AI, higher-level class tactics, wages/promises/betrayal, unknown NPC possessions and party custody of protected quest objects remain open. Defend does not create a shield around another character. Support is not arbitrary healing. Targeted administration of a potion in combat is not implemented by item handover. Offline numerical fixtures and actual model/UI evidence are distinguished in VERIFICATION.md.
+Original NPC spell ownership and selection under AI, higher-level class tactics, wages/promises/betrayal, unknown NPC possessions and party custody of protected quest objects remain open. Defend does not create a shield around another character. Support is not arbitrary healing. Targeted administration of a potion in combat is not implemented by item handover. Offline numerical fixtures and actual model/UI evidence are distinguished in VERIFICATION.md.
