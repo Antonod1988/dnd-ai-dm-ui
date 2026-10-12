@@ -1,5 +1,13 @@
 # Game token usage audit — 2026-10-12
 
+## Bounded genuine adventure evaluation
+
+A genuine Luna-created dwarf-cleric world, delivery, free inspection, NPC speech and a separately declared native encounter used18 reported requests:76,353 input/3,288 output,cache0. World creation cost2,259/1,761. Through completed delivery, nine requests cost38,680/2,645. The free inspection used ordinary intent plus narration without repair. Queued speech and reopening made no request. Raw drafts and correction issues are captured only in this private declared test workflow, not in production usage records.
+
+Combat consumed separate requests for player casting and End Turn/NPC resolution. Bless used a real slot; save failures were not rerolled to force victory. At the declared18-request cap combat remained ongoing, so this is not a completed combat/loot/economy/rest benchmark. The campaign is saved for further verification. This is a measured request count and cost, not a quota conversion or average across adventures.
+
+Intent now includes compact exact new-check fields/18 skill names/bounds, because its earlier permission to add checks lacked full schema guidance. This source gap is proven; it is not asserted to be the exact cause of the previous isolated repair without its initial rejected draft. New NPC preflight avoids orphaned registration and a later error.651 tests/126JS syntax and isolated smoke pass. The next cost work should evaluate lower-frequency combat prose against preserved mechanics/chronology, rather than adding unrelated subsystems.
+
 ## Current obstacle evaluation
 
 Ready-goal availability is bounded to three reasons/routes and uses the unchanged12k campaign context cap. Hidden NPCs/checks and remote life details are removed from current packets; source world/history is not deleted. Questions discuss hypothetical alternatives without a second intent stage or game mutation. Opening the advice dialog and reading obstacles/history makes no model request.

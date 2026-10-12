@@ -438,6 +438,7 @@ async function perform(body, { seed } = {}) {
     if(!quests.canAct(state.party.members.find(m=>m.id===state.party.heroId)))bad('Герой сейчас не может выбрать подход к проверке.');
     const check=proposed.loreDefinitions.find(c=>c.id===command.checkId&&c.trigger==='manual'&&c.locationId===proposed.currentLocationId);
     if(!check||(check.npcId&&!proposed.npcs.some(n=>n.id===check.npcId&&n.locationId===proposed.currentLocationId)))bad('Этот способ проверки сейчас недоступен.');
+    if(check.npcId&&!actors.interactionStatus(state,proposed,check.npcId).available)bad('Для этого подхода нужен персонаж, который может действовать.');
     if(!Object.hasOwn(proposed.loreCheckIds,check.id)){await registerChecks(service,state,proposed);state=service.loadCampaign(state.campaign.id);}
     const publicCheck=lore.publicChecks(state).find(c=>c.id===proposed.loreCheckIds[check.id]);
     if(!publicCheck||publicCheck.attempted)bad('Этот способ уже проверен. Выберите другой подход.');

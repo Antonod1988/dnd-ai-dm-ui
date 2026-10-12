@@ -380,9 +380,9 @@ const classProfiles: Record<SrdClassId, SrdClassProfile> = {
     savingThrows: ["wis", "cha"],
     skills: ["medicine", "insight"],
     ac: 16,
-    attacks: [sacredFlameAttack, swordAttack],
-    inventory: ["holy_symbol", "chainmail", "healing_potion", "torch"],
-    equipment: { armor: "chainmail", focus: "holy_symbol" },
+    attacks: [sacredFlameAttack],
+    inventory: ["mace", "holy_symbol", "chainmail", "healing_potion", "torch"],
+    equipment: { armor: "chainmail", focus: "holy_symbol", mainHand: "mace" },
     features: ["Divine Domain: choose a supported SRD subclass through progression tools before domain features apply.", "Spellcasting foundation."],
     spellcasting: {
       ability: "wis",
@@ -1123,9 +1123,15 @@ export function canUseSrdAttackWithEquipment(
   character: Pick<Character, "equipment" | "inventory">,
   attack: Pick<AttackAction, "id" | "range">
 ): { ok: boolean; message?: string } {
-  const requiredItemId = inventoryItemForAttack(attack);
+  const catalogWeapon = attack.range !== "spell" && (isSimpleWeaponItem(attack.id) || isMartialWeaponItem(attack.id));
+  const modeledWeapon = attack.range !== "spell" && character.inventory.find(item => item.itemId === attack.id && item.mechanics?.equip?.attack);
+  const generatedWeapon = attack.range !== "spell" && attack.id.startsWith("generated_");
+  const requiredItemId = inventoryItemForAttack(attack) ?? (catalogWeapon || modeledWeapon || generatedWeapon ? attack.id : undefined);
   if (requiredItemId && !character.inventory.some((item) => item.itemId === requiredItemId && item.quantity > 0)) {
     return { ok: false, message: `${attack.id} requires inventory item: ${requiredItemId}.` };
+  }
+  if (requiredItemId && !Object.values(character.equipment).includes(requiredItemId)) {
+    return { ok: false, message: `${attack.id} requires an equipped weapon: ${requiredItemId}.` };
   }
   const attackItemId = requiredItemId ?? attack.id;
   if (
@@ -1967,7 +1973,7 @@ function attacksForStartingEquipment(
   equipment: Character["equipment"],
   character: Pick<Character, "abilities" | "classLevels">
 ): AttackAction[] {
-  const attacks = new Map(profileAttacks.map((attack) => [attack.id, { ...attack }]));
+  const attacks = new Map(profileAttacks.filter(attack => attack.range === "spell" || !(isSimpleWeaponItem(attack.id) || isMartialWeaponItem(attack.id)) || Object.values(equipment).includes(attack.id)).map((attack) => [attack.id, { ...attack }]));
   for (const itemId of [equipment.mainHand, equipment.offHand, equipment.ranged]) {
     if (!itemId || attacks.has(itemId)) {
       if (itemId) {
