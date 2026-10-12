@@ -1,13 +1,13 @@
 import type { Character, CombatState, Combatant, GameState, RollLogEntry, RulesConfig } from '../types.js';
 import { rollExpression, type Rng } from '../dice.js';
 import { availableAutomatedSrdSpells, automatedSrdAreaTargetBands, automatedSrdSpellLevel, type AutomatedSrdAreaLikeSpellId, type AutomatedSrdSpellId } from '../rulesets/srd5e2014/spell-engine.js';
-import { automatedSrdAreaTargets, getAutomatedSrdSpellAction, resolveAutomatedSrdCombatSpellTurnAction } from '../actions/automated-spell-actions.js';
+import { automatedSrdAreaTargets, automatedSrdSpellCastingInfo, getAutomatedSrdSpellAction, resolveAutomatedSrdCombatSpellTurnAction } from '../actions/automated-spell-actions.js';
 import { preflightOriginalSpell, castOriginalSpell } from '../actions/original-spell-actions.js';
 import { resolveDeathSaveTurnAction } from '../actions/death-save-actions.js';
-import { applyAiMovementToAttackRange, applyAiStandUp, applyHealing, combatCover, combatDistanceBand, combatantStatusFlags, ensureTurnBudget, isAttackInDistanceBand, needsDeathSave, resolveReadiedReactionsWithRollLogs, runAutomaticTurns, syncCombatantToCharacter } from '../rules/combat.js';
+import { applyAiMovementToAttackRange, applyAiStandUp, applyHealing, combatCover, combatDistanceBand, combatantStatusFlags, effectiveArmorClass, ensureTurnBudget, isAttackInDistanceBand, needsDeathSave, resolveReadiedReactionsWithRollLogs, runAutomaticTurns, syncCombatantToCharacter } from '../rules/combat.js';
 import { effectiveHitPointMaximum, isCharmedBySource } from '../rules/conditions.js';
 import { syncPartyFromCombat } from './consequence-engine.js';
-import { hasAvailableAction, spendAction, spendBonusAction } from '../rulesets/srd5e2014/action-economy.js';
+import { canCastSpellWithBudget, hasAvailableAction, spendAction, spendBonusAction } from '../rulesets/srd5e2014/action-economy.js';
 import { buildTurnView } from './option-builder.js';
 import { resolveRegisteredStandardCombatAction } from '../actions/standard-combat-actions.js';
 import { canUseSrdAttackWithEquipment } from '../rulesets/srd5e2014/character-builder.js';
@@ -27,6 +27,16 @@ function originalSpellRegistry(state:GameState):Record<string,{ownerId:string;sp
     return data;
   }catch{return {};}
 }
+function originalBooksRegistry(state:GameState):Record<string,{ownerId:string;definitions:any[]}>{
+  const raw=state.flags.ui_companion_original_books;if(typeof raw!=='string'||raw.length>10000)return {};
+  try{const data=JSON.parse(raw);if(!data||Array.isArray(data)||typeof data!=='object'||Object.keys(data).length>3)return {};
+    for(const [id,entry] of Object.entries(data) as [string,any][]){if(!id||id.length>160||!entry||entry.ownerId!==id||Object.keys(entry).some(key=>!['ownerId','definitions'].includes(key))||!Array.isArray(entry.definitions)||entry.definitions.length>6||new Set(entry.definitions.map((definition:any)=>definition?.id)).size!==entry.definitions.length||entry.definitions.some((definition:any)=>!definition||typeof definition!=='object'||Array.isArray(definition)||typeof definition.id!=='string'||definition.id.length>160||definition.ownerId!==undefined&&definition.ownerId!==id))return {};}
+    return data;
+  }catch{return {};}
+}
+function diceMean(expression:string):number{const match=expression?.match(/^(\d{1,2})d(4|6|8|10|12)(?:\+(\d{1,2}))?$/);return match?Number(match[1])*(Number(match[2])+1)/2+Number(match[3]||0):0;}
+function saveFailure(target:Combatant,ability:string,dc:number):number{const modifier=Math.floor(((target.abilities as any)[ability]-10)/2)+(target.savingThrowProficiencies?.includes(ability as any)?target.proficiencyBonus:0);return Math.max(0.05,Math.min(0.95,(dc-1-modifier)/20));}
+function damageFactor(target:Combatant,type:string):number{if(target.damageImmunities?.includes(type)||target.activeEffects?.some(effect=>effect.damageImmunities?.includes(type)))return 0;return target.damageResistances?.includes(type)||target.activeEffects?.some(effect=>effect.damageResistances?.includes(type))?0.5:target.damageVulnerabilities?.includes(type)?2:1;}
 function orders(state:GameState):Record<string,CompanionOrder>{
   const raw=state.flags.ui_companion_orders;if(typeof raw!=='string'||raw.length>3000)return {};
   try{const value=JSON.parse(raw);if(!value||Array.isArray(value)||typeof value!=='object'||Object.keys(value).length>3)return {};
@@ -58,7 +68,8 @@ export function companionSpellOrderOptions(state:GameState,npcId:string,{preview
     const spellId=parsed[2] as AutomatedSrdSpellId,target=combat.participants.find(p=>p.id===parsed[3]);
     if(!target||target.conditions.some(c=>['dead','fled','captured'].includes(c))||target.deathSaves?.dead||target.kind==='enemy'&&(!combatantStatusFlags(target).validAttackTarget||isCharmedBySource(actor,target.id))||!slotAvailable(caster,spellId)||!reaches(combat,npcId,target.id,spellId))return false;
     if(healing.includes(spellId)&&applyHealing(target,1).hp.current<=target.hp.current)return false;
-    return parsed[1]==='bonus'?spendBonusAction(viewCombat.turnBudget!,spellId).ok:spendAction(viewCombat.turnBudget!,'cast_spell').ok;
+    const casting=automatedSrdSpellCastingInfo(viewCombat,npcId,spellId);if(!casting)return false;
+    return casting.isCasting?canCastSpellWithBudget(viewCombat.turnBudget!,casting).ok:parsed[1]==='bonus'?spendBonusAction(viewCombat.turnBudget!,spellId).ok:spendAction(viewCombat.turnBudget!,'cast_spell').ok;
   }).map(option=>{
     const spellId=option.id.match(ordinarySpellAction)![2] as AutomatedSrdSpellId;
     const kind=getAutomatedSrdSpellAction(spellId).kind;
@@ -95,6 +106,7 @@ export function createCompanionAutomaticHook(state: GameState, rng: Rng) {
   const ids=enabledIds(state);
   const preferences=orders(state);
   const originals=originalSpellRegistry(state);
+  const originalBooks=originalBooksRegistry(state);
   const directiveResults=castOrderResults(state);
   let runtimeFlags=state.flags;
   let ordersChanged=false;
@@ -168,8 +180,55 @@ export function createCompanionAutomaticHook(state: GameState, rng: Rng) {
     const woundedTargets=()=>combat.participants.filter(p=>p.kind!=='enemy'&&!p.conditions.includes('dead')&&!p.deathSaves?.dead&&!p.conditions.some(c=>['fled','captured'].includes(c))&&(order.mode==='support'?(p.hp.current<p.hp.max&&(!order.targetId||p.id===order.targetId)):order.mode==='conserve'?p.hp.current===0:order.mode==='focus'?false:(p.hp.current===0||p.hp.current<=p.hp.max/3))&&!(p.activeEffects||[]).some(e=>e.healingPrevented))
       .sort((a,b)=>a.hp.current/a.hp.max-b.hp.current/b.hp.max);
     const offensiveTargets=()=>{const actor=combat.participants.find(p=>p.id===supplied.id)!;return combat.participants.filter(p=>p.kind==='enemy'&&combatantStatusFlags(p).validAttackTarget&&!isCharmedBySource(actor,p.id)&&(order.mode!=='focus'||p.id===order.targetId)).sort((a,b)=>a.hp.current-b.hp.current);};
-    const offensiveSpells=(cantripOnly=false)=>availableAutomatedSrdSpells(caster()).filter(id=>slotAvailable(caster(),id)&&(!(cantripOnly||order.mode==='conserve')||automatedSrdSpellLevel(id)==='0')&&(getAutomatedSrdSpellAction(id).kind==='spell_attack'||damage.has(id)))
+    const offensiveSpells=()=>availableAutomatedSrdSpells(caster()).filter(id=>slotAvailable(caster(),id)&&(order.mode!=='conserve'||automatedSrdSpellLevel(id)==='0')&&canCastSpellWithBudget(combat.turnBudget!,{level:Number(automatedSrdSpellLevel(id)),cost:'action'}).ok&&(getAutomatedSrdSpellAction(id).kind==='spell_attack'||damage.has(id)))
       .sort((a,b)=>Number(automatedSrdSpellLevel(b))-Number(automatedSrdSpellLevel(a)));
+    type Choice={kind:'original'|'catalog';id:string;targetId:string;bonus:boolean;level:number;score:number;definition?:any};
+    const ownedBook=originalBooks[supplied.id]?.definitions||[];
+    const choices=():Choice[]=>{
+      const actor=combat.participants.find(p=>p.id===supplied.id)!;
+      if(actor.hp.current<=0||combatantStatusFlags(actor).cannotAct)return [];
+      const current=caster(),pending={...state,flags:runtimeFlags,party:{...state.party,members:members.map(m=>m.id===current.id?current:m)},combat},allies=woundedTargets(),enemies=offensiveTargets(),result:Choice[]=[];
+      const existingConcentration=combat.participants.some(p=>p.activeEffects?.some(effect=>effect.concentrationSourceId===actor.id))||actor.conditions.includes('concentrating');
+      const healScore=(target:Combatant,amount:number)=>{const missing=effectiveHitPointMaximum(target)-target.hp.current;if(amount<=0||missing<=0||applyHealing(target,1).hp.current<=target.hp.current)return 0;return (target.hp.current===0?200:target.hp.current<=target.hp.max/3?60:order.mode==='support'?30:0)+Math.min(missing,amount)*3;};
+      for(const definition of ownedBook)for(const target of combat.participants.slice(0,40)){
+        const checked=preflightOriginalSpell(pending,definition,{casterId:supplied.id,targetId:target.id});if(!checked.ok||checked.targetId!==target.id)continue;
+        const spell=checked.spell,harm=spell.effects.some((effect:any)=>['damage','condition'].includes(effect.type));
+        if(mainUsed&&spell.cost==='action'||bonusUsed&&spell.cost==='bonus_action')continue;
+        // Mixed harm/benefit definitions need an explicit order: automatic
+        // companions never damage a friend or buff/heal a foe to gain utility.
+        if(harm&&spell.effects.some((effect:any)=>!['damage','condition'].includes(effect.type)))continue;
+        if(spell.concentration&&existingConcentration)continue;
+        if(order.mode==='conserve'&&spell.level>0&&!(target.hp.current===0&&spell.effects.some((e:any)=>e.type==='healing')&&!harm))continue;
+        if(harm&&(!enemies.some(enemy=>enemy.id===target.id)||['support','defend'].includes(order.mode)))continue;
+        if(!harm&&(target.kind==='enemy'||order.mode==='focus'||order.mode==='defend'&&target.id!==actor.id))continue;
+        if(order.mode==='defend'&&spell.effects.some((e:any)=>!['armor','resistance','temporary_hp'].includes(e.type)))continue;
+        let utility=0;
+        for(const effect of spell.effects){
+          if(effect.type==='damage'){const failure=saveFailure(target,spell.saveAbility!,checked.dc),mean=diceMean(effect.dice)*damageFactor(target,effect.damageType);utility+=Math.min(target.hp.current,mean*(failure+(effect.halfOnSave?(1-failure)*0.5:0)));}
+          if(effect.type==='condition'&&!target.conditions.includes(effect.condition)&&!target.conditionImmunities?.includes(effect.condition)&&!combatantStatusFlags(target).cannotAct){const base=['paralyzed','stunned','restrained','blinded'].includes(effect.condition)?12:effect.condition==='prone'?4:8;utility+=base*Math.min(3,Math.max(1,spell.durationTurns))*saveFailure(target,spell.saveAbility!,checked.dc);}
+          if(effect.type==='healing'&&!harm&&allies.some(ally=>ally.id===target.id)&&order.mode!=='defend'){const healingUtility=healScore(target,diceMean(effect.dice));if(healingUtility>0)utility+=healingUtility+(spell.cost==='bonus_action'?8:0);}
+          if(effect.type==='remove_condition'&&!harm&&target.conditions.includes(effect.condition)&&!['defend','conserve'].includes(order.mode)&&(!order.targetId||order.mode!=='support'||order.targetId===target.id))utility+=30;
+          if(['armor','resistance','temporary_hp'].includes(effect.type)&&!harm&&order.mode!=='support'&&order.mode!=='conserve'){
+            const danger=order.mode==='defend'||target.hp.current<=target.hp.max/2||enemies.some(enemy=>combatDistanceBand(combat,target.id,enemy.id)==='engaged');if(!danger)continue;
+            if(effect.type==='armor'){const present=Math.max(0,...(target.activeEffects||[]).map(active=>active.armorClassBonus||0));utility+=Math.max(0,effect.amount-present)*4*Math.min(3,spell.durationTurns);}
+            if(effect.type==='temporary_hp')utility+=Math.max(0,diceMean(effect.dice)-target.hp.temp)*2;
+            if(effect.type==='resistance'&&!target.damageResistances?.includes(effect.damageType)&&!target.activeEffects?.some(active=>active.damageResistances?.includes(effect.damageType))&&enemies.some(enemy=>enemy.attacks.some(attack=>attack.damageType===effect.damageType)))utility+=5*Math.min(3,spell.durationTurns);
+          }
+        }
+        if(utility>0)result.push({kind:'original',id:spell.id,targetId:target.id,bonus:spell.cost==='bonus_action',level:spell.level,score:utility-spell.level*0.5,definition});
+      }
+      for(const spellId of availableAutomatedSrdSpells(current)){
+        const level=Number(automatedSrdSpellLevel(spellId)),bonus=spellId==='spell_healing_word';if(mainUsed&&!bonus||bonusUsed&&bonus||!slotAvailable(current,spellId)||!canCastSpellWithBudget(combat.turnBudget!,{level,cost:bonus?'bonus_action':'action'}).ok)continue;
+        if(healing.includes(spellId)&&order.mode!=='defend')for(const target of allies){if(reaches(combat,actor.id,target.id,spellId)){const mean=(spellId==='spell_healing_word'?2.5:4.5)+Math.floor((current.abilities[current.spellcasting!.ability]-10)/2),score=healScore(target,mean);if(score>0)result.push({kind:'catalog',id:spellId,targetId:target.id,bonus,level,score:score-level*0.5+(bonus?8:0)});}}
+        else if(!['defend','support'].includes(order.mode)&&(!(order.mode==='conserve')||level===0)&&(getAutomatedSrdSpellAction(spellId).kind==='spell_attack'||damage.has(spellId)))for(const target of enemies){
+          if(!reaches(combat,actor.id,target.id,spellId))continue;
+          const attack=actor.attacks.find(attack=>attack.id===spellId),mean=spellId==='spell_magic_missile'?10.5:attack?diceMean(attack.damageDice):spellId==='spell_toll_the_dead'&&target.hp.current<target.hp.max?6.5:4.5;
+          const chance=spellId==='spell_magic_missile'?1:attack?Math.max(0.05,Math.min(0.95,(21+(current.spellcasting?.spellAttackBonus||0)-effectiveArmorClass(target))/20)):saveFailure(target,'dex',current.spellcasting?.spellSaveDc||10);
+          result.push({kind:'catalog',id:spellId,targetId:target.id,bonus:false,level,score:Math.min(target.hp.current,mean*chance*damageFactor(target,attack?.damageType||(spellId==='spell_magic_missile'?'force':'radiant')))-level*0.5});
+        }
+      }
+      return result.filter(choice=>choice.score>0).sort((a,b)=>b.score-a.score||a.level-b.level||Number(b.bonus)-Number(a.bonus)||a.id.localeCompare(b.id)||a.targetId.localeCompare(b.targetId));
+    };
     const ownHealingItem=()=>{
       if(!['auto','conserve'].includes(order.mode)||!combat.turnBudget?.action||!spendAction(combat.turnBudget,'use_object').ok)return undefined;
       const actor=combat.participants.find(p=>p.id===supplied.id)!;
@@ -188,7 +247,7 @@ export function createCompanionAutomaticHook(state: GameState, rng: Rng) {
     // Declining the hook leaves the ordinary weapon AI's turn-start trigger untouched.
     const controlled=order.mode==='defend'||order.mode==='support'||order.mode==='focus';
     const intendsWeapon=['auto','conserve'].includes(order.mode)&&hasAvailableAction(combat.turnBudget);
-    if(!controlled&&!intendsHealing&&!intendsOffense&&!ownHealingItem()&&!intendsWeapon)return undefined;
+    if(!controlled&&!intendsHealing&&!intendsOffense&&!ownHealingItem()&&!intendsWeapon&&!(ownedBook.length&&choices().length))return undefined;
     // The core invokes this hook before its normal hostile-turn-start reactions. A handled
     // caster turn must resolve that same trigger before spell preparation, exactly once.
     const readied=resolveReadiedReactionsWithRollLogs(combat,supplied.id,rng,state.campaign.rules,'hostile_turn_start');
@@ -203,7 +262,7 @@ export function createCompanionAutomaticHook(state: GameState, rng: Rng) {
       combat=result.combat;if(result.partyMembers)members=result.partyMembers;rollLogs.push(...result.rollLogs);changed=true;mainUsed=true;
       combat={...combat,log:[...combat.log,{id:`companion-order-${supplied.id}-${combat.round}-${combat.log.length}`,ts:new Date().toISOString(),round:combat.round,actorId:supplied.id,title:`${supplied.name}: ${kind}`,body:result.message}]};return true;
     };
-    if(order.mode==='defend'){if(hasAvailableAction(combat.turnBudget))standard('dodge');return {handled:true,combat};}
+    if(order.mode==='defend'&&!ownedBook.length){if(hasAvailableAction(combat.turnBudget))standard('dodge');return {handled:true,combat};}
     const cast=(spellId:AutomatedSrdSpellId,targetId:string,bonus=false)=>{
       const current=caster();members=members.map(m=>m.id===current.id?current:m);
       const result=resolveAutomatedSrdCombatSpellTurnAction({combat,actorId:supplied.id,actionId:`combat.${bonus?'bonus':'action'}.cast_spell.${spellId}.${targetId}`,members,rng,rules:state.campaign.rules});
@@ -214,9 +273,24 @@ export function createCompanionAutomaticHook(state: GameState, rng: Rng) {
       combat={...combat,log:[...combat.log,{id:`companion-${supplied.id}-${combat.round}-${combat.log.length}`,ts:new Date().toISOString(),round:combat.round,actorId:supplied.id,title:`${supplied.name}: ${spellId}`,body:`${result.message} Target: ${target?.name||targetId} (${targetId}).`}]};
       return true;
     };
+    if(ownedBook.length){
+      for(let attempt=0;attempt<2;attempt++){
+        const choice=choices()[0];if(!choice)break;
+        if(choice.kind==='catalog'){if(!cast(choice.id as AutomatedSrdSpellId,choice.targetId,choice.bonus))break;}
+        else {
+          const current=caster();members=members.map(m=>m.id===current.id?current:m);
+          const resolved=castOriginalSpell({...state,flags:runtimeFlags,party:{...state.party,members},combat},choice.definition,{casterId:supplied.id,targetId:choice.targetId,rng});
+          combat=resolved.state.combat!;members=resolved.state.party.members;runtimeFlags=resolved.state.flags;rollLogs.push(...resolved.rollLogs);changed=true;if(choice.bonus)bonusUsed=true;else mainUsed=true;
+          const target=combat.participants.find(target=>target.id===choice.targetId);
+          combat={...combat,log:[...combat.log,{id:`companion-original-auto-${supplied.id}-${combat.round}-${combat.log.length}`,ts:new Date().toISOString(),round:combat.round,actorId:supplied.id,title:`${supplied.name}: ${resolved.spell.name}`,body:`${resolved.message} Target: ${target?.name||choice.targetId} (${choice.targetId}).`}]};
+          if(resolved.interrupted)return {handled:true,combat};
+        }
+      }
+      if(order.mode==='defend'){if(!mainUsed&&hasAvailableAction(combat.turnBudget))standard('dodge');return {handled:true,combat};}
+    }
     const known=availableAutomatedSrdSpells(caster());
     const wounded=woundedTargets();
-    for(const spellId of healing){
+    for(const spellId of ownedBook.length?[]:healing){
       if(!known.includes(spellId)||!slotAvailable(caster(),spellId))continue;
       const bonus=spellId==='spell_healing_word';
       if(!(bonus?combat.turnBudget?.bonusAction:combat.turnBudget?.action))continue;
@@ -244,7 +318,7 @@ export function createCompanionAutomaticHook(state: GameState, rng: Rng) {
       }
     }
     if(combat.turnBudget?.action){
-      const enemies=offensiveTargets(),spells=offensiveSpells(bonusUsed);
+      const enemies=offensiveTargets(),spells=offensiveSpells();
       for(const spellId of spells){const target=enemies.find(p=>reaches(combat,actor.id,p.id,spellId));if(target&&cast(spellId,target.id))break;}
     }
     if(['auto','conserve','focus'].includes(order.mode)&&!mainUsed&&hasAvailableAction(combat.turnBudget)){

@@ -1,5 +1,16 @@
 # Проверка 2026-10-12
 
+## Общая экономика заклинаний, NPC-магия и боевые меню —2026-10-12
+
+- 474/474 теста,99 JS +отдельный CJS синтаксис, smoke и diff check. Общая2014 история проверяет оба порядка бонусного/обычного каста, bonus-cantrip, Quickened/SP, дополнительные действия, own/off-turn реакции, actual slot costs при прерывании и Counterspell по фактически потраченному кругу. Direct service и native/public previews не обходят эти ограничения. Старый matching authored marker мигрирует явно; неоднозначная цена сохраняется как неизвестная до следующего хода.
+- NPC-планировщик получил отдельное окно своей авторской книги (3 владельца×6 записей, ≤10000JSON), с разнообразием ролей и без отдельного AI-запроса. Подтверждены собственные damage/heal/control/protection, концентрация/expiry, режимы приказов, полный service end-turn/reopen и настоящая natural20→свой heal. Смешанные harm/benefit и внебоевые utility пока выбираются точным приказом.
+- Боевой интерфейс сохраняет все доступные действия в группах/списках; pure Hero original targets и risky Sleep/Color Spray metadata применяются также к metamagic. Root controller regression подтверждает отказ Quickened Sleep без consent и точное bonus/SP исполнение с consent, без подмены на обычное действие. Пустые operation IDs не принимаются.
+- Live QA «Колокол над старой башней»: на turn26 все19 команд представлены через группы и End Turn. Через список выбран Shortbow: attack15 vsAC13, damage4, enemy_generated_2HP4→0; стрелы18→17, подтверждённая victory, XP17→34 у героя и Рэй, Hero coins15→18. Ground loot healing2d4+2 remains uncollected; Рэй HP3/8/slots0/2. Ни чисел, ни seed/инициативы не редактировали.
+- Описание победы не завершилось; два явных retry description не повторили действие/броски/стрелу/XP/добычу. После безопасной диагностики provider вернул точный code subscription_sharing_usage_limit_exceeded. Новые AI-вызовы остановлены, pending narration сохранена. Новые диагностические тесты не выводят raw provider messages и учитывают failed usage только при наличии отчёта. После пополнения лимита пользователем один retry получил настоящее завершённое описание GPT-6-Luna (5920 input/274 output, context10244): pending:false, turn27/стрелы17/XP34/coins18 без повторных начислений.
+- Мобильная шапка уплотнена, New Adventure находится в More, описание места раскрывается отдельно. На425×900 composer bottom888, на425×650 —647.8; на1440×750 —742. История прокручивается отдельно, horizontal overflow отсутствует; дополнительные разделы доступны через меню.
+- Незакрыты general Ready spells/full reaction chains, большая геометрия/движение, пассивные реакции и дальнейшая живая проверка. Общая задача активна. Подробности: [SPELL_TURN_ECONOMY.md](SPELL_TURN_ECONOMY.md).
+
+
 ## Диалог и собственная авторская магия NPC —2026-10-12
 
 - 442/442 теста, синтаксис98 JS и отдельного CJS, изолированный smoke и diff check прошли. Раздельные книги, строгая регистрация/replay/revision, максимум собственного круга, сохранение после reopen/dismiss/rejoin, естественная команда с авторским spell ID и полный controller/service end-turn проверены. Hero и NPC используют общий native runtime: свои ячейки и действие, дальность/cover/charm/смерть, концентрация/expiry и настоящие readied/Counterspell. Неизвестный строковый ID не подделывает круг Counterspell.

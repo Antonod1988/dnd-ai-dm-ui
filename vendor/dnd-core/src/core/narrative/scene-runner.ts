@@ -102,6 +102,9 @@ import {
 import {
   createTurnBudget,
   spendAction,
+  canCastSpellWithBudget,
+  spendSpellWithBudget,
+  legacySpellAttackCastingInfo,
   spendBonusAction,
   hasAvailableAction,
   standardSrdActions,
@@ -4636,7 +4639,12 @@ export class SceneRunner {
           combat
         });
       }
+      const legacy=legacySpellAttackCastingInfo(actor,primaryId);
+      if(!legacy)return this.result(false,'This spell attack has no validated casting-time and level metadata.',{...state,combat});
+      const legal=canCastSpellWithBudget(combat.turnBudget,legacy);
+      if(!legal.ok)return this.result(false,legal.message,{...state,combat});
     }
+    if(actionKind==='ready'&&primaryId&&primaryId!=='spell_counterspell'&&(primaryId.startsWith('spell_')||actor.attacks.some(a=>a.id===primaryId&&a.range==='spell')))return this.result(false,'Preparing an action-time spell with Ready is not supported; choose a real cast or an ordinary readied attack.',{...state,combat});
 
     if (actionKind === "attack" && primaryId) {
       const attack = actor.attacks.find((item) => item.id === primaryId);
@@ -4656,7 +4664,7 @@ export class SceneRunner {
       }
     }
 
-    const spent = spendAction(combat.turnBudget, actionKind);
+    const spent = actionKind==='cast_spell'?spendSpellWithBudget(combat.turnBudget,legacySpellAttackCastingInfo(actor,primaryId!)!):spendAction(combat.turnBudget, actionKind);
     if (!spent.ok) {
       return this.result(false, spent.message, { ...state, combat });
     }

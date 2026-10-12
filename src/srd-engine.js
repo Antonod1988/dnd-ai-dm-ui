@@ -127,15 +127,18 @@ async function command(input, { seed } = {}) {
   return { ...view(service, updated), resolution: { ok: result.ok !== false, message: result.message || result.effect?.summary || result.spell?.name || 'Действие разрешено.', events: result.events || (result.effect?[result.effect]:[]), rest:result.rest, check: typeof result.success === 'boolean' ? result : result.check || null } };
 }
 
-async function spellCastingOptions(state,service,{heroOnly=true}={}){
+async function spellCastingOptions(state,service,{heroOnly=true,includeMetamagic=false}={}){
   if(!state.combat)return [];
-  const rules=await core(),combat=rules.ensureTurnBudget(state.combat),actor=rules.currentCombatant(combat);
-  const characterId=actor.sourceCharacterId||actor.id;
+  const rules=await core(),combat=rules.ensureTurnBudget(state.combat),actor=rules.currentCombatant(combat),characterId=actor.sourceCharacterId||actor.id;
   if(actor.hp.current<=0||rules.isActionIncapacitated(actor)||!state.party.members.some(m=>m.id===characterId)||(heroOnly&&characterId!==state.party.heroId))return [];
   const candidates=(service||await session()).getAvailableActions(state.campaign.id).actions;
-  return candidates.flatMap(a=>{const parsed=a.id.match(/^combat\.(action|bonus|reaction)\.cast_spell\.([^.]+)\.(.+)$/);if(!parsed)return [];const spent=parsed[1]==='bonus'?rules.spendBonusAction(combat.turnBudget,'cast_spell'):parsed[1]==='reaction'?rules.spendReaction(combat.turnBudget,'cast_spell'):rules.spendAction(combat.turnBudget,'cast_spell');
-    const targets=['spell_sleep','spell_color_spray'].includes(parsed[2])?rules.automatedSrdAreaTargets(combat,actor.id,parsed[2]):null;
-    return spent.ok?[{...a,spellId:parsed[2],targetId:parsed[3],cost:parsed[1],...(targets?{area:{targeting:'caster_distance_bands',candidateTargets:true},affectedIds:targets.map(p=>p.id),mayAffectAllies:targets.some(p=>p.kind!=='enemy')}:{})}]:[];});
+  return candidates.flatMap(a=>{
+    const parsed=a.id.match(/^combat\.(action|bonus|reaction)\.(?:cast_spell|metamagic\.(quickened|subtle|twinned|careful))\.([^.]+)\.(.+)$/);if(!parsed||parsed[2]&&!includeMetamagic)return [];
+    const cost=parsed[1]==='bonus'?'bonus_action':parsed[1]==='reaction'?'reaction':'action',spellId=parsed[3],targetId=parsed[4],spent=cost==='bonus_action'?rules.spendBonusAction(combat.turnBudget,'cast_spell'):cost==='reaction'?rules.spendReaction(combat.turnBudget,'cast_spell'):rules.spendAction(combat.turnBudget,'cast_spell');
+    const casting=rules.automatedSrdSpellCastingInfo(combat,actor.id,spellId);if(casting?.isCasting&&!rules.canCastSpellWithBudget(combat.turnBudget,{level:casting.level,cost}).ok)return [];
+    const targets=['spell_sleep','spell_color_spray'].includes(spellId)?rules.automatedSrdAreaTargets(combat,actor.id,spellId):null;
+    return spent.ok?[{...a,spellId,targetId,cost:parsed[1],...(targets?{area:{targeting:'caster_distance_bands',candidateTargets:true},affectedIds:targets.map(p=>p.id),mayAffectAllies:targets.some(p=>p.kind!=='enemy')}:{})}]:[];
+  });
 }
 
 async function registerSpell(campaignId, draft, { sourceEventId } = {}) {

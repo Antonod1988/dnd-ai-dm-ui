@@ -34,3 +34,5 @@ export { buildTurnView } from './src/core/narrative/option-builder.js';
 export { createTurnBudget } from './src/core/rulesets/srd5e2014/action-economy.js';
 export { automatedSrdAreaTargets, resolveAutomatedSrdCombatSpellTurnAction } from './src/core/actions/automated-spell-actions.js';
 export { preflightOriginalSpell, castOriginalSpell } from './src/core/actions/original-spell-actions.js';
+export { canCastSpellWithBudget, spendSpellWithBudget } from './src/core/rulesets/srd5e2014/action-economy.js';
+export { automatedSrdSpellCastingInfo } from './src/core/actions/automated-spell-actions.js';

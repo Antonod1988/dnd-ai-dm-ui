@@ -93,11 +93,14 @@ import {
   speedToFeet,
   srdAuraOfCouragePreventsCondition,
   syncCombatantToCharacter,
+  spendCombatantReaction,
+  spendCombatantSpellReaction,
   stepCombatDistanceAway
 } from "../rules/combat.js";
 import { makeRollLog } from "../narrative/consequence-engine.js";
 import {
   automatedSrdAreaTargetBands,
+  availableAutomatedSrdSpells,
   castAutomatedSrdAreaControlSpell,
   castAutomatedSrdAreaSpell,
   castAutomatedSrdBuffSpell,
@@ -132,7 +135,7 @@ import {
   srdArcaneWardTemporaryHitPoints,
   spendSrdSorceryPoints
 } from "../rulesets/srd5e2014/class-features.js";
-import { spendAction, spendBonusAction, spendReaction } from "../rulesets/srd5e2014/action-economy.js";
+import { canCastSpellWithBudget, spendSpellWithBudget, legacySpellAttackCastingInfo, spendAction, spendBonusAction, spendReaction } from "../rulesets/srd5e2014/action-economy.js";
 import type {
   AbilityName,
   AttackAction,
@@ -799,6 +802,36 @@ export function getAutomatedSrdSpellAction(spellId: AutomatedSrdSpellId): Automa
   return automatedSrdSpellActionRegistry[spellId];
 }
 
+const bonusCastingSpells = new Set(['spell_healing_word', 'spell_mass_healing_word', 'spell_misty_step', 'spell_spiritual_weapon', 'spell_hex', 'spell_hunters_mark', 'spell_divine_favor', 'spell_shield_of_faith', 'spell_sanctuary']);
+const reactionCastingSpells = new Set(['spell_shield', 'spell_hellish_rebuke', 'spell_counterspell']);
+export function automatedSrdSpellCastingInfo(combat: CombatState, actorId: string, spellId: string) {
+  const actor = combat.participants.find(p => p.id === actorId);
+  if (!isAutomatedSrdSpellId(spellId)) return legacySpellAttackCastingInfo(actor,spellId);
+  const isCasting = !(spellId === 'spell_spiritual_weapon' && actor?.activeEffects?.some(e => e.spellId === spellId && e.sourceId === actorId));
+  const cost: AutomatedSrdCombatSpellActionCost = reactionCastingSpells.has(spellId) ? 'reaction' : bonusCastingSpells.has(spellId) ? 'bonus_action' : 'action';
+  return {level: Number(automatedSrdSpellLevel(spellId)), cost, isCasting};
+}
+
+function spendCatalogSpell(budget: TurnBudget, info: {level:number;cost:AutomatedSrdCombatSpellActionCost;isCasting:boolean}, costPaid = false) {
+  if (info.isCasting) return spendSpellWithBudget(budget, info, {costPaid});
+  if (costPaid) return {ok:true,budget,message:'Existing spell control action already paid.'};
+  return info.cost === 'bonus_action' ? spendBonusAction(budget,'control_spell') : info.cost === 'reaction' ? spendReaction(budget,'control_spell') : spendAction(budget,'control_spell');
+}
+
+function catalogCasterEligible(combat:CombatState, actorId:string, members:Character[], spellId:AutomatedSrdSpellId, targetId?:string, slotPrepaid=false) {
+  const actor=combat.participants.find(p=>p.id===actorId),member=members.find(m=>m.id===(actor?.sourceCharacterId||actorId));
+  if(!actor||!member||actor.hp.current<=0||actor.deathSaves?.dead||isActionIncapacitated(actor))return 'Caster cannot act.';
+  if(targetId&&!combat.participants.some(p=>p.id===targetId))return 'Caster or spell target was not found.';
+  const target=targetId?combat.participants.find(p=>p.id===targetId):undefined;
+  if(target&&(target.deathSaves?.dead||target.conditions.some(c=>['dead','fled','captured'].includes(c))))return 'This spell target is dead or absent.';
+  if(target&&target.id!==actor.id&&(combatDistanceBand(combat,actor.id,target.id)==='out_of_range'||combatCover(combat,actor.id,target.id)==='total'))return 'This spell target is out of range or behind total cover.';
+  if(!availableAutomatedSrdSpells(member).includes(spellId))return 'This spell is not known or prepared.';
+  const info=automatedSrdSpellCastingInfo(combat,actorId,spellId)!;
+  const current=syncCombatantToCharacter(member,actor);
+  if(!slotPrepaid&&info.isCasting&&info.level>0&&!Object.entries(current.spellcasting?.slots||{}).some(([level,slot])=>Number(level)>=info.level&&slot.current>0))return 'No spell slot at this spell level or higher.';
+  return undefined;
+}
+
 export function automatedSrdSpellActionKind(spellId: AutomatedSrdSpellId): AutomatedSrdSpellActionKind {
   return getAutomatedSrdSpellAction(spellId).kind;
 }
@@ -1029,13 +1062,15 @@ export function resolveAutomatedSrdCombatSpellCast(params: {
   spentBudget?: TurnBudget;
   prepaidSpellSlotLevel?: SrdLeveledSpellSlotLevel;
   carefulSpellProtectedTargetIds?: string[];
+  castingHistoryRecorded?: boolean;
+  castingSlotRecorded?: boolean;
 }): AutomatedSrdCombatSpellCastResult {
   if (!params.combat.turnBudget) {
     return { ok: false, combat: params.combat,
       message: "Combat turn budget is not available." };
   }
 
-  const actor = params.combat.participants.find((participant) => participant.id === params.actorId);
+  let actor = params.combat.participants.find((participant) => participant.id === params.actorId);
   const caster = params.members.find((member) => member.id === (actor?.sourceCharacterId ?? params.actorId));
   const targetCombatant = params.combat.participants.find((participant) => participant.id === params.targetId);
   if (!actor || !caster || !targetCombatant) {
@@ -1050,34 +1085,39 @@ export function resolveAutomatedSrdCombatSpellCast(params: {
       message: `${actor.name} cannot cast while incapacitated.` };
   }
 
-  const spellCastConsumedEffects = consumeSpellCastEffects(actor);
+  const eligibility = catalogCasterEligible(params.combat, params.actorId, params.members, params.spellId, params.targetId, Boolean(params.prepaidSpellSlotLevel)||params.castingSlotRecorded);
+  if (eligibility) return {ok:false,combat:params.combat,message:eligibility};
+  const info = automatedSrdSpellCastingInfo(params.combat, params.actorId, params.spellId)!;
+  const actionCost = params.actionCost ?? info.cost;
+  if(!params.castingHistoryRecorded&&actionCost!==info.cost)return {ok:false,combat:params.combat,message:'This action does not match the spell’s casting time.'};
+  const currentActor = params.combat.participants[params.combat.turnIndex];
+  if (actionCost !== 'reaction' && currentActor?.id !== actor.id) return {ok:false,combat:params.combat,message:'Not this caster’s turn.'};
+  let economyCombat=params.combat;
+  if(actionCost==='reaction'){
+    if(params.castingHistoryRecorded)economyCombat=spendCombatantReaction(economyCombat,actor.id);
+    else {const reaction=spendCombatantSpellReaction(economyCombat,actor.id,info.level);if(!reaction.ok)return {ok:false,combat:params.combat,message:reaction.message};economyCombat=reaction.combat;}
+    actor=economyCombat.participants.find(p=>p.id===params.actorId)!;
+  }
+  const spent = params.castingHistoryRecorded || actionCost==='reaction'
+    ? {ok:true,budget:params.spentBudget ?? economyCombat.turnBudget!,message:'Spell casting already recorded.'}
+    : spendCatalogSpell(params.spentBudget ?? params.combat.turnBudget!, {...info,cost:actionCost}, Boolean(params.spentBudget));
+  if(!spent.ok)return {ok:false,combat:params.combat,message:spent.message};
+
+  const spellCastConsumedEffects = info.isCasting ? consumeSpellCastEffects(actor) : {actor,consumedEffectLabels:[]};
   const combatBeforeCast =
     spellCastConsumedEffects.consumedEffectLabels.length > 0
       ? {
-          ...params.combat,
-          participants: params.combat.participants.map((participant) =>
+          ...economyCombat,
+          participants: economyCombat.participants.map((participant) =>
             participant.id === actor.id ? spellCastConsumedEffects.actor : participant
           )
         }
-      : params.combat;
+      : economyCombat;
   const castingActor = spellCastConsumedEffects.actor;
   const castingTarget =
     targetCombatant.id === actor.id
       ? spellCastConsumedEffects.actor
       : combatBeforeCast.participants.find((participant) => participant.id === params.targetId) ?? targetCombatant;
-  const actionCost = params.actionCost ?? "action";
-  const spent = params.spentBudget
-    ? { ok: true as const, budget: params.spentBudget,
-      message: `Action spent: ${params.spellId}.` }
-    : actionCost === "reaction"
-      ? spendReaction(combatBeforeCast.turnBudget!, params.spellId)
-      : actionCost === "bonus_action"
-        ? spendBonusAction(combatBeforeCast.turnBudget!, params.spellId)
-        : spendAction(combatBeforeCast.turnBudget!, "cast_spell");
-  if (!spent.ok) {
-    return { ok: false, combat: combatBeforeCast,
-      message: spent.message };
-  }
 
   const targetCharacter = params.members.find((member) => member.id === (castingTarget.sourceCharacterId ?? castingTarget.id));
   let spell: AutomatedSrdCombatSpellResult;
@@ -1135,10 +1175,16 @@ export function resolveAutomatedSrdCombatSpellTurnAction(params: {
   rng: Rng;
   rules: RulesConfig;
 }): AutomatedSrdCombatSpellTurnActionResult {
+  // Combat resources are authoritative; capture their current value before paying the cast.
+  params={...params,members:params.members.map(member=>{const participant=params.combat.participants.find(p=>(p.sourceCharacterId||p.id)===member.id);return participant?syncCombatantToCharacter(member,participant):member;})};
   const parsed = parseAutomatedSrdCombatSpellTurnActionId(params.actionId);
   if (!parsed) {
     return { handled: false };
   }
+  const eligibility = catalogCasterEligible(params.combat, params.actorId, params.members, parsed.spellId, parsed.targetId);
+  if(eligibility)return {handled:true,ok:false,combat:params.combat,message:eligibility};
+  const info=automatedSrdSpellCastingInfo(params.combat,params.actorId,parsed.spellId)!;
+  if(!parsed.metamagic&&parsed.actionCost!==info.cost||parsed.metamagic==='quickened_spell'&&info.cost!=='action')return {handled:true,ok:false,combat:params.combat,message:'This action does not match the spell’s casting time.'};
 
   if (parsed.metamagic === "quickened_spell") {
     if (!canQuickenedAutomatedSrdSpell(parsed.spellId)) {
@@ -1268,11 +1314,20 @@ export function resolveAutomatedSrdCombatSpellTurnAction(params: {
     }
   }
 
-  const prepared = prepareAutomatedSrdSpellTurnWithReadyInterrupt(params.combat, params.actorId, parsed.spellId, parsed.actionCost, params.rng, params.rules, {
-    suppressReadiedReactions: parsed.metamagic === "subtle_spell"
+  const castingActor=params.combat.participants.find(p=>p.id===params.actorId)!;
+  const castingMember=params.members.find(m=>m.id===(castingActor.sourceCharacterId||castingActor.id))!;
+  const slotPayment=info.isCasting&&info.level>0?spendAutomatedSrdSpellSlotWithLevel(castingMember,parsed.spellId):undefined;
+  let prepaidCaster=slotPayment?.caster??castingMember;
+  if(parsed.metamagic==='quickened_spell')prepaidCaster=spendSrdSorceryPoints(prepaidCaster,2);
+  if(parsed.metamagic==='subtle_spell'||parsed.metamagic==='careful_spell')prepaidCaster=spendSrdSorceryPoints(prepaidCaster,1);
+  if(parsed.metamagic==='twinned_spell')prepaidCaster=spendSrdSorceryPoints(prepaidCaster,srdTwinnedSpellSorceryPointCost(parsed.spellId));
+  const prepaidMembers=params.members.map(m=>m.id===prepaidCaster.id?prepaidCaster:m);
+  const castingCombat={...params.combat,participants:params.combat.participants.map(p=>p.id===castingActor.id?{...p,resources:prepaidCaster.resources.map(r=>({...r}))}:p)};
+  const prepared = prepareAutomatedSrdSpellTurnWithReadyInterrupt(castingCombat, params.actorId, parsed.spellId, parsed.actionCost, params.rng, params.rules, {
+    suppressReadiedReactions: parsed.metamagic === "subtle_spell", incomingSlotLevel:slotPayment?Number(slotPayment.slotLevel):info.level
   });
   if (!prepared.ok) {
-    return { handled: true, ok: false, combat: prepared.combat,
+    return { handled: true, ok: false, combat: params.combat,
       message: "message" in prepared ? prepared.message : "Spell preparation failed." };
   }
   if (prepared.interrupted) {
@@ -1284,7 +1339,7 @@ export function resolveAutomatedSrdCombatSpellTurnAction(params: {
       actor: prepared.actor,
       spellId: parsed.spellId,
       combat: prepared.combat,
-      partyMembers: params.members,
+      partyMembers: prepaidMembers,
       message: "message" in prepared ? prepared.message : "Spellcasting is interrupted.",
       rollLogs: prepared.rollLogs
     };
@@ -1319,6 +1374,8 @@ export function resolveAutomatedSrdCombatSpellTurnAction(params: {
     actionCost: parsed.actionCost,
     spentBudget: prepared.spentBudget,
     carefulSpellProtectedTargetIds: parsed.metamagic === "careful_spell" ? parsed.protectedTargetIds : undefined
+    ,castingHistoryRecorded:true
+    ,castingSlotRecorded:true
   });
   if (result.ok) {
     const metamagicResult =
@@ -1341,7 +1398,7 @@ function prepareAutomatedSrdSpellTurnWithReadyInterrupt(
   actionCost: AutomatedSrdCombatSpellActionCost,
   rng: Rng,
   rules: RulesConfig,
-  options: { suppressReadiedReactions?: boolean } = {}
+  options: { suppressReadiedReactions?: boolean; incomingSlotLevel?: number } = {}
 ):
   | { ok: true; interrupted?: false; combat: CombatState; actor: Combatant; spentBudget: TurnBudget; rollLogs: RollLogEntry[] }
   | { ok: true; interrupted: true; combat: CombatState; actor: Combatant; spentBudget: TurnBudget;
@@ -1361,26 +1418,27 @@ function prepareAutomatedSrdSpellTurnWithReadyInterrupt(
     return { ok: false, combat,
       message: `${actor.name} cannot cast while incapacitated.` };
   }
-  const spent =
-    actionCost === "reaction"
-      ? spendReaction(combat.turnBudget, spellId)
-      : actionCost === "bonus_action"
-        ? spendBonusAction(combat.turnBudget, spellId)
-        : spendAction(combat.turnBudget, "cast_spell");
+  if(actionCost!=='reaction'&&combat.participants[combat.turnIndex]?.id!==actor.id)return {ok:false,combat,message:'Not this caster’s turn.'};
+  if(actionCost==='reaction'&&actor.tactics?.reactionSpent)return {ok:false,combat,message:'Reaction already spent.'};
+  const info=automatedSrdSpellCastingInfo(combat,actorId,spellId)!;
+  const reaction=actionCost==='reaction'?spendCombatantSpellReaction(combat,actorId,info.level):undefined;
+  const spent = reaction ? {ok:reaction.ok,budget:reaction.combat.turnBudget!,message:reaction.message} : spendCatalogSpell(combat.turnBudget,{...info,cost:actionCost});
   if (!spent.ok) {
     return { ok: false, combat,
       message: spent.message };
   }
-  if (options.suppressReadiedReactions) {
-    return { ok: true, combat: { ...combat, turnBudget: spent.budget }, actor, spentBudget: spent.budget, rollLogs: [] };
+  const paidCombat=reaction?.combat??{...combat,turnBudget:spent.budget};
+  if (options.suppressReadiedReactions || !info.isCasting) {
+    return { ok: true, combat: paidCombat, actor, spentBudget: spent.budget, rollLogs: [] };
   }
   const prepared = resolveReadiedReactionsWithRollLogs(
-    { ...combat, turnBudget: spent.budget },
+    paidCombat,
     actor.id,
     rng,
     rules,
     "target_casts_spell",
-    spellId
+    spellId,
+    {catalogSpell:{id:spellId,slotLevel:options.incomingSlotLevel??info.level}}
   );
   const preparedCombat = prepared.combat;
   const actorAfterReady = preparedCombat.participants.find((participant) => participant.id === actor.id);
@@ -1482,6 +1540,8 @@ function resolveTwinnedAutomatedSrdCombatSpellCast(params: {
     rules: params.rules,
     actionCost: params.actionCost,
     spentBudget: params.spentBudget
+    ,castingHistoryRecorded:true
+    ,castingSlotRecorded:true
   });
   if (!first.ok) {
     return first;
@@ -1498,6 +1558,7 @@ function resolveTwinnedAutomatedSrdCombatSpellCast(params: {
     actionCost: params.actionCost,
     spentBudget: params.spentBudget,
     prepaidSpellSlotLevel: first.effect.slotLevel === "0" ? undefined : first.effect.slotLevel
+    ,castingHistoryRecorded:true
   });
   if (!second.ok) {
     return second;

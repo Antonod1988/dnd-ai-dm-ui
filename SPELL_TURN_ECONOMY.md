@@ -1,0 +1,28 @@
+# Spell turns and autonomous companion magic
+
+The rules foundation is SRD5.1/2014. The shared turn budget now records actual spell casting, independently of whether a spell came from the catalog or an original definition. [2014 Spellcasting](https://www.dndbeyond.com/sources/dnd/basic-rules-2014/spellcasting) and [official Sage Advice](https://www.dndbeyond.com/sources/dnd/sac/sage-advice-compendium) supply the rule distinctions.
+
+- A bonus-action spell, including a cantrip or Quickened spell, permits only action cantrips as other spells on that same turn. Casting a leveled action spell first prevents a later bonus spell. Own-turn spell reactions are also checked; reactions on another creature's turn use that creature's actual reaction resource.
+- Additional unrestricted actions may cast another action spell when no bonus spell was cast. Haste's restricted action is not an unrestricted casting action. Controlling an existing Spiritual Weapon is distinct from casting another spell.
+- Actual casting begins only after eligibility checks. Started casts spend slots and Sorcery Points before a Counterspell/readied interruption; a turn-start interruption before casting begins spends neither. Counterspell sees the actual selected slot level, including an upcast original definition.
+- History persists in the saved turn budget and resets on a real new turn. An exact matching old original-spell marker is migrated using paid budget evidence. Ambiguous old costs use an explicit unknown-history flag until the next turn, rather than inventing an action sequence. This is not a reconstruction of every old catalog cast.
+
+Both resolvers and native/public action previews use the shared eligibility. Direct service casting no longer bypasses combat costs. Anchored legacy spell attacks are treated as cantrips only when the actual actor owns the known attack; arbitrary IDs cannot manufacture Counterspell levels.
+
+## Companion selection
+
+The app prepares `ui_companion_original_books`, a separate bounded planner window: at most3 genuine NPC owners,6 validated definitions each,10000 serialized characters. The full books remain in their persistent companion records. Loading/learning refreshes only this private cache without taking a turn, spending resources, rolling dice or consuming an old order result. Living0HP characters retain knowledge for a possible natural20; eligibility is checked again on the actual turn.
+
+An NPC compares supported original and catalog damage, healing, control and protection against current targets and resources. It uses the shared interpreter and real engine RNG only after choosing a legal action. It does not refresh an active benefit or break existing concentration just to cast another buff. Modes auto/conserve/defend/support/focus retain their purposes, and an exact player order has priority. A weak original spell may correctly lose to an effective catalog spell. Selection makes no model request per NPC. Mixed harm/benefit and noncombat utility remain exact-order choices.
+
+## Interface and evidence
+
+Combat choices are grouped as attacks, magic, movement/maneuvers, abilities/aid and other actions. Each group has a native selection control and an execution button; End Turn remains separate. Expanded groups and valid selections survive rendering. On narrow screens, New Adventure moves into More and the scene description is collapsible. Story scrolls separately from the composer; actual checks at425×900 and425×650 keep the input inside the viewport, and1440×750 also fits without horizontal overflow. Original hero targets use pure preflight. Sleep/Color Spray risk metadata and consent also cover metamagic variants, preserving the exact selected bonus/Sorcery Point path.
+
+474 tests,99 JS syntax checks, separate CJS syntax and isolated smoke pass. Tests include both casting orders, bonus cantrips, Quickened, Action Surge budgets, own/off-turn reactions, interruptions, upcast Counterspell, direct service/reopening, unknown legacy costs, autonomous original NPC service turns, expiry and real natural20 recovery. Controller tests verify owned cache isolation and Quickened Sleep consent without mutation before authorization.
+
+Live QA: all19 available actions were retained in grouped controls. Selecting Shortbow and executing the button made one real attack15 versus AC13,4 damage, one arrow18→17, confirmed victory and XP17→34 for hero and companion. Three coins were received by the hero; the healing find remains on the ground. No HP/seed/initiative edits were made.
+
+ChatGPT then failed to describe that saved victory. Two explicit description retries did not repeat the roll, arrow, XP or loot. Improved safe diagnostics identified `subscription_sharing_usage_limit_exceeded`; further requests were stopped, the result and pending narration kept. After the user replenished the limit, one explicit retry completed the Luna narration: turn27, arrows17, XP34 and coins18 remained unchanged, and pending narration cleared. [Official token-sharing inference guidance](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference) documents late streamed usage failures. Only whitelisted diagnostic codes/reasons are exposed, never raw provider error messages. Reported failed-response usage is retained when the provider supplies it; an absent report is not treated as zero usage.
+
+General action-time Ready-spell preparation and full reaction chains remain open. The unsupported Ready spell operation refuses before costs rather than substituting a weapon. Broader geometry, movement plans, passive reactions and higher-level/live narrative variety still need work. This checkpoint does not complete the overall objective.

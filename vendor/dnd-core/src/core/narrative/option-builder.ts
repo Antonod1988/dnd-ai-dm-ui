@@ -6,6 +6,7 @@ import {
   canTwinAutomatedSrdSpell,
   srdCarefulSpellProtectedTargetLimit,
   srdTwinnedSpellSorceryPointCost
+  ,automatedSrdSpellCastingInfo
 } from "../actions/automated-spell-actions.js";
 import { canDemandCombatSurrender } from "../actions/combat-utility-actions.js";
 import {
@@ -50,7 +51,7 @@ import {
 } from "../rulesets/srd5e2014/class-features.js";
 import { canSpendInventoryItemUse, hasAmmunitionForAttack, modeledInventoryUseEffect } from "../content/items.js";
 import { canUseSrdAttackWithEquipment } from "../rulesets/srd5e2014/character-builder.js";
-import { hasAvailableAction } from "../rulesets/srd5e2014/action-economy.js";
+import { hasAvailableAction, canCastSpellWithBudget, spendBonusAction, spendAction, spendReaction } from "../rulesets/srd5e2014/action-economy.js";
 import {
   automatedSrdAreaTargetBands,
   automatedSrdSpellLevel,
@@ -5227,16 +5228,26 @@ function buildCombatTurnView(state: GameState, message?: string): TurnView {
   if (actor.kind === "player" && !needsDeathSave(actor)) {
     options.push({ id: "combat.end_turn", label: "End Turn", kind: "combat" });
   }
+  const eligibleOptions=options.filter(option=>{
+    const cast=option.id.match(/^combat\.(action|bonus|reaction)\.(?:cast_spell|metamagic\.(?:quickened|subtle|twinned|careful))\.([^.]+)\./);
+    if(!cast)return true;
+    const info=automatedSrdSpellCastingInfo(combat,actor.id,cast[2]);if(!info)return false;
+    const cost=cast[1]==='bonus'?'bonus_action':cast[1]==='reaction'?'reaction':'action';
+    const character=state.party.members.find(m=>m.id===(actor.sourceCharacterId||actor.id));
+    if(info.isCasting&&info.level>0&&(!character||!hasSpellSlotAtOrAbove(character,info.level)))return false;
+    if(cost==='reaction'&&actor.tactics?.reactionSpent)return false;
+    return info.isCasting?canCastSpellWithBudget(budget,{level:info.level,cost}).ok:(cost==='bonus_action'?spendBonusAction(budget!,'control_spell'):cost==='reaction'?spendReaction(budget!,'control_spell'):spendAction(budget!,'control_spell')).ok;
+  });
 
   return {
     campaignId: state.campaign.id,
     title: combat.environment.name,
     sceneId: state.currentScene.id,
     characterSummary: buildCharacterSummary(state),
-    text: [combatNarrativeTurnText(state, combat, actor, options), combat.environment.description, message]
+    text: [combatNarrativeTurnText(state, combat, actor, eligibleOptions), combat.environment.description, message]
       .filter(Boolean)
       .join("\n\n"),
-    options: [...options, ...buildSystemOptions()],
+    options: [...eligibleOptions, ...buildSystemOptions()],
     inCombat: true,
     combatSummary: [
       `Round ${combat.round}. Turn: ${actor.name}.`,

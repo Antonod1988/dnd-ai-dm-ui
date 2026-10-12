@@ -40,7 +40,7 @@ function installSceneDialogue(meta,queue,framing) {
 }
 function feedback(error,report){
   const issues=error.issues?.slice(0,6).map(i=>({path:i.path.join('.'),code:i.code,message:i.message.slice(0,180)}));
-  return {reason:issues?undefined:String(error.message).slice(0,300),issues,rejectedText:error.draftText?.slice(0,4000),rejectedNarration:report?.narration?.slice?.(0,900),rejectedLines:report?.lines?JSON.stringify(report.lines).slice(0,2500):undefined,rejectedDevelopments:report?.developments?JSON.stringify(report.developments).slice(0,3000):undefined};
+  return {reason:issues?undefined:String(error.message).slice(0,300),...(error.providerFailure?{providerFailure:error.providerFailure}:{}),issues,rejectedText:error.draftText?.slice(0,4000),rejectedNarration:report?.narration?.slice?.(0,900),rejectedLines:report?.lines?JSON.stringify(report.lines).slice(0,2500):undefined,rejectedDevelopments:report?.developments?JSON.stringify(report.developments).slice(0,3000):undefined};
 }
 async function generate(adventure,payload,fallback,validate,{task='adventure_narration',resolved=true}={}){
   let first,generated=false;

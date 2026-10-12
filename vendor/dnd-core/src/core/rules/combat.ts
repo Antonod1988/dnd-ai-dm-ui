@@ -67,6 +67,8 @@ import {
   spendMovement,
   spendAction,
   hasAvailableAction
+  ,spendSpellWithBudget
+  ,legacySpellAttackCastingInfo
 } from "../rulesets/srd5e2014/action-economy.js";
 import { isShieldItem, isTwoHandedItem } from "../content/items.js";
 import {
@@ -606,6 +608,17 @@ export function canUseCombatantReaction(combatant) {
 }
 export function spendCombatantReaction(combat, combatantId) {
     return updateCombatantTactics(combat, combatantId, (tactics) => ({ ...tactics, reactionSpent: true }));
+}
+export function spendCombatantSpellReaction(combat:CombatState, combatantId:string, level:number) {
+    const actor=combat.participants.find(p=>p.id===combatantId);
+    if(!actor||!canUseCombatantReaction(actor))return {ok:false,combat,message:'This combatant cannot spend a reaction.'};
+    let current=combat;
+    if(combat.participants[combat.turnIndex]?.id===combatantId){
+        const spent=spendSpellWithBudget(combat.turnBudget!,{level,cost:'reaction'});
+        if(!spent.ok)return {ok:false,combat,message:spent.message};
+        current={...combat,turnBudget:spent.budget};
+    }
+    return {ok:true,combat:spendCombatantReaction(current,combatantId),message:'Spell reaction spent.'};
 }
 
 function protectionFightingStyleCandidate(combat, actor, target) {
@@ -3105,10 +3118,10 @@ function resolveSourceTurnStartEffectDamage(combat: CombatState, sourceId: strin
     return logs.length > 0 ? { ...current, log: [...current.log, ...logs] } : current;
 }
 
-export function resolveReadiedReactions(combat: CombatState, triggerId: string, rng: Rng, rules: RulesConfig, triggerType: ReadiedReactionTriggerType = "hostile_turn_start", triggerActionId?: string, incomingSpell?: { originalSpell?: unknown }): CombatState {
+export function resolveReadiedReactions(combat: CombatState, triggerId: string, rng: Rng, rules: RulesConfig, triggerType: ReadiedReactionTriggerType = "hostile_turn_start", triggerActionId?: string, incomingSpell?: { originalSpell?: unknown; originalSpellSlotLevel?: number; catalogSpell?: {id:string;slotLevel:number} }): CombatState {
     return resolveReadiedReactionsWithRollLogs(combat, triggerId, rng, rules, triggerType, triggerActionId, incomingSpell).combat;
 }
-export function resolveReadiedReactionsWithRollLogs(combat, triggerId, rng, rules, triggerType = "hostile_turn_start", triggerActionId, incomingSpell?: { originalSpell?: unknown }) {
+export function resolveReadiedReactionsWithRollLogs(combat, triggerId, rng, rules, triggerType = "hostile_turn_start", triggerActionId, incomingSpell?: { originalSpell?: unknown; originalSpellSlotLevel?: number; catalogSpell?: {id:string;slotLevel:number} }) {
     let current = combat;
     const rollLogs = [];
     let interruptedAction = false;
@@ -3162,7 +3175,7 @@ function resolveReadiedCounterspell(combat, reactor, target, triggerType, trigge
     if (reactor.tactics?.readiedAction !== "spell_counterspell" || triggerType !== "target_casts_spell") {
         return undefined;
     }
-    const targetSpellLevel = counterspellTargetSpellLevel(triggerActionId, incomingSpell);
+    const targetSpellLevel = counterspellTargetSpellLevel(triggerActionId, incomingSpell, target);
     if (targetSpellLevel === undefined) {
         return undefined;
     }
@@ -3174,6 +3187,8 @@ function resolveReadiedCounterspell(combat, reactor, target, triggerType, trigge
         return undefined;
     }
     const slotNumeric = Number.parseInt(slotLevel, 10);
+    const reaction=spendCombatantSpellReaction(combat,reactor.id,3);
+    if(!reaction.ok)return undefined;
     const needsCheck = targetSpellLevel > slotNumeric;
     const checkRoll = needsCheck
         ? rollExpression(`1d20${formatModifier(bestCounterspellAbilityModifier(reactor))}`, {
@@ -3182,7 +3197,7 @@ function resolveReadiedCounterspell(combat, reactor, target, triggerType, trigge
         })
         : rollExpression("0", { rng });
     const interrupted = !needsCheck || checkRoll.total >= 10 + targetSpellLevel;
-    const spent = spendCombatantSpellSlotResource(spendCombatantReaction(combat, reactor.id), reactor.id, slotLevel);
+    const spent = spendCombatantSpellSlotResource(reaction.combat, reactor.id, slotLevel);
     const triggerLine = reactor.tactics?.readiedTriggerText ? ` Trigger: ${reactor.tactics.readiedTriggerText}` : "";
     const spellName = triggerActionId ?? "the spell";
     const body = interrupted
@@ -3194,12 +3209,18 @@ function resolveReadiedCounterspell(combat, reactor, target, triggerType, trigge
         rollLogs: [makeCombatRollLog(reactor.id, "spell_counterspell", checkRoll)]
     };
 }
-function counterspellTargetSpellLevel(spellId, incomingSpell) {
-    if (spellId && isAutomatedSrdSpellId(spellId)) return Number.parseInt(automatedSrdSpellLevel(spellId), 10);
+function counterspellTargetSpellLevel(spellId, incomingSpell, target) {
+    if (spellId && isAutomatedSrdSpellId(spellId)) {
+        const base=Number.parseInt(automatedSrdSpellLevel(spellId),10),paid=incomingSpell?.catalogSpell;
+        return paid?.id===spellId&&Number.isInteger(paid.slotLevel)&&paid.slotLevel>=base&&paid.slotLevel<=9?paid.slotLevel:base;
+    }
+    if(legacySpellAttackCastingInfo(target,spellId))return 0;
     const original = incomingSpell?.originalSpell;
     if (!original || original.id !== spellId || typeof spellId !== 'string' || !/^spell-created-[A-Za-z0-9_-]{1,145}$/.test(spellId)) return undefined;
     const checked = originalSpellSpec.validateSpell(Object.fromEntries(Object.entries(original).filter(([key]) => !['id', 'sourceEventId'].includes(key))));
-    return checked.ok ? checked.spell.level : undefined;
+    if(!checked.ok)return undefined;
+    const paid=incomingSpell?.originalSpellSlotLevel;
+    return Number.isInteger(paid)&&paid>=checked.spell.level&&paid<=9?paid:checked.spell.level;
 }
 function availableCombatantSpellSlotLevel(combatant, minimumLevel) {
     return combatant.resources

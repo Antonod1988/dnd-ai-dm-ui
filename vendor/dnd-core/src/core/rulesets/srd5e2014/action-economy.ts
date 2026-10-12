@@ -1,4 +1,4 @@
-import type { TurnBudget } from "../../types.js";
+import type { TurnBudget, Combatant } from "../../types.js";
 
 export type { TurnBudget } from "../../types.js";
 
@@ -25,6 +25,37 @@ export type SpendResult = {
   budget: TurnBudget;
   message: string;
 };
+export type SpellCastingRequest = { level: number; cost: 'action' | 'bonus_action' | 'reaction' };
+/** Renewable server-defined legacy sparks/bolts, anchored to this actor's actual spell attack. */
+export function legacySpellAttackCastingInfo(actor:Combatant|undefined, attackId:string) {
+  return ['arcane_spark','primal_spark','charm_spark','eldritch_bolt','sacred_flame'].includes(attackId)&&actor?.attacks.some(a=>a.id===attackId&&a.range==='spell')?{level:0,cost:'action' as const,isCasting:true,legacy:true}:undefined;
+}
+
+/** SRD 2014: any bonus-action spell allows only other one-action cantrips on that turn. */
+export function canCastSpellWithBudget(budget: TurnBudget | undefined, spell: SpellCastingRequest, { costPaid = false }: { costPaid?: boolean } = {}): SpendResult {
+  if (!budget) return { ok: false, budget: budget as TurnBudget, message: 'Combat turn budget is not available.' };
+  if (!Number.isInteger(spell.level) || spell.level < 0 || spell.level > 9 || !['action', 'bonus_action', 'reaction'].includes(spell.cost)) return { ok: false, budget, message: 'Invalid spell level or casting cost.' };
+  const history = budget.spellCasting;
+  if (history && (Object.keys(history).some(key => !['bonusAction', 'actionLeveled', 'reaction', 'legacyUnknownCost'].includes(key)) || ['bonusAction', 'actionLeveled', 'reaction'].some(key => typeof history[key] !== 'boolean') || history.legacyUnknownCost!==undefined&&typeof history.legacyUnknownCost!=='boolean')) return { ok: false, budget, message: 'Spell casting history is invalid.' };
+  if(history?.legacyUnknownCost&&!(spell.cost==='action'&&spell.level===0))return {ok:false,budget,message:'The saved leveled cast has no known casting cost; only an action cantrip is safe until the next turn.'};
+  if (spell.cost === 'bonus_action' && (history?.actionLeveled || history?.reaction)) return { ok: false, budget, message: 'A bonus-action spell cannot follow another spell on this turn except a one-action cantrip.' };
+  if (history?.bonusAction && !(spell.cost === 'action' && spell.level === 0)) return { ok: false, budget, message: 'After a bonus-action spell, only a one-action cantrip can be cast on this turn.' };
+  if (costPaid) return { ok: true, budget, message: 'Spell casting is eligible.' };
+  const spent = spell.cost === 'bonus_action' ? spendBonusAction(budget, 'cast_spell') : spell.cost === 'reaction' ? spendReaction(budget, 'cast_spell') : spendAction(budget, 'cast_spell');
+  return spent.ok ? { ok: true, budget, message: 'Spell casting is eligible.' } : spent;
+}
+
+export function spendSpellWithBudget(budget: TurnBudget, spell: SpellCastingRequest, options: { costPaid?: boolean } = {}): SpendResult {
+  const eligible = canCastSpellWithBudget(budget, spell, options);
+  if (!eligible.ok) return eligible;
+  const spent = options.costPaid ? { ok: true, budget, message: 'Spell action already paid.' } : spell.cost === 'bonus_action' ? spendBonusAction(budget, 'cast_spell') : spell.cost === 'reaction' ? spendReaction(budget, 'cast_spell') : spendAction(budget, 'cast_spell');
+  return { ...spent, budget: { ...spent.budget, spellCasting: {
+    bonusAction: Boolean(budget.spellCasting?.bonusAction || spell.cost === 'bonus_action'),
+    actionLeveled: Boolean(budget.spellCasting?.actionLeveled || spell.cost === 'action' && spell.level > 0),
+    reaction: Boolean(budget.spellCasting?.reaction || spell.cost === 'reaction'),
+    ...(budget.spellCasting?.legacyUnknownCost?{legacyUnknownCost:true}:{})
+  } } };
+}
 
 export const standardSrdActions: SrdActionKind[] = [
   "attack",

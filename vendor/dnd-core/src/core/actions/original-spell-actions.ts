@@ -5,7 +5,7 @@ import { abilityModifier, consumeSavingThrowActiveEffects, rollSavingThrow } fro
 import { applyDamage, applyHealing, combatCover, combatDistanceBand, combatantStatusFlags, currentCombatant, ensureTurnBudget, resolveReadiedReactionsWithRollLogs, syncCombatantToCharacter } from '../rules/combat.js';
 import { isActionIncapacitated, isCharmedBySource, removeCondition } from '../rules/conditions.js';
 import { applyConditionEffectToTargets, applyEffectToTargets, cleanRemovedEffectConditions, consumeSpellCastEffects, removeConcentrationEffectsForSource, resolveConcentrationAfterDamage } from '../rules/effects.js';
-import { spendAction, spendBonusAction } from '../rulesets/srd5e2014/action-economy.js';
+import { canCastSpellWithBudget, spendSpellWithBudget } from '../rulesets/srd5e2014/action-economy.js';
 import { syncPartyFromCombat } from '../narrative/consequence-engine.js';
 
 type CastOptions={casterId?:string;targetId?:string;rng?:Rng};
@@ -27,9 +27,8 @@ export function preflightOriginalSpell(state:GameState,input:any,{casterId=state
   if(!actor||actor.hp.current<=0||dead(actor)||absent(actor)||isActionIncapacitated(actor)||combat&&combatantStatusFlags(actor).cannotAct)return {ok:false as const,message:'Caster cannot act.'};
   if(combat&&currentCombatant(combat).id!==actor.id)return {ok:false as const,message:'Not this caster’s turn.'};
   if(combat){
-    const spent=spell.cost==='bonus_action'?spendBonusAction(combat.turnBudget!,'cast_spell'):spendAction(combat.turnBudget!,'cast_spell');
+    const spent=canCastSpellWithBudget(combat.turnBudget,{level:spell.level,cost:spell.cost});
     if(!spent.ok)return {ok:false as const,message:spent.message};
-    if(spell.level>0&&[`${combat.id}:${combat.round}:${actor.id}`,`${combat.round}:${actor.id}`].includes(state.flags.generated_leveled_spell_turn as string))return {ok:false as const,message:'A leveled generated spell was already cast this turn.'};
   }
   const caster=combat?syncCombatantToCharacter(member,actor):member;
   const slots=caster.spellcasting.slots;
@@ -64,7 +63,7 @@ export function castOriginalSpell(original:GameState,input:any,options:CastOptio
   const events:any[]=[],rollLogs:RollLogEntry[]=[],ts=new Date().toISOString();
   const log=(ownerId:string,label:string,roll:any)=>{if(roll)rollLogs.push({id:`original-${spell.id}-${actorId}-${combat?.round||0}-${(state.rollLog||[]).length+rollLogs.length}`,ts,actorId:ownerId,label,result:roll});};
   const replace=(updated:any)=>{arena={...arena,participants:arena.participants.map(p=>p.id===updated.id?updated:p)};};
-  if(combat){const spent=spell.cost==='bonus_action'?spendBonusAction(combat.turnBudget!,'cast_spell'):spendAction(combat.turnBudget!,'cast_spell');arena={...arena,turnBudget:spent.budget};}
+  if(combat){const spent=spendSpellWithBudget(combat.turnBudget!,{level:spell.level,cost:spell.cost});arena={...arena,turnBudget:spent.budget};delete state.flags.generated_leveled_spell_turn;}
   let actor=arena.participants.find(p=>p.id===actorId)!;
   let member=state.party.members.find(m=>m.id===checked.casterId)!;
   if(combat)member=syncCombatantToCharacter(member,actor);
@@ -74,7 +73,6 @@ export function castOriginalSpell(original:GameState,input:any,options:CastOptio
     member={...member,resources:member.resources.map(r=>r.id===`spell_slots_${slotLevel}`?{...r,current}:r)};
     actor={...actor,resources:actor.resources.map(r=>r.id===`spell_slots_${slotLevel}`?{...r,current}:r)};
     replace(actor);
-    if(combat)state.flags.generated_leveled_spell_turn=`${combat.id}:${combat.round}:${actorId}`;
   }
   state.party.members=state.party.members.map(m=>m.id===member.id?member:m);
   const finish=(message:string,save:any=null,interrupted=false)=>{
@@ -85,7 +83,7 @@ export function castOriginalSpell(original:GameState,input:any,options:CastOptio
   // In exploration the arena contains the actual Character, including its newly spent slot.
   if(!combat){replace(member);actor=arena.participants.find(p=>p.id===actorId)!;}
   if(combat){
-    const ready=resolveReadiedReactionsWithRollLogs(arena,actorId,rng,state.campaign.rules,'target_casts_spell',spell.id,{originalSpell:spell});
+    const ready=resolveReadiedReactionsWithRollLogs(arena,actorId,rng,state.campaign.rules,'target_casts_spell',spell.id,{originalSpell:spell,originalSpellSlotLevel:slotLevel});
     arena=ready.combat;rollLogs.push(...ready.rollLogs);actor=arena.participants.find(p=>p.id===actorId)!;
     if(ready.interruptedAction||!actor||actor.hp.current<=0||dead(actor)||isActionIncapacitated(actor))return finish(`${spell.name} is interrupted by a readied reaction.`,null,true);
   }

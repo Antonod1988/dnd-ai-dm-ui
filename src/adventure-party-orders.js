@@ -31,6 +31,25 @@ function originalRegistry(state,adventure,bridge){
   }
   return registry;
 }
+function healingDefinitions(state,adventure,id){return spellbooks.definitionsFor(state,adventure,id).filter(spell=>spell.effects.some(effect=>effect.type==='healing')&&!spell.effects.some(effect=>['damage','condition'].includes(effect.type)));}
+function originalBooksRegistry(state,adventure,bridge){
+  const windows=[];
+  for(const id of Object.keys(bridge)){
+    const definitions=spellbooks.definitionsFor(state,adventure,id,{allowIncapacitated:true}),order=bridge[id],actor=state.combat?.participants.find(actor=>(actor.sourceCharacterId||actor.id)===id)||state.party.members.find(member=>member.id===id);
+    const priority=spell=>spell.effects.some(effect=>['damage','condition'].includes(effect.type))&&spell.effects.some(effect=>!['damage','condition'].includes(effect.type))?0:spell.effects.reduce((score,effect)=>score+(effect.type==='healing'?(order.mode==='support'?80:35):effect.type==='damage'?(order.mode==='focus'?60:25):effect.type==='condition'?30:['armor','resistance','temporary_hp'].includes(effect.type)?(order.mode==='defend'?60:actor?.hp.current<=actor?.hp.max/2?30:15):0),0);
+    const sorted=definitions.map(definition=>({definition,priority:priority(definition)})).filter(row=>row.priority>0).sort((a,b)=>b.priority-a.priority||a.definition.id.localeCompare(b.definition.id));
+    // Reserve variety before filling with additional versions of the same role.
+    const first=[],seen=new Set();for(const row of sorted){const role=row.definition.effects.some(e=>e.type==='healing')?'healing':row.definition.effects.some(e=>e.type==='damage')?'damage':row.definition.effects.some(e=>e.type==='condition')?'control':'protection';if(!seen.has(role)){first.push(row.definition);seen.add(role);}}
+    windows.push({id,definitions:[...first,...sorted.map(row=>row.definition).filter(definition=>!first.includes(definition))].slice(0,6)});
+  }
+  const registry={};
+  for(let index=0;index<6;index++)for(const window of windows){const definition=window.definitions[index];if(!definition)continue;const next={ownerId:window.id,definitions:[...(registry[window.id]?.definitions||[]),definition]};if(JSON.stringify({...registry,[window.id]:next}).length<=10000)registry[window.id]=next;}
+  return registry;
+}
+function prepareOriginalBooks(state,adventure){
+  const bridge={};for(const cached of adventure.companions?.records||[])if(active(state,adventure,cached.npcId)&&spellbooks.definitionsFor(state,adventure,cached.npcId,{allowIncapacitated:true}).length&&Object.keys(bridge).length<3)bridge[cached.npcId]=orderValue(cached.order);
+  return originalBooksRegistry(state,adventure,bridge);
+}
 async function spellOptions(state,adventure,npcId){
   const rules=await core(),eligible=castActors(state,adventure,npcId,rules);if(!eligible)return [];
   // Even a pure core preview receives a disposable state; no speculative turn
@@ -70,6 +89,7 @@ async function sync({state,adventure}){
   }
   nextState.flags||={};nextState.flags.ui_companion_orders=JSON.stringify(bridge);
   nextState.flags.ui_companion_original_spells=JSON.stringify(originalRegistry(nextState,nextAdventure,bridge));
+  nextState.flags.ui_companion_original_books=JSON.stringify(prepareOriginalBooks(nextState,nextAdventure));
   if(typeof nextState.flags.ui_companion_order_results==='string')nextState.flags.ui_companion_order_results=JSON.stringify(results);
   return {ok:true,state:nextState,adventure:nextAdventure,outcome:{type:'party_orders_sync',orders:bridge,results:consumed}};
 }
@@ -82,7 +102,7 @@ function publicStatus(state,adventure,npcId){
   const canOrder=Boolean(aware(hero)&&aware(member)&&!hostile&&(!state.combat||(current.sourceCharacterId||current.id)===hero.id&&aware(current)));
   const accessible=member.spellcasting?.preparationMode==='prepared'?member.spellcasting.prepared:member.spellcasting?.known||[];
   const npc=adventure.npcs.find(n=>n.id===npcId),body=adventure.environment?.npcStates?.find(n=>n.npcId===npcId)?.body,actor=state.combat?.participants.find(p=>(p.sourceCharacterId||p.id)===npcId),canCast=Boolean(canOrder&&state.combat&&npc&&!npc.hidden&&npc.locationId===adventure.currentLocationId&&actor?.kind==='ally'&&aware(actor)&&(!body||aware(body))&&[hero,member,current,actor,body].filter(Boolean).every(p=>!p.deathSaves?.dead&&!p.conditions.includes('charmed')));
-  return {npcId,mode,...(mode===order.mode?{targetId:order.targetId,combatId:order.combatId,spellActionId:order.spellActionId,directiveId:order.directiveId,...(order.allowFriendlyFire===true?{allowFriendlyFire:true}:{})}:{}),lastOrderResult:record(adventure,npcId).lastOrderResult?structuredClone(record(adventure,npcId).lastOrderResult):null,instructionOnly:true,canOrder,canCast,canFocus:canOrder&&Boolean(state.combat),canSupport:canOrder&&accessible.some(id=>['spell_healing_word','spell_cure_wounds'].includes(id)),limitations:mode==='cast'?(adventure.language==='en'?'The exact spell is checked again on the companion’s own turn; this preview does not guarantee execution.':'Точное заклинание будет повторно проверено на собственном ходе спутника; текущая доступность не гарантирует выполнение.'):mode==='support'?'Лечение нуждающегося союзника; иначе защита без атаки.':mode==='conserve'?'Заговоры и оружие; ячейка только для экстренной помощи союзнику при 0 HP.':mode==='focus'?'Выбранный противник в этом бою; после потери цели возврат к автоматическому режиму.':null};
+  return {npcId,mode,...(mode===order.mode?{targetId:order.targetId,combatId:order.combatId,spellActionId:order.spellActionId,directiveId:order.directiveId,...(order.allowFriendlyFire===true?{allowFriendlyFire:true}:{})}:{}),lastOrderResult:record(adventure,npcId).lastOrderResult?structuredClone(record(adventure,npcId).lastOrderResult):null,instructionOnly:true,canOrder,canCast,canFocus:canOrder&&Boolean(state.combat),canSupport:canOrder&&(accessible.some(id=>['spell_healing_word','spell_cure_wounds'].includes(id))||healingDefinitions(state,adventure,npcId).length>0),limitations:mode==='cast'?(adventure.language==='en'?'The exact spell is checked again on the companion’s own turn; this preview does not guarantee execution.':'Точное заклинание будет повторно проверено на собственном ходе спутника; текущая доступность не гарантирует выполнение.'):mode==='support'?'Лечение нуждающегося союзника; иначе защита без атаки.':mode==='conserve'?'Заговоры и оружие; ячейка только для экстренной помощи союзнику при 0 HP.':mode==='focus'?'Выбранный противник в этом бою; после потери цели возврат к автоматическому режиму.':null};
 }
 async function resolve({state,adventure,command:input,sourceId}){
   const parsed=commandSchema.safeParse(input);if(!parsed.success||typeof sourceId!=='string'||!sourceId.trim()||sourceId.length>100)return refuse(state,adventure,'invalid_party_order','Уточните спутника, допустимый режим и точную цель.');
@@ -94,7 +114,7 @@ async function resolve({state,adventure,command:input,sourceId}){
   if(command.targetId&&!['support','focus'].includes(command.mode))return refuse(state,adventure,'order_unexpected_target','Этот режим не задаёт отдельную цель.');
   if(command.mode==='support'){
     const caster=actor?rules.syncCombatantToCharacter(member,actor):member;
-    if(!rules.availableAutomatedSrdSpells(caster).some(id=>['spell_healing_word','spell_cure_wounds'].includes(id)))return refuse(state,adventure,'unsupported_support','Этот спутник не знает поддерживаемого лечебного заклинания.');
+    if(!rules.availableAutomatedSrdSpells(caster).some(id=>['spell_healing_word','spell_cure_wounds'].includes(id))&&!healingDefinitions(state,adventure,member.id).length)return refuse(state,adventure,'unsupported_support','Этот спутник не знает поддерживаемого лечебного заклинания.');
     if(command.targetId){const target=state.party.members.find(p=>p.id===command.targetId&&(p.kind==='ally'||p.id===hero.id));const combatTarget=state.combat?.participants.find(p=>(p.sourceCharacterId||p.id)===command.targetId);if(!target||target.id===member.id||target.conditions.includes('dead')||target.deathSaves?.dead||combatTarget?.conditions.includes('dead')||combatTarget?.deathSaves?.dead||(combatTarget||target).activeEffects?.some(e=>e.healingPrevented))return refuse(state,adventure,'support_target_unavailable','Для поддержки нужен живой союзник из действующего отряда без запрета лечения.');}
   }
   const chosen=command.mode==='cast'?(await spellOptions(state,adventure,member.id)).find(option=>option.id===command.spellActionId):null;
@@ -110,4 +130,4 @@ async function resolve({state,adventure,command:input,sourceId}){
   synchronized.adventure.partyOrders||={history:[]};synchronized.adventure.partyOrders.history.push(outcome);synchronized.adventure.partyOrders.history=synchronized.adventure.partyOrders.history.slice(-200);
   return {ok:true,state:synchronized.state,adventure:synchronized.adventure,outcome};
 }
-module.exports={resolve,sync,publicStatus,spellOptions,commandSchema};
+module.exports={resolve,sync,publicStatus,spellOptions,prepareOriginalBooks,commandSchema};

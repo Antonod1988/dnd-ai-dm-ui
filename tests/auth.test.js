@@ -100,3 +100,11 @@ test('credential persistence protects Windows tokens and reads them back', async
     assert.deepEqual(await store.load(), { access_token: 'test-secret-not-for-publication' });
   } finally { await fs.rm(directory, { recursive: true, force: true }); }
 });
+
+test('stream failures expose only known diagnostic codes, not provider messages, while preserving reported terminal usage',async()=>{
+  let counters;const event={type:'response.failed',response:{error:{code:'subscription_sharing_usage_limit_exceeded',message:'PRIVATE_PROVIDER_MESSAGE'},usage:{input_tokens:90,output_tokens:12}}};
+  await assert.rejects(readResponseStream(new Response(`data: ${JSON.stringify(event)}\n\n`).body,value=>counters=value.usage),error=>{assert.equal(error.code,'CHATGPT_STREAM_FAILURE');assert.equal(error.providerFailure.providerCode,'subscription_sharing_usage_limit_exceeded');assert.match(error.message,/Лимит/);assert.ok(!JSON.stringify(error).includes('PRIVATE_PROVIDER_MESSAGE'));return true;});assert.deepEqual(counters,{input_tokens:90,output_tokens:12});
+  for(const [type,code,reason] of [['response.incomplete',undefined,'max_output_tokens'],['error','rate_limit_exceeded',undefined],['response.failed','UNKNOWN_PRIVATE_VALUE',undefined]]){
+    const item={type,error:{code,message:'PRIVATE_PROVIDER_MESSAGE'},response:{incomplete_details:{reason}}};await assert.rejects(readResponseStream(new Response(`data: ${JSON.stringify(item)}\n\n`).body),error=>{assert.equal(error.providerFailure.providerCode,code==='rate_limit_exceeded'?code:'unknown_error');assert.equal(error.providerFailure.incompleteReason,reason);assert.ok(!JSON.stringify(error).includes('UNKNOWN_PRIVATE_VALUE'));return true;});
+  }
+});

@@ -11,6 +11,8 @@ import {
   applyAutomatedSrdCombatSpellPartyMembers,
   getAutomatedSrdSpellAction,
   resolveAutomatedSrdCombatSpellAction
+  ,resolveAutomatedSrdCombatSpellTurnAction
+  ,automatedSrdSpellCastingInfo
 } from "./actions/automated-spell-actions.js";
 import {
   consumeAbilityCheckActiveEffects,
@@ -2464,64 +2466,18 @@ export class RpgGameService {
       if (isActionIncapacitated(casterCombatant)) {
         throw new Error(`${casterCombatant.name} cannot cast while incapacitated.`);
       }
-      const spellAction = getAutomatedSrdSpellAction(spellId);
-      let combatForSpell = state.combat;
-      let target: Combatant | undefined;
-      if (spellAction.kind === "self_buff" && spellAction.spellId === "spell_shield") {
-        const activeActor = state.combat.participants[state.combat.turnIndex];
-        const spentReaction =
-          state.combat.turnBudget && activeActor?.id === casterCombatant.id
-            ? spendReaction(state.combat.turnBudget, "spell_shield")
-            : undefined;
-        if (spentReaction && !spentReaction.ok) {
-          throw new Error(spentReaction.message);
-        }
-        combatForSpell = { ...state.combat, turnBudget: spentReaction?.budget ?? state.combat.turnBudget };
-        target = casterCombatant;
-      } else if (spellAction.kind === "self_buff") {
-        target = targetId
-          ? state.combat.participants.find((participant) => participant.id === targetId)
-          : casterCombatant;
-        if (!target) {
-          throw new Error(`Spell target not found: ${targetId}`);
-        }
-      } else if (
-        spellAction.kind === "spell_attack" ||
-        spellAction.kind === "hold_person" ||
-        spellAction.kind === "single_target"
-      ) {
-        target = resolveSpellCombatTarget(state, spellId, targetId);
-      }
-      const targetCharacter = target
-        ? state.party.members.find((member) => member.id === (target.sourceCharacterId ?? target.id))
-        : undefined;
-      const spellResult = resolveAutomatedSrdCombatSpellAction({
-        combat: combatForSpell,
-        actor: casterCombatant,
-        caster,
-        target,
-        targetCharacter,
-        spellId,
-        rng: rng(seed),
-        rules: state.campaign.rules
-      });
-      const updated = {
-        ...state,
-        party: {
-          ...state.party,
-          members: applyAutomatedSrdCombatSpellPartyMembers({
-            members: state.party.members,
-            caster: spellResult.caster,
-            target: spellResult.target,
-            targetCharacter,
-            combat: spellResult.combat
-          })
-        },
-        combat: spellResult.combat,
-        rollLog: [...state.rollLog, ...spellResult.rollLogs]
-      };
-      await this.store.saveGameState(updated, { reason: `cast_spell:${spellId}` });
-      return { state: updated, effect: spellResult.effect };
+      const info = automatedSrdSpellCastingInfo(state.combat, casterCombatant.id, spellId)!;
+      const action = getAutomatedSrdSpellAction(spellId);
+      const target = targetId ? state.combat.participants.find(p => p.id === targetId || p.sourceCharacterId === targetId)
+        : action.kind === 'self_buff' || action.kind === 'mobility' || action.kind === 'mass_healing' || action.kind === 'aid' || action.kind === 'bless' ? casterCombatant
+        : state.combat.participants.find(p => p.kind === 'enemy' && p.hp.current > 0);
+      if (!target) throw new Error('Choose an existing spell target.');
+      const prefix = info.cost === 'bonus_action' ? 'bonus' : info.cost === 'reaction' ? 'reaction' : 'action';
+      const spellResult = resolveAutomatedSrdCombatSpellTurnAction({combat:ensureTurnBudget(state.combat),actorId:casterCombatant.id,actionId:`combat.${prefix}.cast_spell.${spellId}.${target.id}`,members:state.party.members,rng:rng(seed),rules:state.campaign.rules});
+      if (!spellResult.handled || !spellResult.ok) throw new Error(spellResult.handled ? spellResult.message : 'Unsupported combat spell.');
+      const updated = syncPartyFromCombat({...state,party:{...state.party,members:spellResult.partyMembers},combat:spellResult.combat,rollLog:[...state.rollLog,...spellResult.rollLogs]});
+      await this.store.saveGameState(updated, {reason:`cast_spell:${spellId}`});
+      return {state:updated,effect:'effect' in spellResult?spellResult.effect:undefined,message:spellResult.message};
     }
 
     if (spellId === "spell_aid" || spellId === "spell_bless") {

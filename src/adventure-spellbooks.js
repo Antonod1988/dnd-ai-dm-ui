@@ -1,5 +1,6 @@
 'use strict';
 const {validateSpell}=require('./generated-effects');
+const {validateSpell:validateDefinition}=require('../vendor/dnd-core/src/core/homebrew/original-spell-spec.cjs');
 const crypto=require('node:crypto');
 const FIELDS=['name','description','level','rangeFeet','cost','target','saveAbility','durationTurns','concentration','effects'];
 const CAP_HERO=200,CAP_NPC=32;
@@ -26,6 +27,17 @@ function spellDefinition(spell){
   const definition={};for(const key of FIELDS)if(spell[key]!==undefined)definition[key]=structuredClone(spell[key]);
   return {...definition,id:spell.id,...(typeof spell.sourceEventId==='string'?{sourceEventId:spell.sourceEventId}:{})};
 }
+// A planner window validates saved definitions without allocating new spell IDs.
+function definitionsFor(state,adventure,casterId=state?.party?.heroId,{allowIncapacitated=false}={}){
+  const member=state?.party?.members?.find(member=>member.id===casterId),record=cached(adventure,casterId),npc=adventure.npcs?.find(npc=>npc.id===casterId),body=adventure.environment?.npcStates?.find(entry=>entry.npcId===casterId),actor=state.combat?.participants.find(actor=>(actor.sourceCharacterId||actor.id)===casterId);
+  const structural=allowIncapacitated&&member?.kind==='ally'&&member.spellcasting&&record&&(record.joined||record.state==='joined')&&npc&&!npc.hidden&&npc.locationId===adventure.currentLocationId&&npc.disposition!=='hostile'&&body?.disposition!=='hostile'&&[member,actor,body?.body].filter(Boolean).every(person=>!person.deathSaves?.dead&&!person.conditions?.some(condition=>['dead','captured','fled'].includes(condition)));
+  const spells=structural?book(adventure,state,casterId).filter(spell=>spell&&typeof spell.id==='string'&&(!spell.ownerId||spell.ownerId===casterId)).slice(0,CAP_NPC).map(spell=>structuredClone(spell)):spellsFor(state,adventure,casterId),counts=new Map();for(const spell of spells)counts.set(spell.id,(counts.get(spell.id)||0)+1);
+  const capacity=Math.max(0,...Object.entries(member?.spellcasting?.slots||{}).filter(([level,slot])=>/^[1-9]$/.test(level)&&Number.isFinite(slot.max)&&slot.max>0).map(([level])=>Number(level)));
+  return spells.filter(spell=>counts.get(spell.id)===1&&/^spell-created-[A-Za-z0-9_-]{1,145}$/.test(spell.id)).flatMap(spell=>{
+    const definition=spellDefinition(spell),checked=validateDefinition(Object.fromEntries(Object.entries(definition).filter(([key])=>!['id','sourceEventId'].includes(key))));
+    return checked.ok&&checked.spell.level<=capacity?[{...checked.spell,id:spell.id,...(typeof spell.sourceEventId==='string'&&spell.sourceEventId.length<=160?{sourceEventId:spell.sourceEventId}:{})}]:[];
+  });
+}
 function fingerprint(spell){return crypto.createHash('sha256').update(JSON.stringify(Object.fromEntries(FIELDS.filter(key=>spell[key]!==undefined).map(key=>[key,spell[key]])))).digest('hex');}
 function refusal(state,adventure,code,message,errors){return {ok:false,state,adventure,refusal:{code,message,...(errors?{errors}:{})},...(errors?{errors}:{})};}
 function register({state,adventure,casterId=state?.party?.heroId,draft,sourceId}){
@@ -47,4 +59,4 @@ function register({state,adventure,casterId=state?.party?.heroId,draft,sourceId}
   if(hero){nextAdventure.createdSpells||=[];nextAdventure.createdSpells.push(spell);}else {const record=cached(nextAdventure,casterId);record.createdSpells||=[];record.createdSpells.push(spell);}
   return {ok:true,state:nextState,adventure:nextAdventure,spell:structuredClone(spell),outcome:{type:'spell_learned',casterId,spellId:spell.id,sourceId,quiet:true,elapsedSeconds:0,text:adventure.language==='en'?`${owner.character.name} learned ${spell.name}.`:`${owner.character.name} изучает заклинание «${spell.name}».`}};
 }
-module.exports={ownerFor,spellsFor,spellDefinition,register};
+module.exports={ownerFor,spellsFor,spellDefinition,definitionsFor,register};

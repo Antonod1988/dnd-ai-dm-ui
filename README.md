@@ -106,3 +106,5 @@ Persistent NPC battles, fixed profiles and durable wounds: [NPC_COMBAT.md](NPC_C
 Social checks, relationships, restitution and the memory of player claims: [SOCIAL_MECHANICS.md](SOCIAL_MECHANICS.md). Speech can change real NPC attitudes; payment and repeated attempts are guarded independently of narration. Detailed relationship controls are collapsed in NPC cards.
 
 Original magic now supports separate hero/NPC books and exact owned casts: [ORIGINAL_SPELLBOOKS.md](ORIGINAL_SPELLBOOKS.md). Scene conversations use distinct chronological speaker cards, addressed interjections and explicit action proposals: [DIALOGUE_AND_COOP.md](DIALOGUE_AND_COOP.md).
+
+Shared 2014 spell-turn restrictions, autonomous owned NPC magic and grouped combat controls: [SPELL_TURN_ECONOMY.md](SPELL_TURN_ECONOMY.md).

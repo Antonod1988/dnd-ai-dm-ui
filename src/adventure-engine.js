@@ -66,6 +66,8 @@ async function loaded(id) {
     state.flags.ui_racial_ac_fixed=true;await service.store.saveGameState(state,{snapshot:false,reason:'racial_ac_fix'});
   }
   if(state.flags.ui_player_turn_control!==true){state.flags.ui_player_turn_control=true;await service.store.saveGameState(state,{snapshot:false,reason:'player_turn_control'});}
+  const originalBooks=JSON.stringify(partyOrders.prepareOriginalBooks(state,adventure));
+  if(state.flags.ui_companion_original_books!==originalBooks){state.flags.ui_companion_original_books=originalBooks;await service.store.saveGameState(state,{snapshot:false,reason:'companion_original_books'});}
   if(await economy.initialize(service,state,adventure))await save(service,state,adventure,'economy_initialized');
   return {service,state,adventure};
 }
@@ -108,7 +110,7 @@ async function publicView(service, state, adventure) {
   const origins=new Map((adventure.lootLedger||[]).map(record=>[record.itemId,record]));
   const cleanCharacter=character=>({...character,classLabel:classNames[character.classLevels?.[0]?.classId?.replace(/^class_/,'')]||character.className,baseAc:character.ac,ac:core.effectiveArmorClass(character),inventory:character.inventory.map(({hiddenDescription,...item})=>({...item,description:loot.displayDescription(item,adventure.language),canUse:Boolean(core.modeledInventoryUseEffect(item,character.inventory)),origin:origins.get(item.itemId)}))});
   const configuration = ai.getAiConfig();
-  const castOptions=await srd.spellCastingOptions(state,service,{heroOnly:false}),castIds=new Set(castOptions.map(a=>`core:${a.id}`));
+  const castOptions=await srd.spellCastingOptions(state,service,{heroOnly:false,includeMetamagic:true}),castIds=new Set(castOptions.map(a=>`core:${a.id}`));
   const castAreas=new Map(castOptions.filter(a=>a.area).map(a=>[`core:${a.id}`,{area:a.area,affectedIds:a.affectedIds,mayAffectAllies:a.mayAffectAllies}]));
   const costs=new Map(raw.actions.actions.map(a=>[a.id,a]));
   const affordable=a=>{
@@ -127,20 +129,22 @@ async function publicView(service, state, adventure) {
     return true;
   };
   const commerce=economy.publicEconomy(state,adventure);commerce.markets=commerce.markets.filter(m=>!blockedNpcCommand(adventure,{type:'trade',marketId:m.id}));commerce.sellable=commerce.sellable.map(i=>String(i.itemId).startsWith('scene_prop_')?{...i,blocked:'Этот торговец не покупает эту вещь.'}:i);
+  const createdSpellActions=[];
+  for(const spell of spellbooks.spellsFor(state,adventure))for(const target of (state.combat?.participants||state.party.members)){const check=core.preflightOriginalSpell(state,spellbooks.spellDefinition(spell),{casterId:state.party.heroId,targetId:target.id});if(check.ok)createdSpellActions.push({spellId:spell.id,targetId:target.id,cost:spell.cost});}
   const companionCasts=new Map(await Promise.all(state.party.members.filter(p=>p.kind==='ally').slice(0,3).map(async p=>[p.id,await partyOrders.spellOptions(state,adventure,p.id)])));
   return { ready: true, campaign: { id: state.campaign.id, title: adventure.title, revision: adventure.revision, turn: adventure.turn, day: adventure.day, hours: adventure.hours, worldIdea: adventure.worldIdea, tone: adventure.tone, language: adventure.language || 'ru' },
     hero: { ...cleanCharacter(hero), medical:medicine.publicStatus(state,adventure,hero.id),rest:rest.status(hero,adventure),concept:adventure.heroConcept,classLabel: classNames[hero.classLevels?.[0]?.classId?.replace(/^class_/, '')] || hero.className.replace(' SRD', ''), raceLabel: raceNames[hero.raceId?.replace(/^race_/,'')] || raceNames[hero.ancestry.replace(/-/g,'_')] || hero.ancestry },
     party: state.party.members.map(p=>({...cleanCharacter(p),medical:{...medicine.publicStatus(state,adventure,p.id),...firstAid.publicStatus(state,adventure,p.id)},order:partyOrders.publicStatus(state,adventure,p.id)?{...partyOrders.publicStatus(state,adventure,p.id),spellOptions:companionCasts.get(p.id)||[]}:null,rest:rest.status(p,adventure),createdSpells:spellbooks.spellsFor(state,adventure,p.id),...(p.kind==='ally'?{spells:service.getSpellbook(state.campaign.id,p.id).spells.filter(s=>s.accessible).map(s=>({id:s.id,name:s.name,level:s.level,prepared:s.prepared}))}:{})})), scene: adventure.locations.find(n => n.id === adventure.currentLocationId),
     locations: adventure.locations, npcs: adventure.npcs.map(({receivedItems,...n})=>{const record=adventure.environment?.npcStates?.find(r=>r.npcId===n.id);return {...n,receivedCount:receivedItems?.length||0,body:record?{hp:record.body.hp,ac:record.body.ac,conditions:record.body.conditions,profile:record.profile}:undefined,canInteract:npcAvailable(adventure,n.id),relationship:social.publicStatus(adventure,n.id),companion:companions.publicStatus(adventure,n.id,state),medical:{...medicine.publicStatus(state,adventure,n.id),...firstAid.publicStatus(state,adventure,n.id)}};}), items: adventure.items.map(i=>access.publicItem(state,adventure,i)), quests: adventure.quests,questChecks:questChecks(state,adventure), journal: adventure.journal.slice(0,100).map(require('./journal-categories').publicEntry), journalTotal:adventure.journal.length,
     notes:adventure.notes||[], facts: state.facts.filter(f=>f.id!=='hero_identity').map(f=>({...f,pinned:Boolean(f.pinned||(adventure.pinnedFactIds||[]).includes(f.id))})), messages: adventure.messages,partyInventory:await partyInventory.publicOptions({state,adventure}),
-    actions: choices(service, state, adventure).filter(a=>affordable(a)&&(!/^core:combat\.(action|bonus|reaction)\.cast_spell\./.test(a.id)||castIds.has(a.id))).map(({ command, ...entry }) => ({...entry,...(castAreas.get(entry.id)||{})})), combat: raw.combat, turnBudget: raw.actions.turn,
-    spellbook: {...raw.spellbook,spells:(raw.spellbook.spells||[]).filter(s=>s.accessible)}, createdSpells: spellbooks.spellsFor(state,adventure), spellOwners:state.party.members.filter(p=>spellbooks.ownerFor(state,adventure,p.id).ok).map(p=>({id:p.id,name:p.name})), rolls: raw.rolls, survival: adventure.survival, reputation: adventure.reputation,
+    actions: choices(service, state, adventure).filter(a=>affordable(a)&&(!/^core:combat\.(action|bonus|reaction)\.(?:cast_spell|metamagic\.(?:quickened|subtle|twinned|careful))\./.test(a.id)||castIds.has(a.id))).map(({ command, ...entry }) => ({...entry,...(castAreas.get(entry.id)||{})})), combat: raw.combat, turnBudget: raw.actions.turn,
+    spellbook: {...raw.spellbook,spells:(raw.spellbook.spells||[]).filter(s=>s.accessible)}, createdSpells: spellbooks.spellsFor(state,adventure), createdSpellActions, spellOwners:state.party.members.filter(p=>spellbooks.ownerFor(state,adventure,p.id).ok).map(p=>({id:p.id,name:p.name})), rolls: raw.rolls, survival: adventure.survival, reputation: adventure.reputation,
     progression:{nextLevelXp:core.srdXpThresholds[hero.level]??null,levelStartXp:core.srdXpThresholds[hero.level-1]??0},
     environment:environment.currentSceneSummary(adventure),economy:commerce,images:require('./adventure-images').publicImages(state,adventure),
     loreChecks: lore.publicChecks(state).filter(c => c.sceneId === adventure.currentLocationId).map(c=>({...c,definitionId:Object.keys(adventure.loreCheckIds).find(id=>adventure.loreCheckIds[id]===c.id)})), memory: contextFor(state, adventure).metrics,
     provider: { id: configuration.provider, model: configuration.modelLabel, configured: ai.isConfigured(configuration), usage: configuration.usage },
     dialogueSummary:dialogue.summary(adventure.dialogue,adventure.turn,adventure.currentLocationId),
-    inferenceUsage:adventure.usage||null,pendingNarration: Boolean(adventure.pendingNarration), campaigns: service.listCampaigns().map(c => ({ id: c.id, title: c.title })) };
+    inferenceUsage:adventure.usage||null,pendingNarration: Boolean(adventure.pendingNarration), narrationFailure:adventure.pendingNarration?.correction?{kind:adventure.pendingNarration.failure||'provider',message:adventure.pendingNarration.correction.reason||'Описание не завершено.',providerFailure:adventure.pendingNarration.correction.providerFailure}:null, campaigns: service.listCampaigns().map(c => ({ id: c.id, title: c.title })) };
 }
 async function getView(id) { const { service, state, adventure } = await loaded(id); const configuration=ai.getAiConfig();return state ? publicView(service, state, adventure) : { ready: false, provider:{id:configuration.provider,model:configuration.modelLabel,configured:ai.isConfigured(configuration)},campaigns: service.listCampaigns().map(c => ({ id: c.id, title: c.title })) }; }
 async function setup() { const options = await srd.setupOptions(); return { ...options, classes: options.classes.map(c => ({ ...c, label: classNames[c.id] })), races: options.races.map(r => ({ ...r, label: raceNames[r.id] })), backgrounds: options.backgrounds.map(b => ({ ...b, label: { acolyte: 'Послушник', soldier: 'Солдат', sage: 'Учёный', criminal: 'Бродяга' }[b.id] })) }; }
@@ -277,7 +281,7 @@ function validatePhysicalAnchors(adventure,plan){
 }
 async function perform(body, { seed } = {}) {
   const { service, state: initial, adventure } = await loaded(body.campaignId); if (!initial) bad('Сначала создайте приключение.');
-  if (typeof body.operationId !== 'string' || body.operationId.length > 100) bad('Нужен идентификатор действия.');
+  if (typeof body.operationId !== 'string' || !body.operationId.trim() || body.operationId.length > 100) bad('Нужен идентификатор действия.');
   if (adventure.appliedOperations.some(op => op.id === body.operationId)) return { ...await publicView(service, initial, adventure), replayed: true };
   if (body.expectedRevision !== adventure.revision) bad('Кампания уже изменилась. Обновите сцену и повторите намерение.', 409);
   const input = typeof body.input === 'string' ? body.input.trim().slice(0, 2000) : '';
@@ -299,7 +303,7 @@ async function perform(body, { seed } = {}) {
   if(['clarify','refuse'].includes(command.type))return lastingRefusal(service,initial,adventure,body,input,{code:command.type,message:command.reason||command.description,alternatives:command.alternatives});
   if(command.type==='check'&&['persuasion','deception','intimidation'].includes(command.skill))return lastingRefusal(service,initial,adventure,body,input,{code:'social_target_required',message:'Для изменения отношения нужен конкретный персонаж и социальный подход.',alternatives:['Укажите персонажа и что хотите сказать.','Выберите существующую проверку сцены, если она относится к другому препятствию.']});
   if(initial.combat){
-    const spellId=command.type==='cast_spell'?command.spellId:command.type==='action'?String(command.actionId||'').match(/^(?:core:)?combat\.(?:action|bonus)\.cast_spell\.(spell_sleep|spell_color_spray)\./)?.[1]:null;
+    const spellId=command.type==='cast_spell'?command.spellId:command.type==='action'?String(command.actionId||'').match(/^(?:core:)?combat\.(?:action|bonus)\.(?:cast_spell|metamagic\.(?:quickened|subtle|twinned|careful))\.(spell_sleep|spell_color_spray)\./)?.[1]:null;
     if(['spell_sleep','spell_color_spray'].includes(spellId)&&command.allowFriendlyFire!==true){const rules=await import('../vendor/dnd-core/dist/engine.mjs'),actor=rules.currentCombatant(initial.combat),friends=rules.automatedSrdAreaTargets(initial.combat,actor.id,spellId).filter(p=>p.kind!=='enemy');if(friends.length)return lastingRefusal(service,initial,adventure,body,input,{code:'spell_friendly_fire',message:`В текущую область заклинания попадают союзники: ${friends.map(p=>p.name).join(', ')}. Нужен явный выбор с разрешением риска для отряда.`,alternatives:['Подтвердите воздействие на союзников или выберите другое действие.']});}
   }
   let socialResult;
@@ -652,6 +656,7 @@ async function learnSpell(id,draft,casterId,options={}) {
   if(options.expectedRevision!==undefined&&options.expectedRevision!==adventure.revision)bad('Кампания уже изменилась. Обновите сцену.',409);
   result.adventure.revision+=1;
   model.addEvent(result.adventure,'spell_learned',result.spell.id,result.outcome.text,{casterId,spellId:result.spell.id,sourceId});
+  result.state.flags.ui_companion_original_books=JSON.stringify(partyOrders.prepareOriginalBooks(result.state,result.adventure));
   await save(service,result.state,result.adventure,'spell_created');return publicView(service,result.state,result.adventure);
 }
 module.exports = { getView, setup, create, select, perform, ask, retryNarration, spellDraft, learnSpell, loaded, save, meta, publicView, choices };

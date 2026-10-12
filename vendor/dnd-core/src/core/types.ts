@@ -93,6 +93,8 @@ export type TurnBudget = {
   reaction: boolean;
   movementFeet: number;
   objectInteraction: boolean;
+  /** Casts on this actor's current turn; fresh budgets reset the 2014 bonus-spell restriction. */
+  spellCasting?: { bonusAction: boolean; actionLeveled: boolean; reaction: boolean; legacyUnknownCost?: boolean };
 };
 
 export type AbilityScores = Record<AbilityName, number>;

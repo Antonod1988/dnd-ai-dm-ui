@@ -197,6 +197,15 @@ function createChatgptAuth({ store = createAuthStore(), fetchImpl = fetch, verif
   };
 }
 
+function streamFailure(event) {
+  const knownCodes=new Set(['subscription_sharing_usage_limit_exceeded','subscription_sharing_usage_unavailable','rate_limit_exceeded','insufficient_quota','authentication_error','invalid_api_key','permission_denied','model_not_found','server_error','context_length_exceeded','invalid_request_error']);
+  const raw=event.response?.error?.code||event.error?.code||event.code;
+  const providerCode=knownCodes.has(raw)?raw:'unknown_error';
+  const reason=event.response?.incomplete_details?.reason;
+  const incompleteReason=['max_output_tokens','content_filter','steered'].includes(reason)?reason:undefined;
+  const message=providerCode==='subscription_sharing_usage_limit_exceeded'||providerCode==='insufficient_quota'?'Лимит использования плана ChatGPT для приложения исчерпан. Проверьте лимиты или дождитесь их восстановления.':providerCode==='subscription_sharing_usage_unavailable'?'Использование плана ChatGPT сейчас недоступно для приложения. Проверьте доступ в настройках ChatGPT.':providerCode==='rate_limit_exceeded'?'ChatGPT ограничил частоту запросов. Повторите описание позже.':incompleteReason==='max_output_tokens'?'ChatGPT остановил ответ из-за ограничения длины. Незавершённый текст не применён.':incompleteReason==='content_filter'?'ChatGPT не завершил ответ из-за ограничения содержимого. Измените запрос.':providerCode==='context_length_exceeded'?'Контекст запроса превысил предел выбранной модели.':providerCode==='authentication_error'||providerCode==='invalid_api_key'?'Вход ChatGPT не подтверждён. Войдите снова в настройках AI.':'ChatGPT не завершил ответ. Игровой результат сохранён; описание можно повторить позже.';
+  return Object.assign(new Error(message),{code:'CHATGPT_STREAM_FAILURE',providerFailure:{type:event.type,providerCode,...(incompleteReason?{incompleteReason}:{})}});
+}
 async function readResponseStream(body, onCompleted) {
   let buffer = '', text = '', completed = false;
   const decoder = new TextDecoder();
@@ -210,7 +219,7 @@ async function readResponseStream(body, onCompleted) {
       if (!raw || raw === '[DONE]') continue;
       const event = JSON.parse(raw);
       if (event.type === 'response.output_text.delta') text += event.delta;
-      if (event.type === 'response.failed' || event.type === 'error' || event.type === 'response.incomplete') throw new Error('Ответ ChatGPT не завершён. Проверьте лимиты и повторите запрос.');
+      if (event.type === 'response.failed' || event.type === 'error' || event.type === 'response.incomplete') {if(event.response?.usage&&onCompleted)onCompleted(event.response);throw streamFailure(event);}
       if (event.type === 'response.completed') {
         completed = true;
         if (onCompleted) onCompleted(event.response || {});

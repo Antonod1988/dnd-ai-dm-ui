@@ -316,6 +316,10 @@ const characterSchema = z.object({
   ai: z.record(z.string(), z.unknown()).optional()
 });
 
+const turnBudgetSchema=z.object({action:z.boolean(),bonusAction:z.boolean(),reaction:z.boolean(),movementFeet:z.number().finite().nonnegative(),objectInteraction:z.boolean(),extraActions:z.number().int().nonnegative().optional(),spellCasting:z.object({bonusAction:z.boolean(),actionLeveled:z.boolean(),reaction:z.boolean(),legacyUnknownCost:z.boolean().optional()}).strict().optional()}).passthrough();
+const combatStateSchema=z.record(z.string(),z.unknown()).superRefine((combat,ctx)=>{
+  if(combat.turnBudget!==undefined){const result=turnBudgetSchema.safeParse(combat.turnBudget);if(!result.success)for(const issue of result.error.issues)ctx.addIssue({code:'custom',path:['turnBudget',...issue.path],message:issue.message});}
+});
 export const gameStateSchema = z.object({
   campaign: z.object({
     id: z.string(),
@@ -346,7 +350,7 @@ export const gameStateSchema = z.object({
   sceneHistory: z.array(z.string()),
   openWorld: openWorldSchema.optional(),
   sandboxWorld: sandboxWorldSchema.optional(),
-  combat: z.record(z.string(), z.unknown()).optional(),
+  combat: combatStateSchema.optional(),
   journal: z.array(z.record(z.string(), z.unknown())),
   facts: z.array(discoveredFactSchema).default([]),
   npcMemory: z.array(npcMemoryEntrySchema).default([]),
@@ -358,9 +362,13 @@ export const gameStateSchema = z.object({
 });
 
 export function parseGameState(value: unknown): GameState {
-  return hydrateCampaignWorldDefaults(
+  const state=hydrateCampaignWorldDefaults(
     hydrateSandboxWorldDefaults(hydrateConditionInstances(gameStateSchema.parse(value) as GameState)) as GameState
   );
+  const combat=state.combat,actor=combat?.participants[combat.turnIndex],budget=combat?.turnBudget;
+  // Old saves recorded generated leveled casts only. Migrate evidence of a paid current-turn cast.
+  if(combat&&actor&&budget&&!budget.spellCasting&&[`${combat.id}:${combat.round}:${actor.id}`,`${combat.round}:${actor.id}`].includes(state.flags.generated_leveled_spell_turn as string)&&(!budget.action||!budget.bonusAction))return {...state,combat:{...combat,turnBudget:{...budget,spellCasting:!budget.action&&!budget.bonusAction?{bonusAction:false,actionLeveled:false,reaction:false,legacyUnknownCost:true}:{bonusAction:!budget.bonusAction,actionLeveled:!budget.action,reaction:false}}}};
+  return state;
 }
 
 export function cloneGameState(state: GameState): GameState {

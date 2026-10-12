@@ -30,7 +30,7 @@ import {
 } from "../rules/conditions.js";
 import { applyConditionEffectToTargets, createShieldBearerGuardEffect } from "../rules/effects.js";
 import { canUseSrdAttackWithEquipment, spendSrdAttackAmmunition } from "../rulesets/srd5e2014/character-builder.js";
-import { spendBonusAction, spendReaction, type SrdActionKind, type TurnBudget } from "../rulesets/srd5e2014/action-economy.js";
+import { spendBonusAction, spendReaction, spendSpellWithBudget, legacySpellAttackCastingInfo, type SrdActionKind, type TurnBudget } from "../rulesets/srd5e2014/action-economy.js";
 import { isAutomatedSrdSpellId } from "../rulesets/srd5e2014/spell-engine.js";
 import { hasSrdGrapplerFeat } from "../rulesets/srd5e2014/feats.js";
 import { makeRollLog } from "../narrative/consequence-engine.js";
@@ -542,8 +542,12 @@ export const standardCombatActionHandlers: readonly StandardCombatActionHandler[
       message: `${actor.name} cannot cast this as a combat spell attack: ${primaryId}.`
         };
       }
+      const info=legacySpellAttackCastingInfo(actor,primaryId);
+      if(!info)return {handled:true,ok:false,combat,message:'This spell attack has no validated casting metadata.'};
+      const casting=spendSpellWithBudget(combat.turnBudget!,info,{costPaid:true});
+      if(!casting.ok)return {handled:true,ok:false,combat,message:casting.message};
 
-      const resolved = resolveAttack(combat, actor.id, secondaryId, primaryId, rng, state.campaign.rules);
+      const resolved = resolveAttack({...combat,turnBudget:casting.budget}, actor.id, secondaryId, primaryId, rng, state.campaign.rules);
       return {
         handled: true,
         ok: true,
