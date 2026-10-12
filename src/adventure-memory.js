@@ -46,7 +46,17 @@ async function history(campaignId,{query='',category='all',offset=0,limit=50}={}
 }
 const MAX_QUEST_HISTORY_CHARS=16000;
 const questHistoryId=z.string().min(1).max(120).refine(id=>id.trim()===id&&!/[\u0000-\u001f\u007f]/.test(id));
-const lifecycleKinds=new Set(['quest_accept','quest_reward','quest_failed']);
+const lifecycleKinds=new Set(['quest_accept','quest_reward','quest_failed','quest_decline','quest_abandon']);
+function historyPage(options={}) {
+  const parse=(value,fallback,max)=>{
+    if(value===undefined||value===null)return fallback;
+    if(typeof value!=='number'&&!(typeof value==='string'&&/^\d+$/.test(value)))error('Некорректная страница журнала.');
+    const number=Number(value);if(!Number.isSafeInteger(number)||number<0||number>max)error('Некорректная страница журнала.');return number;
+  };
+  const offset=parse(options.offset,0,Number.MAX_SAFE_INTEGER),limit=parse(options.limit,13,13);
+  if(limit<1)error('Некорректный размер страницы журнала.');
+  return {offset,limit};
+}
 
 // The full journal is the durable record; retained events may only fill matching
 // journal stubs, never replace their text or change their classification.
@@ -54,7 +64,8 @@ function matchingRecord(a,b) {
   for(const key of ['kind','turn','targetId','questId'])if(a[key]!==undefined&&b[key]!==undefined&&a[key]!==b[key])return false;
   return typeof a.text==='string'&&typeof b.text==='string'&&(a.text===b.text||a.text.startsWith(b.text)||b.text.startsWith(a.text));
 }
-function questHistoryRecords(adventure,questId,campaignId) {
+function questHistoryRecords(adventure,questId,campaignId,options={}) {
+  const {offset,limit}=historyPage(options);
   const quest=(adventure.quests||[]).find(q=>q.id===questId);
   if(!quest)error('Задача не найдена.',404);
   const records=new Map(),events=new Map();
@@ -69,33 +80,40 @@ function questHistoryRecords(adventure,questId,campaignId) {
   fullJournal.forEach((record,index)=>add(record,fullJournal.length-index));
   (adventure.archive||[]).forEach((record,index)=>{if(typeof record?.kind==='string')add(record,index);});
   (adventure.events||[]).forEach((record,index)=>add(record,index));
-  const evidenceIds=[...new Set((quest.objectives||[]).slice(0,5).map(o=>o.evidenceEventId).filter(id=>typeof id==='string'&&questHistoryId.safeParse(id).success))];
+  const evidenceIds=[...new Set((quest.objectives||[]).slice(0,5).flatMap(o=>[...(Array.isArray(o.evidenceEventIds)?o.evidenceEventIds:[]),o.evidenceEventId]).filter(id=>typeof id==='string'&&id.length>0))];
+  if(evidenceIds.length>105||evidenceIds.some(id=>!questHistoryId.safeParse(id).success))error('Некорректные ссылки на события задачи.');
   const missingEvidenceIds=evidenceIds.filter(id=>!records.has(id));
   const compare=(a,b)=>(Number(a.value.turn)||0)-(Number(b.value.turn)||0)||a.order-b.order;
   const evidence=evidenceIds.filter(id=>records.has(id)).map(id=>records.get(id));
-  const lifecycle=[...records.values()].filter(({value:e})=>!evidenceIds.includes(e.id)&&lifecycleKinds.has(e.kind)&&(e.targetId===questId||e.questId===questId)).sort(compare).slice(-8);
+  const lifecycle=[...records.values()].filter(({value:e})=>!evidenceIds.includes(e.id)&&lifecycleKinds.has(e.kind)&&(e.targetId===questId||e.questId===questId));
   const compact=({value:e})=>{
     const entry={id:e.id,text:e.text.slice(0,1000)};
     if(Number.isInteger(e.turn)&&e.turn>=0)entry.turn=e.turn;
-    for(const key of ['kind','source','confidence'])if(typeof e[key]==='string'&&!/[\u0000-\u001f\u007f]/.test(e[key]))entry[key]=e[key].slice(0,80);
+    for(const key of ['kind','source','confidence','reasonConfidence'])if(typeof e[key]==='string'&&!/[\u0000-\u001f\u007f]/.test(e[key]))entry[key]=e[key].slice(0,80);
+    for(const key of ['questId','objectiveId','recipientId','itemId','inventoryItemId','fromId','giverId'])if(questHistoryId.safeParse(e[key]).success)entry[key]=e[key];
+    if(Number.isSafeInteger(e.quantity)&&e.quantity>0)entry.quantity=e.quantity;
     if(typeof e.success==='boolean')entry.success=e.success;
+    if(typeof e.npcNotified==='boolean')entry.npcNotified=e.npcNotified;
     if(e.text.length>1000)entry.textTruncated=true;
     return entry;
   };
-  const payload={campaignId,revision:adventure.revision,questId,entries:[...evidence,...lifecycle].sort(compare).map(compact),missingEvidenceIds};
+  const timeline=[...evidence,...lifecycle].sort(compare);
+  const payload={campaignId,revision:adventure.revision,questId,offset,entries:timeline.slice(offset,offset+limit).map(compact),missingEvidenceIds,total:timeline.length,nextOffset:offset+limit<timeline.length?offset+limit:null};
   // Escaped legacy text can exceed its nominal length. Keep every linked ID,
   // shorten text explicitly, and never report a budget omission as missing proof.
   while(JSON.stringify(payload).length>MAX_QUEST_HISTORY_CHARS) {
+    if(!payload.entries.some(entry=>entry.text.length))error('Ссылки журнала превышают размер страницы.');
     const longest=payload.entries.reduce((a,b)=>JSON.stringify(b.text).length>JSON.stringify(a.text).length?b:a);
     longest.text=longest.text.slice(0,Math.max(0,longest.text.length-100));longest.textTruncated=true;
   }
   return payload;
 }
-async function questHistory(campaignId,questId) {
+async function questHistory(campaignId,questId,options={}) {
+  const page=historyPage(options);
   if(!questHistoryId.safeParse(campaignId).success||!questHistoryId.safeParse(questId).success)error('Укажите точные ID кампании и задачи.');
   let loaded;
   try {loaded=await engine.loaded(campaignId);}catch(cause){if(cause.message===`Campaign not found: ${campaignId}`)error('Кампания не найдена.',404);throw cause;}
   if(!loaded.adventure)error('Нет приключения.',404);
-  return questHistoryRecords(loaded.adventure,questId,campaignId);
+  return questHistoryRecords(loaded.adventure,questId,campaignId,page);
 }
 module.exports={addNote,pin,history,questHistory,questHistoryRecords,MAX_QUEST_HISTORY_CHARS};

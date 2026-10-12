@@ -14,7 +14,7 @@ test('old exact evidence survives six hundred newer entries and the full journal
   adventure.journal=[...Array.from({length:600},(_,i)=>({id:`road-${i}`,turn:601-i,kind:'story',targetId:'quest-a',text:'A road, not evidence.'})),{id:'proof',turn:1,kind:'deliver',targetId:'locket',text:'The actual locket was handed to Rae.'}];
   adventure.events=[{id:'proof',turn:1,kind:'deliver',targetId:'locket',text:'The actual locket was handed to Rae.',source:'quest_delivery',confidence:'confirmed',success:true,rawPrompt:'secret',usage:{tokens:999}},{id:'proof',turn:99,kind:'story',text:'Conflicting substitute'}];
   const before=JSON.stringify(adventure),result=read(freeze(adventure));
-  assert.deepEqual(result,{campaignId:'campaign-a',revision:7,questId:'quest-a',entries:[{id:'proof',turn:1,kind:'deliver',text:'The actual locket was handed to Rae.',source:'quest_delivery',confidence:'confirmed',success:true}],missingEvidenceIds:[]});
+  assert.deepEqual(result,{campaignId:'campaign-a',revision:7,questId:'quest-a',offset:0,entries:[{id:'proof',turn:1,kind:'deliver',text:'The actual locket was handed to Rae.',source:'quest_delivery',confidence:'confirmed',success:true}],missingEvidenceIds:[],total:1,nextOffset:null});
   assert.equal(JSON.stringify(adventure),before);assert.ok(!JSON.stringify(result).includes('secret'));
 });
 
@@ -49,12 +49,15 @@ test('archived event and retained event exact IDs are recoverable; absent legacy
   assert.deepEqual(result.entries.map(e=>e.id),['archived','retained']);assert.deepEqual(result.missingEvidenceIds,['missing-legacy']);assert.equal(JSON.stringify(adventure),before);assert.equal(adventure.quests[0].status,'completed');
 });
 
-test('bounded output retains all five evidence identities and only eight latest lifecycle records without payload blobs',()=>{
+test('bounded pages retain all five evidence identities and every lifecycle record without payload blobs',()=>{
   const adventure=fixture(Array.from({length:5},(_,i)=>`proof-${i}`));
   adventure.journal=[...Array.from({length:100},(_,i)=>({id:`reward-${i}`,turn:100+i,kind:'quest_reward',targetId:'quest-a',text:'Reward details '.repeat(150),body:{secret:'hidden'},usage:{model:'private'}})),...Array.from({length:5},(_,i)=>({id:`proof-${i}`,turn:i,kind:'check',text:'\u0000'.repeat(1000),source:'resolved_event',confidence:'confirmed',success:i%2===0}))];
   const before=JSON.stringify(adventure),result=read(adventure);
   assert.equal(result.entries.length,13);assert.deepEqual(result.entries.slice(0,5).map(e=>e.id),Array.from({length:5},(_,i)=>`proof-${i}`));
-  assert.deepEqual(result.entries.slice(5).map(e=>e.id),Array.from({length:8},(_,i)=>`reward-${92+i}`));assert.deepEqual(result.missingEvidenceIds,[]);
+  assert.deepEqual(result.entries.slice(5).map(e=>e.id),Array.from({length:8},(_,i)=>`reward-${i}`));assert.deepEqual(result.missingEvidenceIds,[]);assert.equal(result.total,105);assert.equal(result.nextOffset,13);
+  const ids=result.entries.map(e=>e.id);let offset=result.nextOffset;
+  while(offset!==null){const page=memory.questHistoryRecords(adventure,'quest-a','campaign-a',{offset});assert.ok(page.entries.length<=13);assert.ok(JSON.stringify(page).length<=memory.MAX_QUEST_HISTORY_CHARS);ids.push(...page.entries.map(e=>e.id));offset=page.nextOffset;}
+  assert.deepEqual(ids,[...Array.from({length:5},(_,i)=>`proof-${i}`),...Array.from({length:100},(_,i)=>`reward-${i}`)]);
   assert.ok(JSON.stringify(result).length<=memory.MAX_QUEST_HISTORY_CHARS);assert.ok(result.entries.every(e=>e.text.length<=1000));assert.ok(result.entries.some(e=>e.textTruncated));
   for(const entry of result.entries)assert.ok(adventure.journal.find(e=>e.id===entry.id).text.startsWith(entry.text));
   assert.ok(!JSON.stringify(result).includes('private'));assert.ok(!JSON.stringify(result).includes('hidden'));assert.equal(JSON.stringify(adventure),before);
@@ -102,6 +105,8 @@ test('HTTP requires explicit bounded IDs, rejects foreign quest and preserves ex
   assert.equal((await fetch(url+`/api/adventure/quest-history?campaignId=${campaignId}&questId=unknown`)).status,404);
   assert.equal((await fetch(url+`/api/adventure/quest-history?campaignId=unknown&questId=${questId}`)).status,404);
   const ordinary=await fetch(url+`/api/adventure/history?campaignId=${campaignId}&query=old%20locket`).then(r=>r.json());assert.equal(ordinary.total,1);assert.equal(ordinary.entries[0].id,proofId);assert.equal(calls,0);
+  const page=await fetch(url+route()+'&offset=1&limit=1').then(r=>r.json());assert.deepEqual(page,await memory.questHistory(campaignId,questId,{offset:1,limit:1}));assert.equal(page.offset,1);assert.equal(page.entries.length,1);assert.equal(page.nextOffset,null);
+  for(const suffix of ['&offset=-1','&offset=0.5','&limit=0','&limit=14'])assert.equal((await fetch(url+route()+suffix)).status,400);
   assert.equal((await fetch(url+'/quest-ui.js')).status,200);
 });
 

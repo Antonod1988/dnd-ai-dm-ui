@@ -31,3 +31,6 @@ test('world prompt exposes valid typed item kinds and scene-check trigger/skill 
   // omitting enum alternatives makes a model guess unsupported JSON values.
   for(const value of ['quest','tool','consumable','weapon','enter','inspect','dialogue','manual','history','arcana','religion','nature','perception','investigation','insight','survival'])assert.ok(new RegExp(`\\b${value}\\b`).test(text),`World contract must teach ${value}`);
 });
+test('legal quantity metadata reaches intent without private commands or a full inventory planner',()=>{
+  const args=fixture();args.candidates=[{id:'deliver:q:o',label:'Give1',questId:'q',objectiveId:'o',quantity:1,maxQuantity:4,remainingQuantity:4,ownedQuantity:4,allowedQuantities:[1,3,4],command:{type:'deliver',private:'hidden'}}];args.knownSpells=[];args.companionSpellOrders=[];const before=structuredClone(args);freeze(args);const result=prompts.intentPayload(args);assert.deepEqual(result.availableActions,[{id:'deliver:q:o',label:'Give1',questId:'q',objectiveId:'o',quantity:1,maxQuantity:4,remainingQuantity:4,ownedQuantity:4,allowedQuantities:[1,3,4]}]);assert.equal(JSON.stringify(result.availableActions).includes('hidden'),false);assert.deepEqual(args,before);
+});

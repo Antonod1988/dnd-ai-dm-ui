@@ -29,6 +29,22 @@ async function grantLoot(service,state,adventure,input,origin){
   adventure.lootLedger.push({id:crypto.randomUUID(),itemId:item.itemId,name:item.name,quantity:item.quantity,rarity:item.rarity,turn:adventure.turn,...origin});
   return item;
 }
+function remainingQuantity(item){return item.collected?0:item.remainingQuantity??item.quantity??1;}
+// A source's physical units have separate IDs, so identical charged items never
+// share a charge pool through the core's itemId-based inventory merge.
+async function grantWorldLoot(service,state,adventure,input,origin,quantity){
+  const core=await import('../vendor/dnd-core/dist/engine.mjs'),hero=state.party.members.find(m=>m.id===state.party.heroId),items=[];
+  for(let i=0;i<quantity;i++){
+    const item=core.createGeneratedInventoryItem({...input,quantity:1});
+    item.itemId=`${item.itemId}_${crypto.randomUUID().slice(0,8)}`;item.quantity=1;
+    item.tags=[...new Set([...item.tags,'world_item',origin.worldItemId])];
+    if(item.mechanics?.equip?.attack)item.mechanics.equip.attack.id=item.itemId;
+    items.push(item);
+  }
+  hero.inventory.push(...items);adventure.lootLedger||=[];
+  for(const item of items)adventure.lootLedger.push({id:crypto.randomUUID(),itemId:item.itemId,name:item.name,quantity:1,rarity:item.rarity,turn:adventure.turn,...origin});
+  return items;
+}
 function dropEncounterLoot(service,state,adventure){
   const encounter=adventure.activeEncounter;
   if(!encounter||encounter.lootDropped)return null;
@@ -40,4 +56,4 @@ function dropEncounterLoot(service,state,adventure){
   adventure.items.push(item);encounter.lootDropped=true;
   return item;
 }
-module.exports={focusSchema,raritySchema,rarityForLevel,allowedRarity,planLoot,grantLoot,dropEncounterLoot,displayDescription};
+module.exports={focusSchema,raritySchema,rarityForLevel,allowedRarity,planLoot,grantLoot,grantWorldLoot,remainingQuantity,dropEncounterLoot,displayDescription};

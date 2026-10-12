@@ -1,5 +1,13 @@
 # Game token usage audit — 2026-10-12
 
+## Quantified quests follow-up
+
+Partial obligations add numeric progress, eligible possession and source stock to the selected context. Full receipt arrays stay in the archive/read-only paginated UI; context uses only the latest exact receipt. The12,000-character global context cap is unchanged. Private decline/abandon through the explicit UI makes no model call; optional notification uses ordinary speech narration. A freeform private decision still needs intent interpretation. Inventory confirmation is current-time evidence, not an invented historical pickup.
+
+Two separate GPT-6-Luna prose diagnostics on the same actual partial-delivery fixture used4,881/89 and4,907/82 input/output tokens (9,788/171 combined),cache0, without repair or state application. The first misplaced an owed quantity near the recipient; a general ownership/debt guard corrected that in the second reply. This is a bounded quality check, not an average cost improvement. Diagnostic costs remain outside campaign counters and are preserved locally under `../outputs/adventure_quest_quantity/`.
+
+The earlier25.2% contract-string reduction below describes its original checkpoint. New quantitative/lifecycle guidance changes those strings; current coverage checks a fixed7,000-character contract budget rather than claiming the identical percentage for expanded mechanics.614 tests and120JS syntax checks pass. Broader varied-scene quality and full long-play economics remain open.
+
 Initial snapshot verdict: long-history selection was bounded, but repeated input dominated usage and no prompt-cache savings were reported. That snapshot was read-only. The implemented follow-ups and their separately measured inference costs are recorded below.
 
 ## Measured provider reports

@@ -84,6 +84,16 @@ button:disabled{cursor:not-allowed}body.is-busy button:disabled{cursor:progress}
 .quest-detail.completed{border-color:#365a4b}
 .quest-detail.completed .quest-status{color:var(--green)}
 .quest-detail.failed .quest-status{color:var(--red)}
+.quest-detail.abandoned .quest-status,.quest-detail.declined .quest-status{color:var(--muted)}
+.quest-delivery-form,.world-pickup-form,.quest-decision-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.quest-delivery-form label,.world-pickup-form label{font-size:11px;color:var(--muted);display:grid;gap:6px;margin:0}
+.quest-delivery-form select,.world-pickup-form select{width:80px;margin:0;padding:8px}
+.quest-delivery-form button,.world-pickup-form button{font-size:12px;margin:0}
+.quest-detail .objective-quantity{color:var(--gold);font-size:12px;margin:8px 0}
+.quest-decision-actions{margin:18px 0 4px}
+.quest-decision-reason{font-size:12px;color:var(--muted);line-height:1.8}
+.quest-decision-dialog{max-width:550px}
+.quest-decision-dialog p{font-size:13px;line-height:1.8;color:var(--muted)}
 .quest-detail header>p{font-size:13px;color:var(--muted);line-height:1.75}
 .quest-detail .quest-giver{font-size:11px;color:var(--gold)}
 .quest-detail .quest-progress-label{font-size:10px;margin:18px 0 7px}

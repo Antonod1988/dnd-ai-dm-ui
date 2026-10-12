@@ -28,6 +28,19 @@ function openStorySettings(){
 let historyPage=null,historyVersion='',historyRequest=0,historyTimer;
 let questState={campaignId:null,filter:null,query:'',selectedId:null};
 let questHistory=null,questHistoryOpen=false,questHistoryRequest=0,mapFocusId=null;
+let questDecisionDraft=null;
+function openQuestDecision(questId,type){
+  if(busy||!currentView?.ready)return;
+  const quest=currentView.quests.find(q=>q.id===questId),expected=type==='decline_quest'?'offered':type==='abandon_quest'?'active':null;
+  if(!quest||quest.status!==expected)return;
+  questDecisionDraft={campaignId:currentView.campaign.id,expectedRevision:currentView.campaign.revision,operationId:crypto.randomUUID(),questId,type};
+  const giver=currentView.npcs.find(n=>n.id===quest.giverId&&n.locationId===currentView.scene.id&&n.canInteract!==false);
+  questDecisionDraft.giverId=giver?.id;$('#questDecisionNotifyControl').hidden=!giver;$('#questDecisionNotify').checked=false;$('#questDecisionNotifyName').textContent=giver?.name||'';
+  $('#questDecisionTitle').textContent=T(type==='decline_quest'?'Отклонить предложение':'Отказаться от задачи');$('#questDecisionQuest').textContent=quest.title;
+  $('#questDecisionHint').textContent=T(type==='decline_quest'?'Решение будет записано в журнале.':'Ты перестанешь выполнять эту задачу. Решение останется в журнале.');
+  $('#questDecisionGiven').hidden=!quest.objectives.some(o=>o.kind==='deliver'&&(o.deliveredQuantity>0||o.completed));
+  $('#questDecisionReason').value='';$('#questDecisionStatus').textContent='';$('#questDecision').showModal();
+}
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 const storyText=value=>esc(value).replace(/\*\*([^*\n]{1,300})\*\*/g,'<strong>$1</strong>').replace(/\*([^*\n]{1,300})\*/g,'<em>$1</em>').replace(/\n/g,'<br>');
@@ -44,6 +57,7 @@ function setBusy(value, message = 'Мастер готовит ответ…') {
   busy = value; $('#turnStatus').textContent = value ? T(message) : '';
   $('#createButton').disabled = value; $('#playerIntent').disabled = value; $('#intentForm button').disabled = value;
   document.body.classList.toggle('is-busy', value);
+  if(currentView?.ready){renderSceneObjects(currentView);renderQuests(currentView);}
   document.querySelectorAll('[data-party-share]').forEach(form=>refreshPartyShare(form));document.querySelectorAll('[data-exact-cast]').forEach(refreshExactCast);
 }
 async function act(payload,{stay=false}={}) {
@@ -162,7 +176,9 @@ function renderSceneObjects(view){
   const blocked=view.combat||view.hero.hp.current<=0||view.hero.conditions.some(c=>['dead','unconscious','incapacitated','paralyzed','stunned'].includes(c));
   panel.innerHTML=`<summary>${T('ПРЕДМЕТЫ РЯДОМ')} · ${objects.length}${objects.length===1?` · ${esc(objects[0].name)}`:''}</summary>`+objects.map(i=>{
     const state=i.accessState||{available:true,conditions:[]};
-    return `<article class="scene-object ${state.available?'available':'locked'}"><div><h3>${esc(i.name)}</h3><p>${esc(i.description)}</p>${!state.available?`<p class="object-rule">${T(state.mode==='all'?'Нужны все условия':'Достаточно одного способа')}</p><ul>${state.conditions.map(c=>{const target=c.kind==='check'?view.questChecks?.find(d=>d.id===c.targetId)||view.loreChecks.find(d=>d.definitionId===c.targetId):c.kind==='victory'?view.locations.find(l=>l.id===c.targetId):view.items.find(item=>item.id===c.targetId);return `<li>${c.fulfilled?'✓':'○'} ${T(c.kind==='check'?'Проверка':c.kind==='victory'?'Победа':'Ключ')}: ${esc(target?.title||target?.name||c.label||T(c.kind==='check'?'Нужная подсказка':c.kind==='item'?'Нужный предмет':'Препятствие'))}</li>`;}).join('')}</ul>`:''}</div>${state.available?`<button data-action="pickup:${esc(i.id)}" ${blocked?'disabled':''}>${T('Взять')}: ${esc(i.name)}</button>`:`<span class="object-status">${T('Пока недоступно')}</span>`}</article>`;
+    const remaining=i.remainingQuantity??i.quantity??1;
+    const pickup=state.available?(remaining>1?`<form class="world-pickup-form" data-world-pickup="${esc(i.id)}"><label>${T('Количество')}<select name="quantity" ${blocked||busy?'disabled':''}>${Array.from({length:Math.min(8,remaining)},(_,n)=>`<option value="${n+1}">${n+1}</option>`).join('')}</select></label><button type="submit" ${blocked||busy?'disabled':''}>${T('Взять')}: ${esc(i.name)}</button></form>`:`<button data-action="pickup:${esc(i.id)}" ${blocked||busy?'disabled':''}>${T('Взять')}: ${esc(i.name)}</button>`):`<span class="object-status">${T('Пока недоступно')}</span>`;
+    return `<article class="scene-object ${state.available?'available':'locked'}"><div><h3>${esc(i.name)}</h3><p>${esc(i.description)}</p>${!i.concealed&&remaining>1?`<p class="object-rule">${T('Осталось')}: ${remaining}</p>`:''}${!state.available?`<p class="object-rule">${T(state.mode==='all'?'Нужны все условия':'Достаточно одного способа')}</p><ul>${state.conditions.map(c=>{const target=c.kind==='check'?view.questChecks?.find(d=>d.id===c.targetId)||view.loreChecks.find(d=>d.definitionId===c.targetId):c.kind==='victory'?view.locations.find(l=>l.id===c.targetId):view.items.find(item=>item.id===c.targetId);return `<li>${c.fulfilled?'✓':'○'} ${T(c.kind==='check'?'Проверка':c.kind==='victory'?'Победа':'Ключ')}: ${esc(target?.title||target?.name||c.label||T(c.kind==='check'?'Нужная подсказка':c.kind==='item'?'Нужный предмет':'Препятствие'))}</li>`;}).join('')}</ul>`:''}</div>${pickup}</article>`;
   }).join('');
 }
 function renderActions(view) {
@@ -191,17 +207,23 @@ function renderQuests(view) {
   localizeUi($('#questsView'));
   if(questHistoryOpen&&!questHistory&&model.selectedId)void loadQuestHistory();
 }
-async function loadQuestHistory(){
+async function loadQuestHistory(append=false){
   if(!currentView?.ready||!questState.selectedId||questHistory?.status==='loading')return;
+  const previous=append?questHistory?.data:null;
+  if(append&&(!previous||previous.nextOffset===null||previous.nextOffset===undefined))return;
+  const offset=previous?.nextOffset||0;
   const campaignId=currentView.campaign.id,revision=currentView.campaign.revision,questId=questState.selectedId,sequence=++questHistoryRequest;
-  questHistory={campaignId,revision,questId,status:'loading'};renderQuests(currentView);
+  questHistory={campaignId,revision,questId,status:'loading',...(previous?{data:previous}:{})};renderQuests(currentView);
   const current=()=>sequence===questHistoryRequest&&currentView?.ready&&currentView.campaign.id===campaignId&&currentView.campaign.revision===revision&&questState.selectedId===questId;
   try{
-    const data=await request(`quest-history?campaignId=${encodeURIComponent(campaignId)}&questId=${encodeURIComponent(questId)}`);
+    const data=await request(`quest-history?campaignId=${encodeURIComponent(campaignId)}&questId=${encodeURIComponent(questId)}&offset=${offset}`);
     if(!current())return;
-    if(data.campaignId!==campaignId||data.questId!==questId||data.revision!==revision){questHistory={campaignId,revision,questId,status:'error'};renderQuests(currentView);return;}
-    questHistory={campaignId,revision,questId,status:'ready',data};renderQuests(currentView);
-  }catch(error){if(current()){questHistory={campaignId,revision,questId,status:'error'};renderQuests(currentView);}}
+    const validNext=data.nextOffset===null||Number.isInteger(data.nextOffset)&&data.nextOffset>offset&&data.nextOffset<=data.total;
+    if(data.campaignId!==campaignId||data.questId!==questId||data.revision!==revision||data.offset!==offset||!validNext){questHistory={campaignId,revision,questId,status:'error',...(previous?{data:previous}:{})};renderQuests(currentView);return;}
+    const knownIds=new Set(previous?.entries.map(entry=>entry.id)||[]);
+    const entries=previous?[...previous.entries,...data.entries.filter(entry=>!knownIds.has(entry.id))]:data.entries;
+    questHistory={campaignId,revision,questId,status:'ready',data:{...data,entries}};renderQuests(currentView);
+  }catch(error){if(current()){questHistory={campaignId,revision,questId,status:'error',...(previous?{data:previous}:{})};renderQuests(currentView);}}
 }
 function renderJournal(view) {
   const query=$('#journalSearch').value.trim().toLowerCase();
@@ -388,6 +410,16 @@ async function init() {
   $('#journalSearch').addEventListener('input',()=>{if(!currentView?.ready)return;historyRequest++;historyPage=null;renderJournal(currentView);clearTimeout(historyTimer);historyTimer=setTimeout(()=>loadJournal(true),250);});
   $('#journalCategory').addEventListener('change',()=>{if(!currentView?.ready)return;clearTimeout(historyTimer);historyPage=null;renderJournal(currentView);loadJournal(true);});
   $('#questSearch').addEventListener('input',()=>{if(!currentView?.ready)return;questState.query=$('#questSearch').value;questState.visibleCount=40;renderQuests(currentView);});
+  for(const id of ['#closeQuestDecision','#cancelQuestDecision'])$(id).addEventListener('click',()=>$('#questDecision').close());
+  $('#questDecisionForm').addEventListener('submit',async event=>{
+    event.preventDefault();if(busy||!questDecisionDraft)return;
+    if(currentView?.campaign.id!==questDecisionDraft.campaignId){$('#questDecisionStatus').textContent=T('Открой задачу в нужной кампании.');return;}
+    const {questId,type,giverId,...stamp}=questDecisionDraft,reason=$('#questDecisionReason').value.trim(),notify=$('#questDecisionNotify').checked&&giverId;
+    setBusy(true,T('Записываю решение…'));$('#questDecisionStatus').textContent='';
+    try{const view=await request('act',{...stamp,command:{type,questId,reason,...(notify?{npcId:giverId}:{})},input:`${notify?`${currentView.npcs.find(n=>n.id===giverId)?.name}, `:''}${T(type==='decline_quest'?'Отклоняю предложение':'Отказываюсь от задачи')}: ${currentView.quests.find(q=>q.id===questId)?.title||''}${reason?` — ${reason}`:''}`});render(view);$('#questDecision').close();showSection('quests');}
+    catch(error){$('#questDecisionStatus').textContent=error.status===409?T('Задача изменилась. Проверь её и повтори решение.'):error.message;if(error.status===409){await refreshState();questDecisionDraft.expectedRevision=currentView.campaign.revision;}}
+    finally{setBusy(false);}
+  });
   document.addEventListener('toggle',event=>{const details=event.target;if(!details.isConnected||!details.matches?.('[data-quest-history]')||details.dataset.questHistory!==questState.selectedId)return;questHistoryOpen=details.open;if(details.open&&!questHistory)void loadQuestHistory();},true);
   $('#moreJournal').addEventListener('click',()=>loadJournal(false));
   $('#journalNoteForm').addEventListener('submit',async event=>{event.preventDefault();if(await memoryChange('note',{text:$('#journalNote').value,pinned:$('#pinNewNote').checked})){$('#journalNote').value='';$('#noteStatus').textContent=T('Запись сохранена.');}});
@@ -410,6 +442,8 @@ async function init() {
     const order=event.target.closest('[data-party-order]');if(order&&event.target.name==='mode'){const mode=order.elements.mode.value,targets=mode==='focus'?(currentView.combat?.participants.filter(p=>p.kind==='enemy'&&p.hp.current>0&&!p.conditions.some(c=>['dead','fled','captured'].includes(c)))||[]):currentView.party.filter(p=>p.id!==order.dataset.partyOrder&&!p.conditions.includes('dead')&&!p.deathSaves?.dead);order.querySelector('[data-order-target]').hidden=!['focus','support'].includes(mode);order.elements.targetId.innerHTML=`<option value="">${T('Выбрать автоматически')}</option>`+targets.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');}
   });
   document.addEventListener('submit',async event=>{
+    const pickup=event.target.closest('[data-world-pickup]'),delivery=event.target.closest('[data-quest-delivery]');
+    if(pickup||delivery){event.preventDefault();if(busy)return;const form=pickup||delivery,quantity=Number(form.elements.quantity.value),command=pickup?{type:'pickup',itemId:pickup.dataset.worldPickup,quantity}:{type:'deliver',questId:delivery.dataset.questDelivery,objectiveId:delivery.dataset.objectiveId,quantity};await act({command},{stay:Boolean(delivery||pickup?.closest('#questsView'))});return;}
     const exact=event.target.closest('[data-exact-cast]');if(exact){event.preventDefault();if(busy)return;await act({command:{type:'party_order',npcId:exact.dataset.exactCast,mode:'cast',spellActionId:exact.elements.spellActionId.value,...(exact.elements.allowFriendlyFire.checked?{allowFriendlyFire:true}:{})}},{stay:true});return;}
     const share=event.target.closest('[data-party-share]'),order=event.target.closest('[data-party-order]'),gear=event.target.closest('[data-party-gear]');if(!share&&!order&&!gear)return;event.preventDefault();if(busy)return;
     let command;if(share){const values=Object.fromEntries(new FormData(share));command={type:'party_item',fromId:values.fromId,toId:values.toId,itemId:values.itemId,quantity:Number(values.quantity)};}else if(order){const mode=order.elements.mode.value,targetId=order.elements.targetId.value;command={type:'party_order',npcId:order.dataset.partyOrder,mode,...(['support','focus'].includes(mode)&&targetId?{targetId}:{})};}else{const option=gear.elements.itemId.selectedOptions[0];if(!option)return;command={type:'party_gear',characterId:gear.dataset.partyGear,itemId:option.value,mode:option.dataset.worn==='true'?'unequip':'equip'};}
@@ -419,7 +453,9 @@ async function init() {
     const questFilter=event.target.closest('[data-quest-filter]');if(questFilter){questState.filter=questFilter.dataset.questFilter;questState.visibleCount=40;renderQuests(currentView);return;}
     if(event.target.closest('[data-quest-more]')){questState.visibleCount=(questState.visibleCount||40)+40;renderQuests(currentView);return;}
     const questChoice=event.target.closest('[data-quest-select]');if(questChoice){questState.selectedId=questChoice.dataset.questSelect;questHistory=null;questHistoryOpen=false;questHistoryRequest++;renderQuests(currentView);return;}
-    if(event.target.closest('[data-quest-history-retry]')){questHistory=null;void loadQuestHistory();return;}
+    if(event.target.closest('[data-quest-history-more]')){void loadQuestHistory(true);return;}
+    if(event.target.closest('[data-quest-history-retry]')){const previous=questHistory?.data;questHistory=previous?{...questHistory,status:'ready'}:null;void loadQuestHistory(Boolean(previous));return;}
+    const questDecision=event.target.closest('[data-quest-decision]');if(questDecision){openQuestDecision(questDecision.dataset.questId,questDecision.dataset.questDecision);return;}
     const questRecord=event.target.closest('[data-quest-record]');if(questRecord){const record=questHistory?.data?.entries.find(entry=>entry.id===questRecord.dataset.questRecord);if(record){$('#journalCategory').value='all';$('#journalSearch').value=String(record.text).slice(0,80);historyPage=null;renderJournal(currentView);showSection('journal');void loadJournal(true);}return;}
     if(event.target.closest('[data-quest-journal]')){$('#journalCategory').value='all';$('#journalSearch').value='';historyPage=null;renderJournal(currentView);showSection('journal');void loadJournal(true);return;}
     const questPlace=event.target.closest('[data-quest-place]');if(questPlace){mapFocusId=questPlace.dataset.questPlace;renderMap(currentView);showSection('map');[...document.querySelectorAll('[data-map-location]')].find(card=>card.dataset.mapLocation===mapFocusId)?.scrollIntoView({block:'nearest'});return;}
@@ -430,7 +466,7 @@ async function init() {
     }
     const filter=event.target.closest('[data-inventory-filter]');if(filter){inventoryFilter=filter.dataset.inventoryFilter;renderHero(currentView);localizeUi($('#characterSheet'));return;}
     const pin=event.target.closest('[data-memory-pin]');if(pin){await memoryChange('pin',{recordId:pin.dataset.memoryPin,kind:pin.dataset.memoryKind,pinned:pin.dataset.pinned==='true'});return;}
-    const a=event.target.closest('[data-action]');if(a){const chosen=currentView.actions.find(action=>action.id===a.dataset.action),spell=chosen?.mayAffectAllies&&chosen.id.match(/^(core:combat\.(?:action|bonus)\.(?:cast_spell|metamagic\.(?:quickened|subtle|twinned|careful))\.([^.]+)\.)/);if(spell){target({type:'cast_spell',spellId:spell[2],actionPrefix:spell[1]},T('Заклинание и цель'));return;}await act({actionId:a.dataset.action,input:label(chosen?.label||a.textContent.trim())},{stay:currentSection==='people'&&/^(recruit|dismiss|aid):/.test(a.dataset.action)});return;}
+    const a=event.target.closest('[data-action]');if(a){const chosen=currentView.actions.find(action=>action.id===a.dataset.action),spell=chosen?.mayAffectAllies&&chosen.id.match(/^(core:combat\.(?:action|bonus)\.(?:cast_spell|metamagic\.(?:quickened|subtle|twinned|careful))\.([^.]+)\.)/);if(spell){target({type:'cast_spell',spellId:spell[2],actionPrefix:spell[1]},T('Заклинание и цель'));return;}await act({actionId:a.dataset.action,input:label(chosen?.label||a.textContent.trim())},{stay:Boolean(a.closest('#questsView'))||currentSection==='people'&&/^(recruit|dismiss|aid):/.test(a.dataset.action)});return;}
     const spellAction=event.target.closest('[data-target-action]');if(spellAction){const consent=$('#heroAreaConsent')?.checked;$('#targetDialog').close();const action=currentView.actions.find(a=>a.id===spellAction.dataset.targetAction);await act({actionId:spellAction.dataset.targetAction,...(consent?{command:{allowFriendlyFire:true}}:{}),input:label(action?.label||spellAction.textContent.trim())});return;}
     const p=event.target.closest('[data-place]');if(p&&!p.disabled){await act({actionId:`travel:${p.dataset.place}`,input:p.textContent.trim()});return;}
     const q=event.target.closest('[data-quest]');if(q){const questId=q.dataset.quest;if(await act({command:{type:'accept_quest',questId},input:`Принимаю задачу: ${currentView.quests.find(quest=>quest.id===questId).title}`})){questState.filter=QuestUI.groupOf(currentView.quests.find(quest=>quest.id===questId));questState.selectedId=questId;renderQuests(currentView);}return;}

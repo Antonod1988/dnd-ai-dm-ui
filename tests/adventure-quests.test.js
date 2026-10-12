@@ -66,7 +66,7 @@ test('delivery rejects missing item, distant recipient and a stage that is not r
   await act({type:'travel',locationId:'cache'});await act({type:'pickup',itemId:'compass'});
   await rejectUnchanged(handover(),/не рядом/);await act({type:'travel',locationId:'camp'});
   await act({type:'accept_quest',questId:'return-compass'});await rejectUnchanged(handover('return-compass'),/ещё не доступен/);
-  await rejectUnchanged({...handover(),recipientId:'tarn'},/unrecognized|Unrecognized/);
+  await rejectUnchanged({...handover(),recipientId:'tarn'},/Укажите задание и доступный этап передачи/);
 });
 test('one handover is bound to its recipient and cannot fulfill another recipient’s task',async()=>{
   await deliveryOnly();const loaded=await engine.loaded(view.campaign.id);model.applyDevelopments(loaded.adventure,{quests:[{id:'for-tarn',title:'Tarn’s delivery',summary:'Give the compass to Tarn instead.',rewardTheme:'A different token',objectives:[{text:'Give Tarn the compass',kind:'deliver',targetId:'compass',recipientId:'tarn'}]}]});await engine.save(loaded.service,loaded.state,loaded.adventure,'second_recipient');view=await engine.getView(view.campaign.id);

@@ -8,7 +8,7 @@ Locations open the existing map and highlight the place without travelling. Obje
 
 Opening **From the journal** lazily reads `GET /api/adventure/quest-history?campaignId=...&questId=...`. This uses the existing serialized controller boundary. Full historical journal records take priority over clipped/conflicting event copies. The response includes only actual saved evidence pointers and related acceptance/reward/failure events, with saved source/confidence when available. Missing legacy evidence is reported explicitly. Player notes/claims remain labelled as such.
 
-At most five exact objective evidence IDs and eight recent lifecycle records are returned, within16,000 serialized characters. Text beyond1,000 characters or a pathological escaped-text bound is explicitly marked `textTruncated:true`. **In the journal** searches the complete existing history to reopen the source; the main journal remains the full archive. Late responses cannot attach to another quest, campaign, revision or an empty view. A mismatch offers a retry.
+History is paginated using `offset` and `limit` (default13, maximum13), within16,000 serialized characters per page. All saved objective evidence IDs and lifecycle records remain reachable; `total` and `nextOffset` describe the next page. Missing evidence IDs remain explicit. Text beyond1,000 characters or a pathological escaped-text bound is explicitly marked `textTruncated:true`. **In the journal** searches the complete existing history to reopen the source; the main journal remains the full archive. Late responses cannot attach to another quest, campaign, revision, offset or an empty view. A mismatch offers a retry without erasing already loaded rows.
 
 Browsing, filtering, expanding stages, reading evidence and highlighting a map location make no inference or gameplay operation. These display records are not added to the model prompt. The established bounded campaign memory continues to select canonical objectives/evidence separately.
 
@@ -18,7 +18,21 @@ Freeform intent now supports `accept_quest` with an exact offered `questId`. Exp
 
 A delivery receipt now binds to one exact `questId/objectiveId` and recipient. An already-used evidence ID cannot be rebound to another obligation. A missing binding cannot create new delivery progress from a legacy event. Shared knowledge/events for visit, talk and check retain their existing behavior. One actual handover consumes one item and can complete only that delivery; a second identical order needs another real item and receipt.
 
-This fixes future progression, without rewriting previously awarded legacy results on read. Quantitative/partial deliveries, explicit abandonment and authoritative dead-recipient branches are still open. The current unavailable-contact hint does not implement those lifecycle features.
+This fixes future progression, without rewriting previously awarded legacy results on read. Quantitative pickup/delivery and explicit refusal are now implemented below. Authoritative impossible-target branches, negotiated obligations and timed failure remain open.
+
+## Quantities and player decisions,2026-10-12
+
+World finds carry a finite original quantity1–8 and persistent remaining stock. Explicit pickup chooses an integer amount, creates distinct native item instances and cannot duplicate or refill weapons, consumables or charged items. Old saves retain their single-item meaning. Acquire/deliver objectives support quantities1–20; each actual receipt advances only its real amount. Known source capacity is checked before a world is accepted. Competing offers are not combined into a promise the player never made.
+
+The current quest stage offers server-backed quantity selectors for acquisition and handover, including acquisition during a delivery-only stage. Partial progress is visible and survives reopening. Only full completion grants the existing reward and delivery relationship increase, once. Legacy charged pools transfer whole; the selector exposes only feasible amounts, never fictional split charges.
+
+Offered tasks can be declined and accepted ones abandoned. A compact dialog preserves an optional player reason and warns that already given items remain with their recipient. A private decision consumes no world time, turn, resources or narration request. It remains explicitly private in recent dialogue and historical recollection. Choosing **Tell the giver** requires that exact available local NPC, records actual notification and uses an ordinary speech turn and narration. Reasons retain player-statement confidence; no automatic forgiveness, punishment, refund or reward is invented. Neither branch is available during combat or incapacitation.
+
+Canonical model context retains numeric progress and the latest exact receipt, rather than repeating the full evidence-ID array. The complete receipts remain in the journal and paginated read-only UI. Current held inventory can be confirmed at acceptance with a new present-time, scoped `inventory_confirmation` record; it is never backdated into an invented historical pickup.
+
+An isolated actual browser campaign exercised pickup1+2, delivery1+2, a second delivery1, private abandonment and addressed decline. From six finite packs, four stayed with the NPC and two remained in the world. The completed task granted100XP and one item; the partially abandoned task granted nothing. Private abandonment kept turn9/time08:08, HP12/12,10coins and trust1; notifying the giver advanced one turn and ten minutes. This fixture used fallback narration, not a live-model world.
+
+Two separate GPT-6-Luna prose diagnostics used the actual partial-transfer state without applying their output to a campaign. The first correctly said one of three but misplaced the two owed packs near the NPC. The ownership/debt instruction was corrected; the second named the actual transfer and remaining obligation without that spatial invention. Both diagnostic requests together used9,788 input/171 output tokens,cache0, outside campaign counters. Broader prose consistency remains an evaluation task.
 
 ## Evidence,2026-10-12
 

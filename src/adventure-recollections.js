@@ -3,7 +3,7 @@ const {targets}=require('./adventure-access');
 
 // Retrieval reads the durable journal, but only the matching mechanical event
 // supplies outcome details. It never reads dialogue plans, lore bodies or saves.
-const RESOLVED = new Set(('visit talk inspect acquire deliver quest_accept quest_reward quest_failed check victory defeat retreat combat combat_end npc_combat npc_combat_end social companion_recruit companion_dismiss party_item party_gear party_order first_aid rest death_save use_item equip_item attune_item unattune_item cast_spell cast_created_spell companion_action environment_interaction effects_expired xp_gain level_up economy market_restock survival action_refused narration_failure loot_found spell_learned supplies action medical_death_save medical_stable_recovery medical_stable_recovery_scheduled').split(' '));
+const RESOLVED = new Set(('visit talk inspect acquire deliver quest_accept quest_reward quest_failed quest_decline quest_abandon check victory defeat retreat combat combat_end npc_combat npc_combat_end social companion_recruit companion_dismiss party_item party_gear party_order first_aid rest death_save use_item equip_item attune_item unattune_item cast_spell cast_created_spell companion_action environment_interaction effects_expired xp_gain level_up economy market_restock survival action_refused narration_failure loot_found spell_learned supplies action medical_death_save medical_stable_recovery medical_stable_recovery_scheduled').split(' '));
 const IDS = ['targetId','actorId','npcId','speakerId','dialogueId','proposalId','actionId','spellActionId','directiveId','combatId','recipientId','itemId','fromId','toId','questId','objectiveId','evidenceEventId'];
 const STOP = new Set(('the a an and or to of in on at for with is was were be been i we you my our it this that what how when where why who about remember recall please tell happened here scene current now all me do did мне мы я ты вы что как когда где почему кто о об про и в на с у а это этот было был были здесь сейчас напомни вспомни пожалуйста расскажи произошло происходило место сцена текущая мой наш').split(' '));
 function string(value, max=200) {
@@ -18,7 +18,8 @@ function terms(query) {
 function text(value) {
   return typeof value==='string' ? value.slice(0,8192).replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim() : '';
 }
-function provenance(event) {
+function provenance(event,entry) {
+  if((event||entry)?.privateDecision===true||(event||entry)?.source==='player_private_decision')return {source:'player_private_decision',confidence:'player_private_decision',privateDecision:true,npcNotified:false};
   if(!event)return {source:'legacy_event',confidence:'unverified'};
   if(event.kind==='player_note'||event.source==='player_note')return {source:'player_note',confidence:'player_note'};
   if(['story','dialogue_interjection','player_speech'].includes(event.kind)||event.source==='player_statement'||event.source==='player_claim'||event.role==='player')return {source:'player_statement',confidence:'player_claim'};
@@ -29,10 +30,13 @@ function provenance(event) {
 function evidenceIndex(adventure) {
   const result=new Map();
   for(const quest of adventure.quests||[])for(const objective of quest.objectives||[]) {
-    if(objective.completed!==true||!string(objective.evidenceEventId)||!string(quest.id)||!string(objective.id))continue;
-    const links=result.get(objective.evidenceEventId)||[];
-    if(links.length<3)links.push({questId:quest.id,objectiveId:objective.id,evidenceEventId:objective.evidenceEventId,kind:objective.kind,recipientId:objective.recipientId,targetIds:[objective.targetId,...(Array.isArray(objective.alternativeTargetIds)?objective.alternativeTargetIds.slice(0,20):[])].filter(id=>string(id)).slice(0,20)});
-    result.set(objective.evidenceEventId,links);
+    if(objective.completed!==true&&!['acquire','deliver'].includes(objective.kind)||!string(quest.id)||!string(objective.id))continue;
+    const ids=[...new Set([...(['acquire','deliver'].includes(objective.kind)&&Array.isArray(objective.evidenceEventIds)?objective.evidenceEventIds.slice(0,20):[]),objective.evidenceEventId].filter(id=>string(id)))];
+    for(const id of ids){
+      const links=result.get(id)||[];
+      if(links.length<3)links.push({questId:quest.id,objectiveId:objective.id,evidenceEventId:id,kind:objective.kind,recipientId:objective.recipientId,objectiveCompleted:objective.completed===true,questStatus:string(quest.status,40),targetIds:[objective.targetId,...(Array.isArray(objective.alternativeTargetIds)?objective.alternativeTargetIds.slice(0,20):[])].filter(id=>string(id)).slice(0,20)});
+      result.set(id,links);
+    }
   }
   return result;
 }
@@ -46,13 +50,14 @@ function aliases(state, adventure) {
   return map;
 }
 function compact(entry,event,evidence,adventure) {
-  const record={id:entry.id,turn:Number.isSafeInteger((event||entry).turn)&&(event||entry).turn>=0?(event||entry).turn:0,kind:string((event||entry).kind,80)||'unknown',text:text((event||entry).text),...provenance(event)};
+  const record={id:entry.id,turn:Number.isSafeInteger((event||entry).turn)&&(event||entry).turn>=0?(event||entry).turn:0,kind:string((event||entry).kind,80)||'unknown',text:text((event||entry).text),...provenance(event,entry)};
   const origin=event||entry;
   // A migrated journal's optional details have no authoritative event to back
   // them. Preserve identity only; never upgrade its claimed decision/result.
   for(const key of event?IDS:['targetId'])if(string(origin[key],key==='spellActionId'?400:200))record[key]=origin[key];
   if(event) {
     if(record.source==='resolved_event') {
+      if(event.source==='inventory_confirmation')record.eventSource='inventory_confirmation';
       if(typeof event.success==='boolean')record.success=event.success;
     if(typeof event.instructionOnly==='boolean')record.instructionOnly=event.instructionOnly;
     if(event.kind==='party_order_result'&&['resolved','refused','cancelled'].includes(event.status))record.status=event.status;
@@ -61,9 +66,17 @@ function compact(entry,event,evidence,adventure) {
     }
     if(event.kind==='deliver'&&!record.itemId&&string(event.inventoryItemId))record.itemId=event.inventoryItemId;
     const eventTargets=string(event.targetId)?event.kind==='check'?targets(adventure,event.targetId):[event.targetId]:[];
-    const links=(evidence.get(event.id)||[]).filter(link=>link.kind===event.kind&&event.success!==false&&link.targetIds.some(id=>eventTargets.includes(id))&&(event.kind!=='check'||event.source==='scene_check'&&event.success===true)&&(event.kind!=='deliver'||string(link.recipientId)&&link.recipientId===event.recipientId)).map(({questId,objectiveId,evidenceEventId})=>({questId,objectiveId,evidenceEventId}));
+    const links=(evidence.get(event.id)||[]).filter(link=>link.kind===event.kind&&event.success!==false&&link.targetIds.some(id=>eventTargets.includes(id))&&(event.kind!=='check'||event.source==='scene_check'&&event.success===true)&&(event.source!=='inventory_confirmation'||event.questId===link.questId&&event.objectiveId===link.objectiveId)&&(event.kind!=='deliver'||string(link.recipientId)&&link.recipientId===event.recipientId&&(!event.questId||event.questId===link.questId)&&(!event.objectiveId||event.objectiveId===link.objectiveId))).map(({questId,objectiveId,evidenceEventId,objectiveCompleted,questStatus})=>({questId,objectiveId,evidenceEventId,objectiveCompleted,questStatus}));
     if(links.length&&record.source==='resolved_event') {
       record.questId=record.questId||links[0].questId;record.objectiveId=record.objectiveId||links[0].objectiveId;record.evidenceEventId=event.id;record.evidenceLinks=links;
+    }
+    if(['quest_decline','quest_abandon'].includes(event.kind)&&record.source==='resolved_event'){
+      if(string(event.reason,400))record.reason=event.reason;
+      if(string(event.reasonConfidence,80))record.reasonConfidence=event.reasonConfidence;
+      if(string(event.previousStatus,40))record.previousStatus=event.previousStatus;
+      if(string(event.giverId))record.giverId=event.giverId;
+      if(typeof event.npcNotified==='boolean')record.npcNotified=event.npcNotified;
+      if(event.npcNotified===false)record.privateDecision=true;
     }
   }
   return record;

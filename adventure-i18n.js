@@ -1,6 +1,10 @@
 // UI labels are translated locally. Story content is generated in the campaign's language.
 const uiLanguage = new URLSearchParams(location.search).get('lang') === 'en' ? 'en' : 'ru';
 const englishLabels = {
+  'Сначала возьми нужные вещи, затем передай их адресату.':'Pick up the needed items first, then hand them to the recipient.',
+  'Сообщить заказчику':'Tell the quest giver',
+  'Собрано':'Collected',
+  'Передано':'Delivered','Передать':'Give','Количество':'Quantity','Отклонить предложение':'Decline offer','Отказаться от задачи':'Abandon quest','Предложение отклонено':'Offer declined','Отказ от задачи':'Quest abandoned','Твоя причина':'Your reason','Закрыть решение по задаче':'Close quest decision','Решение будет записано в журнале.':'Your decision will be recorded in the journal.','Ты перестанешь выполнять эту задачу. Решение останется в журнале.':'You will stop pursuing this quest. Your decision will remain in the journal.','Переданные вещи останутся у получателя.':'Items already handed over stay with the recipient.','Твоя причина (необязательно)':'Your reason (optional)','Почему герой выбирает другой путь…':'Why your hero is choosing another path…','Подтвердить решение':'Confirm decision','Передумать':'Keep the quest','Отклоняю предложение':'I decline the offer','Отказываюсь от задачи':'I abandon the quest','Записываю решение…':'Recording your decision…','Открой задачу в нужной кампании.':'Open the quest in the correct campaign.','Задача изменилась. Проверь её и повтори решение.':'The quest has changed. Review it and confirm your decision again.','Показать ещё эпизоды':'Show more episodes',
   'Следующие этапы':'Upcoming objectives',
   'Показать ещё задачи':'Show more quests',
   'Отрывок':'Excerpt','В журнале':'In the journal','Открыть весь журнал':'Open the full journal',
