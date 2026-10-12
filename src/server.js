@@ -72,7 +72,7 @@ async function route(req, res, serialize) {
     const adventure = require('./adventure-engine');
     const imageRoute={'/api/adventure/images/upload':'upload','/api/adventure/images/bind':'bind','/api/adventure/images/generate':'generate'}[url.pathname];
     if(imageRoute)return sendJson(res,200,await serialize(()=>require('./adventure-images')[imageRoute](body)));
-    const adventureRoutes = { '/api/adventure/create': () => adventure.create(body), '/api/adventure/act': () => adventure.perform(body), '/api/adventure/select': () => adventure.select(body.campaignId), '/api/adventure/narration': () => adventure.retryNarration(body.campaignId), '/api/adventure/spell/draft': () => adventure.spellDraft(body.campaignId, body.idea), '/api/adventure/spell/learn': () => adventure.learnSpell(body.campaignId, body.draft) };
+    const adventureRoutes = { '/api/adventure/create': () => adventure.create(body), '/api/adventure/act': () => adventure.perform(body), '/api/adventure/select': () => adventure.select(body.campaignId), '/api/adventure/narration': () => adventure.retryNarration(body.campaignId), '/api/adventure/spell/draft': () => adventure.spellDraft(body.campaignId, body.idea, body.casterId, body.expectedRevision), '/api/adventure/spell/learn': () => adventure.learnSpell(body.campaignId, body.draft, body.casterId, {expectedRevision:body.expectedRevision,operationId:body.operationId}) };
     if (adventureRoutes[url.pathname]) return sendJson(res, 200, await serialize(adventureRoutes[url.pathname]));
     if(url.pathname==='/api/adventure/question')return sendJson(res,200,await serialize(()=>adventure.ask(body)));
     const memory=require('./adventure-memory');

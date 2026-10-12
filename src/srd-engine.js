@@ -111,7 +111,8 @@ async function command(input, { seed } = {}) {
       break;
     }
     case 'cast_created_spell': {
-      const spell = (metadata(state).createdSpells || []).find(s => s.id === input.spellId);
+      const spell = (metadata(state).createdSpells || []).find(s => s.id === input.spellId && (!s.ownerId || s.ownerId===state.party.heroId));
+      if(input.casterId&&input.casterId!==state.party.heroId)error('Действие героя не может потратить ресурсы другого заклинателя.');
       if (!spell) error('Это заклинание ещё не существует в кампании.');
       result = await castGeneratedSpell(state, spell, { targetId: input.targetId, seed });
       await service.store.saveGameState(result.state, { reason: `created_spell:${spell.id}` });

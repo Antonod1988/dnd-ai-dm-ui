@@ -1,4 +1,5 @@
 const {z}=require('zod');
+const spellbooks=require('./adventure-spellbooks');
 const commandSchema=z.object({type:z.literal('party_order'),npcId:z.string().trim().min(1).max(160),mode:z.enum(['auto','conserve','defend','support','focus','cast']),targetId:z.string().trim().min(1).max(160).optional(),spellActionId:z.string().min(1).max(400).optional(),allowFriendlyFire:z.boolean().optional()}).strict().superRefine((value,ctx)=>{if(value.mode==='cast'?!value.spellActionId||value.targetId!==undefined:value.spellActionId!==undefined||value.allowFriendlyFire!==undefined)ctx.addIssue({code:'custom',message:'Exact cast orders require spellActionId only.'});});
 let corePromise;const core=()=>corePromise||=import('../vendor/dnd-core/dist/engine.mjs');
 const modes=['auto','conserve','defend','support','focus','cast'];
@@ -20,15 +21,33 @@ function terminalResults(state){
 }
 function cancelled(order,adventure){return {directiveId:order.directiveId,combatId:order.combatId,spellActionId:order.spellActionId,status:'cancelled',message:adventure.language==='en'?'Queued spell order cancelled: the companion or encounter is no longer available.':'Поручение на заклинание отменено: спутник или прежний бой больше не доступны.'};}
 function matchesResult(result,order){return result&&result.directiveId===order.directiveId&&result.combatId===order.combatId&&result.spellActionId===order.spellActionId;}
+function originalRegistry(state,adventure,bridge){
+  const registry={};
+  for(const [id,order] of Object.entries(bridge)){
+    const match=order.mode==='cast'&&order.spellActionId.match(/^combat\.(action|bonus)\.cast_created_spell\.([^.]+)\.([^.]+)$/);if(!match)continue;
+    const spell=spellbooks.spellsFor(state,adventure,id).find(spell=>spell.id===match[2]);if(!spell)continue;
+    const entry={ownerId:id,spellId:spell.id,definition:spellbooks.spellDefinition(spell)};
+    if(JSON.stringify({...registry,[id]:entry}).length<=10000&&Object.keys(registry).length<3)registry[id]=entry;
+  }
+  return registry;
+}
 async function spellOptions(state,adventure,npcId){
   const rules=await core(),eligible=castActors(state,adventure,npcId,rules);if(!eligible)return [];
   // Even a pure core preview receives a disposable state; no speculative turn
   // can alter real round/budget/resources or run the actual spell resolver.
-  return rules.companionSpellOrderOptions(structuredClone(state),npcId,{preview:true}).map(option=>{
+  const options=rules.companionSpellOrderOptions(structuredClone(state),npcId,{preview:true}).map(option=>{
     const match=option.id?.length<=400&&option.id.match(/^combat\.(action|bonus)\.cast_spell\.([^.]+)\.([^.]+)$/);
     if(!match)return null;
     return {id:option.id,label:option.label,spellId:match[2],targetId:match[3],cost:match[1]==='bonus'?'bonus_action':'action',...(option.area!==undefined?{area:structuredClone(option.area)}:{}),...(Array.isArray(option.affectedIds)?{affectedIds:option.affectedIds.slice(0,40)}:{}),...(typeof option.mayAffectAllies==='boolean'?{mayAffectAllies:option.mayAffectAllies}:{})};
   }).filter(Boolean);
+  const preview=structuredClone(state),index=preview.combat.participants.findIndex(actor=>actor.id===eligible.actor.id);if(index<=preview.combat.turnIndex)preview.combat.round+=1;preview.combat.turnIndex=index;preview.combat.turnBudget=rules.createTurnBudget(eligible.actor.speed);
+  preview.party.members=preview.party.members.map(member=>member.id===npcId?rules.syncCombatantToCharacter(member,preview.combat.participants[index]):member);
+  for(const spell of spellbooks.spellsFor(state,adventure,npcId))for(const target of preview.combat.participants){
+    if(spell.target==='self'&&target.id!==eligible.actor.id)continue;
+    const definition=spellbooks.spellDefinition(spell),checked=rules.preflightOriginalSpell(preview,definition,{casterId:npcId,targetId:target.id});if(!checked.ok)continue;
+    const cost=spell.cost==='bonus_action'?'bonus':'action';options.push({id:`combat.${cost}.cast_created_spell.${spell.id}.${target.id}`,label:`${spell.name}: ${target.name}`,spellId:spell.id,targetId:target.id,cost:spell.cost,original:true});
+  }
+  return options;
 }
 function focusValid(state,id,order,rules){
   if(!state.combat||order.combatId!==state.combat.id)return false;
@@ -50,6 +69,7 @@ async function sync({state,adventure}){
     if(active(nextState,nextAdventure,cached.npcId)&&Object.keys(bridge).length<3)bridge[cached.npcId]=order;
   }
   nextState.flags||={};nextState.flags.ui_companion_orders=JSON.stringify(bridge);
+  nextState.flags.ui_companion_original_spells=JSON.stringify(originalRegistry(nextState,nextAdventure,bridge));
   if(typeof nextState.flags.ui_companion_order_results==='string')nextState.flags.ui_companion_order_results=JSON.stringify(results);
   return {ok:true,state:nextState,adventure:nextAdventure,outcome:{type:'party_orders_sync',orders:bridge,results:consumed}};
 }

@@ -5098,7 +5098,7 @@ export class SceneRunner {
     let flags = state.flags;
     const mergeCompanionFlags = (resolved: GameState) => {
       flags = { ...flags };
-      for (const key of ['ui_companion_orders', 'ui_companion_order_results']) {
+      for (const key of ['ui_companion_orders', 'ui_companion_order_results', 'generated_leveled_spell_turn']) {
         if (Object.prototype.hasOwnProperty.call(resolved.flags, key)) flags[key] = resolved.flags[key];
       }
     };

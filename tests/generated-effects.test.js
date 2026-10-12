@@ -38,3 +38,9 @@ test('a new concentration spell replaces old concentration effects instead of st
   assert.equal(second.state.party.members[0].activeEffects.length, 1);
   assert.equal(second.state.party.members[0].activeEffects[0].label, 'Покров звёзд');
 });
+
+test('registered owner/source metadata survives the facade but another character cannot use the owner’s authored definition', async()=>{
+  const initial=state();initial.party.members[0].hp.current=1;const spell={...validateSpell(healing).spell,ownerId:'hero',sourceId:'authored-in-game',sourceEventId:'spell-approved'};
+  const before=structuredClone(initial),result=await castGeneratedSpell(initial,spell,{targetId:'hero',seed:'owned-rain'});assert.deepEqual(initial,before);assert.equal(result.spell.id,spell.id);assert.equal(result.spell.ownerId,'hero');assert.equal(result.spell.sourceId,'authored-in-game');assert.equal(result.spell.sourceEventId,'spell-approved');assert.ok(result.state.party.members[0].hp.current>1);
+  await assert.rejects(castGeneratedSpell(initial,{...spell,ownerId:'another-character'},{targetId:'hero',seed:'wrong-owner'}),/different caster/);assert.deepEqual(initial,before);
+});

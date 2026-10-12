@@ -2,6 +2,7 @@ import type { Character, CombatState, Combatant, GameState, RollLogEntry, RulesC
 import { rollExpression, type Rng } from '../dice.js';
 import { availableAutomatedSrdSpells, automatedSrdAreaTargetBands, automatedSrdSpellLevel, type AutomatedSrdAreaLikeSpellId, type AutomatedSrdSpellId } from '../rulesets/srd5e2014/spell-engine.js';
 import { automatedSrdAreaTargets, getAutomatedSrdSpellAction, resolveAutomatedSrdCombatSpellTurnAction } from '../actions/automated-spell-actions.js';
+import { preflightOriginalSpell, castOriginalSpell } from '../actions/original-spell-actions.js';
 import { resolveDeathSaveTurnAction } from '../actions/death-save-actions.js';
 import { applyAiMovementToAttackRange, applyAiStandUp, applyHealing, combatCover, combatDistanceBand, combatantStatusFlags, ensureTurnBudget, isAttackInDistanceBand, needsDeathSave, resolveReadiedReactionsWithRollLogs, runAutomaticTurns, syncCombatantToCharacter } from '../rules/combat.js';
 import { effectiveHitPointMaximum, isCharmedBySource } from '../rules/conditions.js';
@@ -18,6 +19,14 @@ const melee = new Set(['spell_shocking_grasp', 'spell_inflict_wounds', 'spell_va
 type CompanionOrder={mode:'auto'|'conserve'|'defend'|'support'|'focus'|'cast';targetId?:string;combatId?:string;spellActionId?:string;directiveId?:string;allowFriendlyFire?:boolean};
 type CastOrderResult={directiveId:string;combatId:string;spellActionId:string;status:'resolved'|'refused';message:string};
 const ordinarySpellAction=/^combat\.(action|bonus)\.cast_spell\.([^.]+)\.([^.]+)$/;
+const originalSpellAction=/^combat\.(action|bonus)\.cast_created_spell\.([^.]+)\.([^.]+)$/;
+function originalSpellRegistry(state:GameState):Record<string,{ownerId:string;spellId:string;definition:any}>{
+  const raw=state.flags.ui_companion_original_spells;if(typeof raw!=='string'||raw.length>10000)return {};
+  try{const data=JSON.parse(raw);if(!data||Array.isArray(data)||typeof data!=='object'||Object.keys(data).length>3)return {};
+    for(const [id,entry] of Object.entries(data) as [string,any][]){if(!id||id.length>160||!entry||typeof entry!=='object'||Object.keys(entry).some(key=>!['ownerId','spellId','definition'].includes(key))||entry.ownerId!==id||typeof entry.spellId!=='string'||!entry.spellId||entry.spellId.length>160||!entry.definition||Array.isArray(entry.definition)||typeof entry.definition!=='object'||entry.definition.id!==entry.spellId||entry.definition.ownerId!==undefined&&entry.definition.ownerId!==id)return {};}
+    return data;
+  }catch{return {};}
+}
 function orders(state:GameState):Record<string,CompanionOrder>{
   const raw=state.flags.ui_companion_orders;if(typeof raw!=='string'||raw.length>3000)return {};
   try{const value=JSON.parse(raw);if(!value||Array.isArray(value)||typeof value!=='object'||Object.keys(value).length>3)return {};
@@ -85,7 +94,9 @@ function reaches(combat: CombatState, actorId: string, targetId: string, spellId
 export function createCompanionAutomaticHook(state: GameState, rng: Rng) {
   const ids=enabledIds(state);
   const preferences=orders(state);
+  const originals=originalSpellRegistry(state);
   const directiveResults=castOrderResults(state);
+  let runtimeFlags=state.flags;
   let ordersChanged=false;
   let members=state.party.members;
   const rollLogs: RollLogEntry[]=[];
@@ -115,13 +126,26 @@ export function createCompanionAutomaticHook(state: GameState, rng: Rng) {
     if(order.mode==='cast'){
       const previous=directiveResults.get(supplied.id);
       if(previous?.directiveId===order.directiveId&&previous.combatId===order.combatId)return {handled:true,combat:consumeCast(supplied.id,original,'refused','This spell directive has already been consumed.')};
-      if(order.combatId!==original.id||!order.directiveId||!order.spellActionId||!ordinarySpellAction.test(order.spellActionId))return {handled:true,combat:consumeCast(supplied.id,original,'refused','The spell order is invalid or belongs to another combat.')};
+      if(order.combatId!==original.id||!order.directiveId||!order.spellActionId||!ordinarySpellAction.test(order.spellActionId)&&!originalSpellAction.test(order.spellActionId))return {handled:true,combat:consumeCast(supplied.id,original,'refused','The spell order is invalid or belongs to another combat.')};
       if(supplied.hp.current<=0||combatantStatusFlags(supplied).cannotAct)return {handled:true,combat:consumeCast(supplied.id,original,'refused',`${supplied.name} cannot act and cannot execute the spell order.`)};
       const ready=resolveReadiedReactionsWithRollLogs(original,supplied.id,rng,state.campaign.rules,'hostile_turn_start');
       rollLogs.push(...ready.rollLogs);
       const actor=ready.combat.participants.find(p=>p.id===supplied.id);
       if(!actor||actor.hp.current<=0||combatantStatusFlags(actor).cannotAct)return {handled:true,combat:consumeCast(supplied.id,ready.combat,'refused','A readied reaction prevents the companion from executing the spell order.')};
       const current=syncCombatantToCharacter(character,actor);members=members.map(m=>m.id===current.id?current:m);
+      const authored=order.spellActionId.match(originalSpellAction);
+      if(authored){
+        const [,cost,spellId,targetId]=authored,entry=originals[supplied.id];
+        if(!entry||entry.ownerId!==supplied.id||entry.spellId!==spellId)return {handled:true,combat:consumeCast(supplied.id,ready.combat,'refused','The original spell is not registered in this companion’s own queued spellbook.')};
+        const pending={...state,flags:runtimeFlags,party:{...state.party,members},combat:ready.combat};
+        const checked=preflightOriginalSpell(pending,entry.definition,{casterId:supplied.id,targetId});
+        if(!checked.ok||checked.targetId!==targetId||checked.spell.cost!==(cost==='bonus'?'bonus_action':'action'))return {handled:true,combat:consumeCast(supplied.id,ready.combat,'refused',checked.ok?'The original spell action cost or exact target does not match the learned definition.':checked.message)};
+        try{
+          const cast=castOriginalSpell(pending,entry.definition,{casterId:supplied.id,targetId,rng});
+          members=cast.state.party.members;runtimeFlags=cast.state.flags;rollLogs.push(...cast.rollLogs);
+          return {handled:true,combat:consumeCast(supplied.id,cast.state.combat!,cast.interrupted?'refused':'resolved',cast.message)};
+        }catch(error){return {handled:true,combat:consumeCast(supplied.id,ready.combat,'refused',error instanceof Error?error.message:'The original spell could not be resolved.')};}
+      }
       const selected=companionSpellOrderOptions({...state,party:{...state.party,members},combat:ready.combat},supplied.id).find(o=>o.id===order.spellActionId);
       if(!selected)return {handled:true,combat:consumeCast(supplied.id,ready.combat,'refused','The exact spell or target is no longer available: check preparation, slots, action budget, target state, range and cover.')};
       if('mayAffectAllies' in selected&&selected.mayAffectAllies&&order.allowFriendlyFire!==true)return {handled:true,combat:consumeCast(supplied.id,ready.combat,'refused','The spell area now includes allies; this directive does not allow friendly-fire risk.')};
@@ -244,7 +268,7 @@ export function createCompanionAutomaticHook(state: GameState, rng: Rng) {
     return changed?{handled:mainUsed,combat}:undefined;
   };
   const result=(combat:CombatState)=>{
-    const flags=ordersChanged?{...state.flags,ui_companion_orders:JSON.stringify(preferences),ui_companion_order_results:JSON.stringify(Object.fromEntries([...directiveResults].filter(([id])=>ids.has(id)).slice(-3)))}:state.flags;
+    const flags=ordersChanged?{...runtimeFlags,ui_companion_orders:JSON.stringify(preferences),ui_companion_order_results:JSON.stringify(Object.fromEntries([...directiveResults].filter(([id])=>ids.has(id)).slice(-3)))}:runtimeFlags;
     const updated=syncPartyFromCombat({...state,flags,party:{...state.party,members},combat,rollLog:[...state.rollLog,...rollLogs]});
     return {state:updated,combat,partyMembers:updated.party.members,rollLogs:[...rollLogs]};
   };

@@ -4343,7 +4343,7 @@ export class RpgGameService {
     const dayState = addEncounterToAdventuringDay(state, xpBudget);
     const companionAutomatic = runCompanionAutomaticTurns(state, combat, encounterRng);
     const automaticFlags = { ...dayState.flags };
-    for (const key of ['ui_companion_orders', 'ui_companion_order_results']) {
+    for (const key of ['ui_companion_orders', 'ui_companion_order_results', 'generated_leveled_spell_turn']) {
       if (Object.prototype.hasOwnProperty.call(companionAutomatic.state.flags, key)) automaticFlags[key] = companionAutomatic.state.flags[key];
     }
     const updated = {

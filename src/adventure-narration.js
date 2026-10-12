@@ -2,6 +2,13 @@ const measuredAi=require('./adventure-usage');
 const dialogue=require('./dialogue');
 const crypto=require('node:crypto');
 const clip=(value,max)=>String(value||'').slice(0,max);
+// A narrow guard for explicit current-battle closure claims. This is not a
+// general semantic/prose validator; historical questions use a separate path.
+function assertOngoingCombat(text,ongoing){
+  if(!ongoing)return;
+  const direct=/\b(?:the\s+)?(?:fight|battle|combat)\s+(?:is\s+(?:now\s+)?(?:over|finished)|has\s+ended|ends|ended)\b|(?:^|[^\p{L}])(?:бой|схватка|битва)\s+(?:(?:уже|теперь)\s+)?(?:заканчивается|закончил(?:ась|ся)|завершил(?:ась|ся)|окончен(?:а)?|завершён(?:а)?)(?=$|[^\p{L}])/iu;
+  if(direct.test(text))throw new Error('Current battle is still ongoing. Retreat/morale movement does not end combat until the engine confirms it; do not claim the fight is over.');
+}
 const SCENE_DIALOGUE_RULES='When characters are talking or responding to a social player intent, include optional lines:[{speakerId,text,interruptsSpeakerId?,proposal?:{actionId,label}}] in this SAME response. narration frames the scene; lines carry the actual character speech without repeating it in narration. At most 5 lines, each at most 650 characters. Use only exact dialogue.actors ids; never speak for the human player. Give present characters distinct motives and reactions. interruptsSpeakerId may mark an interruption of another supplied speaker; it is presentation, not an action. Proposals use only exact dialogue.actions ids and are invitations pending player acceptance. Never execute a proposal or describe future planned replies as already heard. No extra speaker requests are made.';
 function scenePacket(state,meta,actions,targetId) {
   const humanIds=new Set(state.party.members.filter(m=>m.kind==='player'||m.id===state.party.heroId).map(m=>m.id));
@@ -47,4 +54,4 @@ async function generate(adventure,payload,fallback,validate,{task='adventure_nar
     }catch(second){second.correction=repaired?feedback(second,repaired):{...correction,repairError:String(second.message).slice(0,200)};throw second;}
   }
 }
-module.exports={generate,feedback,scenePacket,validateSceneDialogue,installSceneDialogue,SCENE_DIALOGUE_RULES};
+module.exports={generate,feedback,scenePacket,validateSceneDialogue,installSceneDialogue,assertOngoingCombat,SCENE_DIALOGUE_RULES};

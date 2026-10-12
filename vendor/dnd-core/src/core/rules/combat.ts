@@ -1,4 +1,5 @@
 ﻿import { addModifierToExpression, doubleDiceExpression, rollExpression, type Rng, SystemRng } from "../dice.js";
+import originalSpellSpec from '../homebrew/original-spell-spec.cjs';
 import {
   applyCondition,
   hasAnyCondition,
@@ -3104,10 +3105,10 @@ function resolveSourceTurnStartEffectDamage(combat: CombatState, sourceId: strin
     return logs.length > 0 ? { ...current, log: [...current.log, ...logs] } : current;
 }
 
-export function resolveReadiedReactions(combat: CombatState, triggerId: string, rng: Rng, rules: RulesConfig, triggerType: ReadiedReactionTriggerType = "hostile_turn_start", triggerActionId?: string): CombatState {
-    return resolveReadiedReactionsWithRollLogs(combat, triggerId, rng, rules, triggerType, triggerActionId).combat;
+export function resolveReadiedReactions(combat: CombatState, triggerId: string, rng: Rng, rules: RulesConfig, triggerType: ReadiedReactionTriggerType = "hostile_turn_start", triggerActionId?: string, incomingSpell?: { originalSpell?: unknown }): CombatState {
+    return resolveReadiedReactionsWithRollLogs(combat, triggerId, rng, rules, triggerType, triggerActionId, incomingSpell).combat;
 }
-export function resolveReadiedReactionsWithRollLogs(combat, triggerId, rng, rules, triggerType = "hostile_turn_start", triggerActionId) {
+export function resolveReadiedReactionsWithRollLogs(combat, triggerId, rng, rules, triggerType = "hostile_turn_start", triggerActionId, incomingSpell?: { originalSpell?: unknown }) {
     let current = combat;
     const rollLogs = [];
     let interruptedAction = false;
@@ -3132,7 +3133,7 @@ export function resolveReadiedReactionsWithRollLogs(combat, triggerId, rng, rule
             !canUseCombatantReaction(reactor)) {
             continue;
         }
-        const counterspell = resolveReadiedCounterspell(current, reactor, target, triggerType, triggerActionId, rng);
+        const counterspell = resolveReadiedCounterspell(current, reactor, target, triggerType, triggerActionId, rng, incomingSpell);
         if (counterspell) {
             current = counterspell.combat;
             rollLogs.push(...counterspell.rollLogs);
@@ -3157,11 +3158,11 @@ export function resolveReadiedReactionsWithRollLogs(combat, triggerId, rng, rule
     }
     return { combat: current, rollLogs, interruptedAction };
 }
-function resolveReadiedCounterspell(combat, reactor, target, triggerType, triggerActionId, rng) {
+function resolveReadiedCounterspell(combat, reactor, target, triggerType, triggerActionId, rng, incomingSpell) {
     if (reactor.tactics?.readiedAction !== "spell_counterspell" || triggerType !== "target_casts_spell") {
         return undefined;
     }
-    const targetSpellLevel = counterspellTargetSpellLevel(triggerActionId);
+    const targetSpellLevel = counterspellTargetSpellLevel(triggerActionId, incomingSpell);
     if (targetSpellLevel === undefined) {
         return undefined;
     }
@@ -3193,12 +3194,12 @@ function resolveReadiedCounterspell(combat, reactor, target, triggerType, trigge
         rollLogs: [makeCombatRollLog(reactor.id, "spell_counterspell", checkRoll)]
     };
 }
-function counterspellTargetSpellLevel(spellId) {
-    if (!spellId || !isAutomatedSrdSpellId(spellId)) {
-        return undefined;
-    }
-    const level = automatedSrdSpellLevel(spellId);
-    return Number.parseInt(level, 10);
+function counterspellTargetSpellLevel(spellId, incomingSpell) {
+    if (spellId && isAutomatedSrdSpellId(spellId)) return Number.parseInt(automatedSrdSpellLevel(spellId), 10);
+    const original = incomingSpell?.originalSpell;
+    if (!original || original.id !== spellId || typeof spellId !== 'string' || !/^spell-created-[A-Za-z0-9_-]{1,145}$/.test(spellId)) return undefined;
+    const checked = originalSpellSpec.validateSpell(Object.fromEntries(Object.entries(original).filter(([key]) => !['id', 'sourceEventId'].includes(key))));
+    return checked.ok ? checked.spell.level : undefined;
 }
 function availableCombatantSpellSlotLevel(combatant, minimumLevel) {
     return combatant.resources

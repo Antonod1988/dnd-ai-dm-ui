@@ -8,6 +8,8 @@ The source is AGPL-3.0. This project uses an independently written dialogue queu
 
 ## RPG dialogue implementation
 
+The current window uses a chronological scrollable conversation with distinct speaker cards; the composer and recipient choice remain below the speech area. A desktop/mobile check at1440/425 pixels showed no horizontal overflow and a reachable composer. Live2026-10-12: after hearing Тарн, Элиан addressed Вея; the unseen planned line was cancelled, Вея answered first via one explicit Luna response request, and HP, coins, turn7 and world time stayed unchanged. This is runtime evidence in an existing QA campaign; the original Mira campaign was preserved.
+
 - A single selected model can speak for the DM and several companions/NPCs in one short batch. Multiple visible personalities do not require one model request per personality.
 - Each line has a validated speaker ID. The game never lets the model speak as the human player.
 - Only presented lines enter the journal/chat. Future planned replies remain uncommitted.

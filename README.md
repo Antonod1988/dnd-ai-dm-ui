@@ -104,3 +104,5 @@ General physical scene actions and their present limits: [ENVIRONMENT_INTERACTIO
 Persistent NPC battles, fixed profiles and durable wounds: [NPC_COMBAT.md](NPC_COMBAT.md). Their ordinary attacks and catalog spells share initiative/action resources; a civilian conflict does not invent treasure or location-quest rewards.
 
 Social checks, relationships, restitution and the memory of player claims: [SOCIAL_MECHANICS.md](SOCIAL_MECHANICS.md). Speech can change real NPC attitudes; payment and repeated attempts are guarded independently of narration. Detailed relationship controls are collapsed in NPC cards.
+
+Original magic now supports separate hero/NPC books and exact owned casts: [ORIGINAL_SPELLBOOKS.md](ORIGINAL_SPELLBOOKS.md). Scene conversations use distinct chronological speaker cards, addressed interjections and explicit action proposals: [DIALOGUE_AND_COOP.md](DIALOGUE_AND_COOP.md).
