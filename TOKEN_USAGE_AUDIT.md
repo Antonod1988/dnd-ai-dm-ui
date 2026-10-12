@@ -1,5 +1,15 @@
 # Game token usage audit — 2026-10-12
 
+## Current obstacle evaluation
+
+Ready-goal availability is bounded to three reasons/routes and uses the unchanged12k campaign context cap. Hidden NPCs/checks and remote life details are removed from current packets; source world/history is not deleted. Questions discuss hypothetical alternatives without a second intent stage or game mutation. Opening the advice dialog and reading obstacles/history makes no model request.
+
+Three isolated actual GPT-6-Luna questions on the same declared fallen/dead-NPC fixture reported2298/130,2313/146 and2332/163 input/output,cache0 (6943/439 combined). Hard rounded timing and a technical state phrase were quality failures retained in local artifacts; the final reply kept timing approximate and suggestions hypothetical. These drafts were not applied to gameplay.
+
+A normal native freeform turn on an isolated copy of the actual fixture added and rolled a new rune-reading method without the dead NPC. The Investigation4/DC12 failure remained a failure, with no discovery/reward. Intent4771/247 needed one bounded intent repair5106/209; narration4678/137 followed. Total14555 input/593 output over3 reported calls,cache0. The correction is real overhead, not hidden in a claimed two-call average. All six inference requests in this checkpoint used21498 input/1032 output; clone play has its own usage ledger, while diagnostic questions are separate. Main campaigns were untouched.
+
+This proves one grounded alternative and its cost, not average campaign economics. The next cost constraint is format reliability and duplicated two-stage instructions; broader fixed-scene evaluation should determine whether removing a repeat or reducing data preserves intent quality.636 tests/124JS syntax and isolated smoke pass. See [QUEST_WORKSPACE.md](QUEST_WORKSPACE.md) for state/provenance limits.
+
 ## Quantified quests follow-up
 
 Partial obligations add numeric progress, eligible possession and source stock to the selected context. Full receipt arrays stay in the archive/read-only paginated UI; context uses only the latest exact receipt. The12,000-character global context cap is unchanged. Private decline/abandon through the explicit UI makes no model call; optional notification uses ordinary speech narration. A freeform private decision still needs intent interpretation. Inventory confirmation is current-time evidence, not an invented historical pickup.

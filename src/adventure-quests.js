@@ -2,6 +2,8 @@ const {z}=require('zod');
 const model=require('./adventure-model');
 const lore=require('./scene-checks');
 const access=require('./adventure-access');
+const actors=require('./adventure-actors');
+const loot=require('./adventure-loot');
 const key=z.string().min(1).max(100);
 const deliverySchema=z.object({type:z.literal('deliver'),questId:key,objectiveId:key,quantity:z.number().int().min(1).max(20).default(1),description:z.string().max(500).optional()}).strict();
 const lifecycleSchema=z.object({type:z.enum(['decline_quest','abandon_quest']),questId:key,npcId:key.optional(),reason:z.string().trim().max(400).default(''),description:z.string().max(500).optional()}).strict();
@@ -20,8 +22,69 @@ function allocations(hero,id,limit){
   }
   return plans;
 }
-function npcAvailable(adventure,npc){const body=adventure.environment?.npcStates?.find(r=>r.npcId===npc.id)?.body;return !npc.hidden&&(!body||body.hp.current>0&&!body.deathSaves?.dead&&!body.conditions?.some(c=>['dead','unconscious','incapacitated','stunned','paralyzed','petrified','fled','captured'].includes(c)));}
-function publicQuests(adventure,state){const hero=state?.party.members.find(m=>m.id===state.party.heroId),canDecide=Boolean(hero&&!state.combat&&canAct(hero));return adventure.quests.map(q=>({...q,canDecline:canDecide&&q.status==='offered',canAbandon:canDecide&&q.status==='active',objectives:q.objectives.map(o=>['acquire','deliver'].includes(o.kind)?{...o,...objectiveProgress(o)}:{...o})}));}
+function npcAvailable(state,adventure,npc){return actors.interactionStatus(state,adventure,npc.id).available;}
+function objectiveAvailability(state,adventure,quest,objective){
+  const result=(status,reasons=[],recovery=[])=>({state:status,reasons:reasons.slice(0,3),recovery:recovery.slice(0,3),source:'current_state'});
+  if(quest.status!=='active'||!readyObjectives(quest).includes(objective))return result('waiting',[{code:'not_ready'}]);
+  if(state.combat)return result('waiting',[{code:'combat_active'}]);
+  if(!actors.interactionStatus(state,adventure,state.party.heroId).available)return result('waiting',[{code:'hero_unavailable'}]);
+  const hero=state.party.members.find(m=>m.id===state.party.heroId);
+  const actorObstacle=id=>{
+    const status=actors.interactionStatus(state,adventure,id);
+    if(status.available)return null;
+    const npc=adventure.npcs.find(n=>n.id===id),known=status.known&&!npc?.hidden,reason={code:`actor_${status.code==='hidden'?'not_here':status.code}`,...(known?{targetId:id}:{}),...(known&&!status.local?{locationId:npc?.locationId}:{})};
+    const recovery=!status.local&&known?[{kind:'visit',targetId:id,locationId:npc?.locationId}]:['dying','stable'].includes(status.code)||status.code==='unconscious'&&actors.bodyFor(state,adventure,id)?.hp.current===0?[{kind:'aid',targetId:id}]:[{kind:'discuss'}];
+    return result(status.code==='dead'?'blocked':'waiting',[reason],recovery);
+  };
+  if(objective.kind==='talk')return actorObstacle(objective.targetId)||result('ready');
+  if(objective.kind==='deliver'){
+    const obstruction=actorObstacle(objective.recipientId);if(obstruction)return obstruction;
+    const progress=objectiveProgress(objective),free=eligible(hero,objective.targetId),freeCount=free.reduce((n,i)=>n+i.quantity,0),plans=allocations(hero,objective.targetId,Math.min(20,progress.remainingQuantity));
+    if([...plans.keys()].some(n=>n>0))return result('ready');
+    const held=owned(hero,objective.targetId),reasons=[],recovery=[];
+    if(held.some(i=>i.attuned)){reasons.push({code:'item_attuned',targetId:objective.targetId});recovery.push({kind:'unequip',targetId:objective.targetId});}
+    if(held.some(i=>Object.values(hero.equipment||{}).includes(i.itemId))){reasons.push({code:'item_equipped',targetId:objective.targetId});recovery.push({kind:'unequip',targetId:objective.targetId});}
+    if(freeCount&&!plans.has(1))reasons.push({code:'item_unsplittable',targetId:objective.targetId});
+    if(!held.length){
+      reasons.push({code:'item_not_owned',targetId:objective.targetId,quantity:progress.remainingQuantity});
+      const source=adventure.items.find(i=>i.id===objective.targetId);
+      if(source&&loot.remainingQuantity(source)>0&&!(source.access?.concealed&&!access.describe(state,adventure,source).available))recovery.push({kind:'gather',targetId:source.id,locationId:source.locationId});
+      else if(source&&loot.remainingQuantity(source)<=0)reasons.push({code:'source_depleted',targetId:source.id});
+    }
+    const carrier=state.party.members.find(p=>p.id!==hero.id&&p.inventory?.some(i=>i.quantity>0&&i.tags?.includes('world_item')&&i.tags.includes(objective.targetId)));
+    if(carrier){
+      reasons.push({code:'item_held_by_party',targetId:carrier.id});
+      const item=owned(carrier,objective.targetId).find(i=>!i.attuned&&!i.bound&&!i.protected&&!Object.values(carrier.equipment||{}).includes(i.itemId)&&(!i.charges||i.quantity===1)),record=adventure.companions?.records?.find(r=>r.npcId===carrier.id);
+      const status=actors.interactionStatus(state,adventure,carrier.id),retrieval=status.local&&['dead','unconscious','dying','stable'].includes(status.code),npc=adventure.npcs.find(n=>n.id===carrier.id),hostile=(npc?.disposition||adventure.environment?.npcStates?.find(r=>r.npcId===carrier.id)?.disposition)==='hostile';
+      if(item&&record?.state==='joined'&&record.joined!==false&&carrier.kind==='ally'&&(retrieval||status.available&&!hostile))recovery.unshift({kind:'party_transfer',targetId:carrier.id});
+      else recovery.unshift({kind:'discuss'});
+    }
+    if(!recovery.length)recovery.push({kind:'discuss'});
+    return result('waiting',reasons,recovery);
+  }
+  if(objective.kind==='acquire'){
+    const item=adventure.items.find(i=>i.id===objective.targetId);if(!item)return result('blocked',[{code:'unknown_reference'}],[{kind:'discuss'}]);
+    const status=access.describe(state,adventure,item);
+    if(item.access?.concealed&&!status.available)return result('waiting',[{code:'source_locked'}],[{kind:'discuss'}]);
+    if(loot.remainingQuantity(item)<=0)return result('waiting',[{code:'source_depleted',targetId:item.id}],[{kind:'discuss'}]);
+    if(item.locationId!==adventure.currentLocationId)return result('waiting',[{code:'source_not_here',targetId:item.id,locationId:item.locationId}],[{kind:'visit',locationId:item.locationId}]);
+    if(!status.available)return result('waiting',[{code:'source_locked',targetId:item.id}],[{kind:'discuss'}]);
+    return result('ready');
+  }
+  if(objective.kind==='check'){
+    const definitions=access.methods(adventure,[objective.targetId,...(objective.alternativeTargetIds||[])]),checks=lore.publicChecks(state),attempt=d=>checks.find(c=>c.id===adventure.loreCheckIds[d.id]);
+    if(!definitions.length)return result('blocked',[{code:'unknown_reference'}],[{kind:'discuss'}]);
+    if(definitions.some(d=>attempt(d)?.result?.success))return result('ready');
+    const unused=definitions.filter(d=>!attempt(d)?.attempted);
+    if(!unused.length){const ids=adventure.events.filter(e=>e.kind==='check'&&e.source==='scene_check'&&e.success===false&&definitions.some(d=>d.id===e.targetId)).map(e=>e.id).slice(-3);return result('waiting',[{code:'checks_exhausted',targetId:objective.targetId,...(ids.length?{evidenceEventIds:ids}:{})}],[{kind:'new_approach',targetId:objective.targetId}]);}
+    for(const d of unused)if(d.locationId===adventure.currentLocationId&&(!d.npcId||actors.interactionStatus(state,adventure,d.npcId).available))return result('ready');
+    const local=unused.find(d=>d.locationId===adventure.currentLocationId);
+    if(local?.npcId){const obstruction=actorObstacle(local.npcId),remote=unused.find(d=>d.locationId!==adventure.currentLocationId);if(obstruction&&remote)return result('waiting',obstruction.reasons,[{kind:'visit',locationId:remote.locationId},...obstruction.recovery]);return obstruction;}
+    return result('waiting',[{code:'check_not_here',targetId:unused[0].id,locationId:unused[0].locationId}],[{kind:'visit',locationId:unused[0].locationId}]);
+  }
+  return result('ready');
+}
+function publicQuests(adventure,state){const hero=state?.party.members.find(m=>m.id===state.party.heroId),canDecide=Boolean(hero&&!state.combat&&canAct(hero));return adventure.quests.map(q=>({...q,canDecline:canDecide&&q.status==='offered',canAbandon:canDecide&&q.status==='active',objectives:q.objectives.map(o=>({...o,...(['acquire','deliver'].includes(o.kind)?objectiveProgress(o):{}),...(state&&q.status==='active'&&readyObjectives(q).includes(o)?{availability:objectiveAvailability(state,adventure,q,o)}:{})}))}));}
 function validateDecision(state,adventure,input){
   const bad=text=>{throw Object.assign(new Error(text),{status:400});};
   const parsed=lifecycleSchema.safeParse(input);
@@ -31,7 +94,7 @@ function validateDecision(state,adventure,input){
   if(!canAct(hero))bad('Герой сейчас не может принять решение по заданию.');
   if(!quest||quest.status!==before)bad('Это решение уже недоступно для задания.');
   const npc=command.npcId?adventure.npcs.find(n=>n.id===command.npcId&&n.id===quest.giverId&&n.locationId===adventure.currentLocationId):null;
-  if(command.npcId&&(!npc||!npcAvailable(adventure,npc)))bad('Уведомить можно только доступного рядом персонажа, который предложил это задание.');
+  if(command.npcId&&(!npc||!npcAvailable(state,adventure,npc)))bad('Уведомить можно только доступного рядом персонажа, который предложил это задание.');
   return {command,quest,before,npc,hero};
 }
 function decide(state,adventure,input,sourceId){
@@ -53,7 +116,7 @@ function available(service,state,adventure){
   for(const q of adventure.quests)for(const o of readyObjectives(q)){
     if(o.kind==='deliver'){
       const npc=adventure.npcs.find(n=>n.id===o.recipientId&&n.locationId===adventure.currentLocationId),items=eligible(hero,o.targetId),ownedQuantity=items.reduce((n,i)=>n+i.quantity,0),remaining=objectiveProgress(o).remainingQuantity,plans=allocations(hero,o.targetId,Math.min(20,remaining)),allowedQuantities=[...plans.keys()].filter(q=>q>0).sort((a,b)=>a-b),quantity=allowedQuantities[0],item=plans.get(quantity)?.[0].item,maxQuantity=allowedQuantities.at(-1);
-      if(npc&&npcAvailable(adventure,npc)&&item&&maxQuantity)actions.push({id:`deliver:${q.id}:${o.id}`,kind:'quest',questId:q.id,objectiveId:o.id,maxQuantity,remainingQuantity:remaining,ownedQuantity,quantity,allowedQuantities,label:en?`Give ${quantity} × ${item.name} to ${npc.name}`:`Передать ${quantity} × ${item.name}: ${npc.name}`,command:{type:'deliver',questId:q.id,objectiveId:o.id,quantity}});
+      if(npc&&npcAvailable(state,adventure,npc)&&item&&maxQuantity)actions.push({id:`deliver:${q.id}:${o.id}`,kind:'quest',questId:q.id,objectiveId:o.id,maxQuantity,remainingQuantity:remaining,ownedQuantity,quantity,allowedQuantities,label:en?`Give ${quantity} × ${item.name} to ${npc.name}`:`Передать ${quantity} × ${item.name}: ${npc.name}`,command:{type:'deliver',questId:q.id,objectiveId:o.id,quantity}});
     }
     if(o.kind==='check')for(const definition of access.methods(adventure,[o.targetId,...(o.alternativeTargetIds||[])])){
       const id=definition.id,check=checks.find(c=>c.id===adventure.loreCheckIds[id]);
@@ -76,7 +139,7 @@ function deliver(state,adventure,input){
   const hero=state.party.members.find(m=>m.id===state.party.heroId),npc=adventure.npcs.find(n=>n.id===objective.recipientId&&n.locationId===adventure.currentLocationId);
   if(!canAct(hero))bad('Герой сейчас не может передать предмет.');
   if(!npc)bad('Адресат сейчас не рядом.');
-  if(!npcAvailable(adventure,npc))bad('Адресат сейчас не может принять предмет.');
+  if(!npcAvailable(state,adventure,npc))bad('Адресат сейчас не может принять предмет.');
   const remaining=objectiveProgress(objective).remainingQuantity;
   if(command.quantity>remaining)bad('Количество превышает остаток обязательства.');
   const items=eligible(hero,objective.targetId);
@@ -132,4 +195,4 @@ function reconcileEvidence(state,adventure){
     }
   }
 }
-module.exports={available,deliver,validateDecision,decide,publicQuests,objectiveProgress,readyObjectives,reconcileEvidence,canAct};
+module.exports={available,deliver,validateDecision,decide,publicQuests,objectiveProgress,objectiveAvailability,readyObjectives,reconcileEvidence,canAct};

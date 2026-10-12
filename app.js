@@ -29,6 +29,23 @@ let historyPage=null,historyVersion='',historyRequest=0,historyTimer;
 let questState={campaignId:null,filter:null,query:'',selectedId:null};
 let questHistory=null,questHistoryOpen=false,questHistoryRequest=0,mapFocusId=null;
 let questDecisionDraft=null;
+let questAdviceDraft=null;
+function openQuestAdvice(questId,objectiveId){
+  if(busy||!currentView?.ready)return;
+  const quest=currentView.quests.find(q=>q.id===questId),objective=quest?.objectives.find(o=>o.id===objectiveId);
+  if(quest?.status!=='active'||!objective||objective.completed)return;
+  questAdviceDraft={campaignId:currentView.campaign.id,revision:currentView.campaign.revision,questId,objectiveId};
+  $('#questAdviceQuest').textContent=quest.title;
+  $('#questAdviceInput').value=currentView.campaign.language==='en'?`In “${quest.title}”, I am trying to ${objective.text}. What is stopping me now? Suggest a grounded alternative, keeping what has already happened.`:`В задании «${quest.title}» я пытаюсь выполнить шаг: ${objective.text}. Что мне сейчас мешает? Предложи другой путь, который опирается на события мира и сохраняет мои прошлые действия.`;
+  $('#questAdviceStatus').textContent='';$('#questAdvice').showModal();
+}
+async function submitQuestAdvice(){
+  if(busy||!questAdviceDraft)return false;
+  const draft=questAdviceDraft,quest=currentView?.quests?.find(q=>q.id===draft.questId),objective=quest?.objectives.find(o=>o.id===draft.objectiveId);
+  if(currentView?.campaign.id!==draft.campaignId||currentView.campaign.revision!==draft.revision||quest?.status!=='active'||!objective||objective.completed){$('#questAdviceStatus').textContent=T('Задача изменилась. Открой её заново перед вопросом.');return false;}
+  const input=$('#questAdviceInput').value.trim();if(!input)return false;
+  const success=await askMaster(input);if(success){$('#questAdvice').close();questAdviceDraft=null;}return success;
+}
 function openQuestDecision(questId,type){
   if(busy||!currentView?.ready)return;
   const quest=currentView.quests.find(q=>q.id===questId),expected=type==='decline_quest'?'offered':type==='abandon_quest'?'active':null;
@@ -411,6 +428,8 @@ async function init() {
   $('#journalCategory').addEventListener('change',()=>{if(!currentView?.ready)return;clearTimeout(historyTimer);historyPage=null;renderJournal(currentView);loadJournal(true);});
   $('#questSearch').addEventListener('input',()=>{if(!currentView?.ready)return;questState.query=$('#questSearch').value;questState.visibleCount=40;renderQuests(currentView);});
   for(const id of ['#closeQuestDecision','#cancelQuestDecision'])$(id).addEventListener('click',()=>$('#questDecision').close());
+  $('#closeQuestAdvice').addEventListener('click',()=>$('#questAdvice').close());
+  $('#questAdviceForm').addEventListener('submit',event=>{event.preventDefault();void submitQuestAdvice();});
   $('#questDecisionForm').addEventListener('submit',async event=>{
     event.preventDefault();if(busy||!questDecisionDraft)return;
     if(currentView?.campaign.id!==questDecisionDraft.campaignId){$('#questDecisionStatus').textContent=T('Открой задачу в нужной кампании.');return;}
@@ -456,6 +475,7 @@ async function init() {
     if(event.target.closest('[data-quest-history-more]')){void loadQuestHistory(true);return;}
     if(event.target.closest('[data-quest-history-retry]')){const previous=questHistory?.data;questHistory=previous?{...questHistory,status:'ready'}:null;void loadQuestHistory(Boolean(previous));return;}
     const questDecision=event.target.closest('[data-quest-decision]');if(questDecision){openQuestDecision(questDecision.dataset.questId,questDecision.dataset.questDecision);return;}
+    const questAdvice=event.target.closest('[data-quest-advice]');if(questAdvice){openQuestAdvice(questAdvice.dataset.questAdvice,questAdvice.dataset.objectiveId);return;}
     const questRecord=event.target.closest('[data-quest-record]');if(questRecord){const record=questHistory?.data?.entries.find(entry=>entry.id===questRecord.dataset.questRecord);if(record){$('#journalCategory').value='all';$('#journalSearch').value=String(record.text).slice(0,80);historyPage=null;renderJournal(currentView);showSection('journal');void loadJournal(true);}return;}
     if(event.target.closest('[data-quest-journal]')){$('#journalCategory').value='all';$('#journalSearch').value='';historyPage=null;renderJournal(currentView);showSection('journal');void loadJournal(true);return;}
     const questPlace=event.target.closest('[data-quest-place]');if(questPlace){mapFocusId=questPlace.dataset.questPlace;renderMap(currentView);showSection('map');[...document.querySelectorAll('[data-map-location]')].find(card=>card.dataset.mapLocation===mapFocusId)?.scrollIntoView({block:'nearest'});return;}

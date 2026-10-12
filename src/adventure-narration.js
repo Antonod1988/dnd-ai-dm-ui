@@ -3,6 +3,7 @@ const prose=require('./adventure-prose');
 const dialogue=require('./dialogue');
 const crypto=require('node:crypto');
 const {relevance}=require('./context-memory');
+const actors=require('./adventure-actors');
 const MAX_SCENE_ACTORS=12;
 const clip=(value,max)=>String(value||'').slice(0,max);
 // A narrow guard for explicit current-battle closure claims. This is not a
@@ -15,11 +16,8 @@ function assertOngoingCombat(text,ongoing){
 const SCENE_DIALOGUE_RULES='When characters are talking or responding to a social player intent, include optional lines:[{speakerId,text,interruptsSpeakerId?,proposal?:{actionId,label}}] in this SAME response. narration frames the scene; lines carry the actual character speech without repeating it in narration. At most 5 lines, each at most 650 characters. Use only exact dialogue.actors ids; never speak for the human player. Give present characters distinct motives and reactions. interruptsSpeakerId may mark an interruption of another supplied speaker; it is presentation, not an action. Proposals use only exact dialogue.actions ids and are invitations pending player acceptance. Their label preserves the supplied action default quantity; a different amount is chosen by the player separately. Never execute a proposal or describe future planned replies as already heard. No extra speaker requests are made.';
 function eligibleSpeakers(state,meta){
   const humanIds=new Set(state.party.members.filter(m=>m.kind==='player'||m.id===state.party.heroId).map(m=>m.id));
-  const cannotSpeak=body=>body&&(typeof body.hp==='number'?body.hp:body.hp?.current)<=0||body?.deathSaves?.dead||body?.conditions?.some(c=>['dead','unconscious','incapacitated','stunned','paralyzed','petrified','fled'].includes(c));
-  const bodies=new Map((meta.environment?.npcStates||[]).map(record=>[record.npcId,record.body]));
-  const combatBody=id=>state.combat?.participants?.find(person=>(person.sourceCharacterId||person.id)===id);
-  const companions=state.party.members.filter(m=>{const npc=meta.npcs.find(n=>n.id===m.id);return m.kind==='ally'&&[m,bodies.get(m.id),combatBody(m.id)].every(body=>!cannotSpeak(body))&&(!npc||!npc.hidden&&npc.locationId===meta.currentLocationId);});
-  const npcs=meta.npcs.filter(n=>n.locationId===meta.currentLocationId&&!n.hidden&&[bodies.get(n.id),combatBody(n.id)].every(body=>!cannotSpeak(body)));
+  const companions=state.party.members.filter(m=>m.kind==='ally'&&actors.interactionStatus(state,meta,m.id).available);
+  const npcs=meta.npcs.filter(n=>actors.interactionStatus(state,meta,n.id).available);
   const seen=new Set(['dm','player',...humanIds]);
   return [...companions,...npcs].filter(person=>{if(seen.has(person.id))return false;seen.add(person.id);return true;});
 }

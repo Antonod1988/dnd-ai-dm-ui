@@ -45,6 +45,6 @@ Existing items without access fields stay available as before; descriptive prose
 
 ## Limits still open
 
-Alternative methods currently share a check objective. Arbitrary multi-branch negotiation, commodity quantities, NPC-to-player return of delivered objects, quest cancellation and timed failure/recovery need additional mechanics. New closed caches use explicit access conditions; physical obstacle types beyond checks, held keys and victories need further primitives. Older quests with a `talk` report objective retain that schema and are not silently converted to delivery.
+Alternative methods currently share a check objective. Finite quantities, partial acquisition/delivery, decline/abandon and current obstacles are implemented in [QUEST_WORKSPACE.md](QUEST_WORKSPACE.md). Arbitrary multi-branch negotiation, changing an established recipient/reward, NPC-to-player return of already delivered objects and timed failure/recovery still need additional mechanics. New closed caches use explicit access conditions; physical obstacle types beyond checks, held keys and victories need further primitives. Older quests with a `talk` report objective retain that schema and are not silently converted to delivery.
 
 These limits are tracked alongside broader combat, survival, social and image work in ROADMAP.md and DEVELOPMENT.md.

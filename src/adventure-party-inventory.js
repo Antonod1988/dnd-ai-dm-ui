@@ -42,13 +42,13 @@ function eligibility(state,adventure,memberId,rules,{allowRetrieval=false}={}){
   if(npc.disposition==='hostile'||body?.disposition==='hostile')return {code:'companion_hostile',message:'Враждебный персонаж сейчас не согласен распределять вещи.'};
   return {member,record,npc};
 }
-function protectedItem(item,owner,adventure,quantity=1){
+function protectedItem(item,owner,adventure,quantity=1,{returnToHero=false}={}){
   if(String(item.itemId).startsWith('scene_prop_')||item.tags?.includes('scene_prop'))return {code:'physical_prop',message:'Предмет сцены требует отдельной физической передачи.',alternatives:['Оставьте предмет в сцене или выберите физическое действие.']};
   if(Object.values(owner.equipment||{}).includes(item.itemId)&&(item.charges||item.quantity-quantity<1))return {code:'equipped_item',message:'Нельзя передать последний используемый экземпляр, автоматически сняв его.',alternatives:['Передайте только запасные экземпляры или сначала явно снимите экипировку.']};
   if(item.attuned)return {code:'attuned_item',message:'Сначала прекратите настройку на предмет.',alternatives:['Явно прекратите настройку и повторите передачу.']};
   const tags=new Set(item.tags||[]),quest=(adventure.quests||[]).find(q=>['offered','active','accepted'].includes(q.status)&&q.objectives.some(o=>o.targetId&&(o.targetId===item.itemId||tags.has(o.targetId))));
-  if(quest||tags.has('quest')||tags.has('quest_item')||item.protected||item.bound)return {code:'protected_quest_item',message:'Эта вещь защищена или связана с задачей; обычное распределение её не передаёт.',alternatives:['Используйте явную передачу адресату задания через действие deliver.']};
-  if((adventure.items||[]).some(i=>i.access?.conditions?.some(c=>c.kind==='item'&&(c.targetId===item.itemId||tags.has(c.targetId)))))return {code:'required_key',message:'Эта вещь служит ключом к установленному препятствию.',alternatives:['Оставьте ключ у героя до завершения соответствующего действия.']};
+  if(!returnToHero&&(quest||tags.has('quest')||tags.has('quest_item'))||item.protected||item.bound)return {code:'protected_quest_item',message:'Эта вещь защищена или связана с задачей; обычное распределение её не передаёт.',alternatives:['Используйте явную передачу адресату задания через действие deliver.']};
+  if(!returnToHero&&(adventure.items||[]).some(i=>i.access?.conditions?.some(c=>c.kind==='item'&&(c.targetId===item.itemId||tags.has(c.targetId)))))return {code:'required_key',message:'Эта вещь служит ключом к установленному препятствию.',alternatives:['Оставьте ключ у героя до завершения соответствующего действия.']};
   return null;
 }
 function sourceRows(owner,itemId){return owner.inventory.filter(item=>item.itemId===itemId);}
@@ -65,9 +65,9 @@ function checkedQuantity(rows,itemId){
   if(rows.some(i=>i.charges)&&(rows.length!==1||total!==1))return {code:'ambiguous_charged_stack',message:'Заряженные вещи передаются только целым отдельным экземпляром.'};
   return {total};
 }
-function planTransfer(owner,recipient,adventure,itemId,quantity){
+function planTransfer(owner,recipient,adventure,itemId,quantity,{returnToHero=false}={}){
   const rows=sourceRows(owner,itemId),counts=checkedQuantity(rows,itemId);if(counts.code)return counts;
-  for(const row of rows){const blocked=protectedItem(row,owner,adventure,quantity);if(blocked)return blocked;}
+  for(const row of rows){const blocked=protectedItem(row,owner,adventure,quantity,{returnToHero});if(blocked)return blocked;}
   if(quantity>counts.total)return {code:'not_enough_items',message:'У владельца нет запрошенного количества.'};
   if(rows.some(i=>i.charges)&&quantity!==1)return {code:'charged_instance_only',message:'Нельзя разделить заряды одного экземпляра между владельцами.'};
   let left=quantity;const fragments=[];
@@ -92,7 +92,7 @@ async function resolve({state,adventure,command:input,sourceId}){
   const control=combatControl(state,rules);if(control.code)return refuse(state,adventure,control.code,control.message);
   if(command.fromId===command.toId)return refuse(state,adventure,'same_owner','Вещь уже у этого владельца.');
   const from=eligibility(state,adventure,command.fromId,rules,{allowRetrieval:command.toId===state.party.heroId}),to=eligibility(state,adventure,command.toId,rules);for(const participant of [from,to])if(participant.code)return refuse(state,adventure,participant.code,participant.message);
-  const planned=planTransfer(from.member,to.member,adventure,command.itemId,command.quantity);if(planned.code)return refuse(state,adventure,planned.code,planned.message,planned.alternatives);
+  const planned=planTransfer(from.member,to.member,adventure,command.itemId,command.quantity,{returnToHero:command.toId===state.party.heroId&&command.fromId!==state.party.heroId});if(planned.code)return refuse(state,adventure,planned.code,planned.message,planned.alternatives);
   const nextState=structuredClone(state),nextAdventure=structuredClone(adventure),sender=nextState.party.members.find(m=>m.id===command.fromId),recipient=nextState.party.members.find(m=>m.id===command.toId);
   if(control.combat)nextState.combat=control.combat;
   let left=command.quantity;sender.inventory=sender.inventory.flatMap(item=>{if(item.itemId!==command.itemId||!left)return [item];const moved=Math.min(left,item.quantity);left-=moved;return item.quantity>moved?[{...item,quantity:item.quantity-moved}]:[];});
@@ -152,11 +152,12 @@ async function publicOptions({state,adventure}){
   if(control.code||hero.code)return {available:false,participants:[],maxQuantity:MAX_QUANTITY,inCombat:Boolean(state.combat),reason:control.message||hero.message};
   const runner=new rules.RpgGameService(null,new Map()).runner;
   const participants=state.party.members.filter(member=>!eligibility(state,adventure,member.id,rules,{allowRetrieval:true}).code).map(member=>({id:member.id,name:member.name,kind:member.id===state.party.heroId?'hero':'companion',canReceive:!eligibility(state,adventure,member.id,rules).code,retrieval:Boolean(eligibility(state,adventure,member.id,rules,{allowRetrieval:true}).retrieval),items:[...new Set(member.inventory.map(i=>i.itemId))].map(itemId=>{
-    const rows=sourceRows(member,itemId),count=checkedQuantity(rows,itemId);let blocked=count.code?count:rows.map(item=>protectedItem(item,member,adventure)).find(Boolean);
+    const rows=sourceRows(member,itemId),count=checkedQuantity(rows,itemId),returnToHero=member.id!==state.party.heroId;let blocked=count.code?count:rows.map(item=>protectedItem(item,member,adventure,1,{returnToHero})).find(Boolean);
     if(itemId==='gold_piece'&&rows.some(item=>!ordinaryCoin(item)))blocked={code:'nonstandard_currency',message:'Эти монеты имеют отдельные свойства и требуют отдельного действия.'};
     const equipped=Object.values(member.equipment||{}).includes(itemId),retrieval=Boolean(eligibility(state,adventure,member.id,rules,{allowRetrieval:true}).retrieval);
     let canEquip=false;if(!state.combat&&!count.code&&!equipped&&!retrieval&&itemId!=='gold_piece')try{canEquip=runner.equipItem(structuredClone(state),itemId,member.id).ok;}catch{}
-    return {itemId,name:rows[0].name,quantity:count.total||0,maxQuantity:blocked?0:Math.min(count.total-(equipped?1:0),rows[0].charges?1:MAX_QUANTITY),blocked:blocked?.message||null,code:blocked?.code||null,alternatives:blocked?.alternatives||[],equipped,canEquip:Boolean(canEquip),canUnequip:!state.combat&&equipped&&!count.code};
+    const returnToHeroOnly=returnToHero&&rows.some(item=>protectedItem(item,member,adventure,1)?.code==='protected_quest_item'||protectedItem(item,member,adventure,1)?.code==='required_key');
+    return {itemId,name:rows[0].name,quantity:count.total||0,maxQuantity:blocked?0:Math.min(count.total-(equipped?1:0),rows[0].charges?1:MAX_QUANTITY),returnToHeroOnly,blocked:blocked?.message||null,code:blocked?.code||null,alternatives:blocked?.alternatives||[],equipped,canEquip:Boolean(canEquip),canUnequip:!state.combat&&equipped&&!count.code};
   })}));
   return {available:participants.length>1,participants,maxQuantity:MAX_QUANTITY,inCombat:Boolean(state.combat),cost:control.cost};
 }

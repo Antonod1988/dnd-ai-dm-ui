@@ -15,6 +15,7 @@ const measuredAi=require('./adventure-usage');
 const loot=require('./adventure-loot');
 const economy=require('./adventure-economy');
 const quests=require('./adventure-quests');
+const actors=require('./adventure-actors');
 const access=require('./adventure-access');
 const narration=require('./adventure-narration');
 const dialogue=require('./dialogue');
@@ -29,12 +30,12 @@ const partyInventory=require('./adventure-party-inventory');
 const partyOrders=require('./adventure-party-orders');
 const spellbooks=require('./adventure-spellbooks');
 function medicalText(event,language){const en=language==='en';return event.type==='death_save'?(en?`${event.name}: death save ${event.result.roll.total}; ${event.transition}.`:`${event.name}: спасбросок от смерти ${event.result.roll.total}; ${event.transition}.`):event.type==='stable_recovery'?(en?`${event.name}: conscious again with1 HP.`:`${event.name}: возвращается в сознание с1 HP.`):(en?`${event.name}: recovery after stabilization in${event.hours} hours.`:`${event.name}: восстановление после стабилизации через${event.hours} ч.`);}
-function npcAvailable(adventure,id){const npc=adventure.npcs.find(n=>n.id===id);const body=adventure.environment?.npcStates?.find(n=>n.npcId===id)?.body;return Boolean(npc&&!npc.hidden&&(!body||(body.hp.current>0&&!body.conditions?.some(c=>['dead','unconscious','incapacitated','stunned','paralyzed','petrified','fled'].includes(c)))));}
-function blockedNpcCommand(adventure,command){
-  if(command.type==='talk'&&!npcAvailable(adventure,command.npcId))return 'Этот персонаж сейчас не может разговаривать.';
-  if(command.type==='deliver'){const recipient=adventure.quests.find(q=>q.id===command.questId)?.objectives.find(o=>o.id===command.objectiveId)?.recipientId;if(recipient&&!npcAvailable(adventure,recipient))return 'Адресат сейчас не может принять предмет.';}
+function npcAvailable(adventure,id,state){return actors.interactionStatus(state,adventure,id).available;}
+function blockedNpcCommand(adventure,command,state){
+  if(command.type==='talk'){const status=actors.interactionStatus(state,adventure,command.npcId);if(!status.available&&status.code!=='not_here')return 'Этот персонаж сейчас не может разговаривать.';}
+  if(command.type==='deliver'){const recipient=adventure.quests.find(q=>q.id===command.questId)?.objectives.find(o=>o.id===command.objectiveId)?.recipientId,status=recipient&&actors.interactionStatus(state,adventure,recipient);if(status&&!status.available&&status.code!=='not_here')return 'Адресат сейчас не может принять предмет.';}
   if(['trade','service','market_choice'].includes(command.type)){const market=adventure.economy?.markets.find(m=>m.id===command.marketId);if(market&&!economy.merchantAvailable(adventure,market))return 'Этот торговец сейчас не может обслуживать покупателя.';}
-  if(command.type==='scene_check'){const npcId=adventure.loreDefinitions.find(c=>c.id===command.checkId)?.npcId;if(npcId&&!npcAvailable(adventure,npcId))return 'Для этого подхода нужен персонаж, который может действовать.';}
+  if(command.type==='scene_check'){const npcId=adventure.loreDefinitions.find(c=>c.id===command.checkId)?.npcId;if(npcId&&!npcAvailable(adventure,npcId,state))return 'Для этого подхода нужен персонаж, который может действовать.';}
   return null;
 }
 function boundNpcCommand(adventure,command){
@@ -79,25 +80,25 @@ function choices(service, state, adventure) {
   }
   if (!state.combat) {
     available.push({ id: 'inspect', label: 'Осмотреть место', kind: 'exploration', command: { type: 'inspect' } });
-    for (const npc of adventure.npcs.filter(n => n.locationId === location.id && npcAvailable(adventure,n.id))) available.push({ id: `talk:${npc.id}`, label: `Поговорить: ${npc.name}`, kind: 'social', command: { type: 'talk', npcId: npc.id } });
-    for (const npc of adventure.npcs.filter(n=>n.locationId===location.id&&npcAvailable(adventure,n.id))){const relation=social.publicStatus(adventure,npc.id),goal=relation.disposition==='hostile'?'deescalate':'rapport';if(relation.availableApproaches?.[goal].includes('persuasion'))available.push({id:`social:${goal}:${npc.id}`,label:`${goal==='deescalate'?'Примирение':'Наладить контакт'}: ${npc.name}`,kind:'relationship',command:{type:'social',npcId:npc.id,goal,approach:'persuasion'}});}
-    for (const npc of adventure.npcs.filter(n=>n.locationId===location.id&&npcAvailable(adventure,n.id)&&!state.party.members.some(m=>m.id===n.id))) available.push({id:`fight:${npc.id}`,label:`Начать бой: ${npc.name}`,kind:'conflict',command:{type:'npc_combat',npcId:npc.id}});
+    for (const npc of adventure.npcs.filter(n => n.locationId === location.id && npcAvailable(adventure,n.id,state))) available.push({ id: `talk:${npc.id}`, label: `Поговорить: ${npc.name}`, kind: 'social', command: { type: 'talk', npcId: npc.id } });
+    for (const npc of adventure.npcs.filter(n=>n.locationId===location.id&&npcAvailable(adventure,n.id,state))){const relation=social.publicStatus(adventure,npc.id),goal=relation.disposition==='hostile'?'deescalate':'rapport';if(relation.availableApproaches?.[goal].includes('persuasion'))available.push({id:`social:${goal}:${npc.id}`,label:`${goal==='deescalate'?'Примирение':'Наладить контакт'}: ${npc.name}`,kind:'relationship',command:{type:'social',npcId:npc.id,goal,approach:'persuasion'}});}
+    for (const npc of adventure.npcs.filter(n=>n.locationId===location.id&&npcAvailable(adventure,n.id,state)&&!state.party.members.some(m=>m.id===n.id))) available.push({id:`fight:${npc.id}`,label:`Начать бой: ${npc.name}`,kind:'conflict',command:{type:'npc_combat',npcId:npc.id}});
     for(const npc of adventure.npcs.filter(n=>n.locationId===location.id)){const status=companions.publicStatus(adventure,npc.id,state);if(status?.canRecruit)available.push({id:`recruit:${npc.id}`,label:`Пригласить в отряд: ${npc.name}`,kind:'party',command:{type:'recruit',npcId:npc.id}});if(status?.canDismiss)available.push({id:`dismiss:${npc.id}`,label:`Отпустить спутника: ${npc.name}`,kind:'party',command:{type:'dismiss',npcId:npc.id}});}
     const targetIds=[...new Set([...state.party.members.map(m=>m.id),...adventure.npcs.filter(n=>n.locationId===location.id&&!n.hidden).map(n=>n.id)])];
-    for(const id of targetIds){const help=firstAid.publicStatus(state,adventure,id),target=firstAid.targetFor(state,adventure,id);if(help.canStabilize)available.push({id:`aid:stabilize:${id}`,label:`Первая помощь: ${target.name}`,kind:'support',command:{type:'first_aid',method:'stabilize',targetId:id}});if(help.canHeal)for(const item of firstAid.healingItems(hero).slice(0,4))available.push({id:`aid:item:${item.id}:${id}`,label:`Лечение: ${item.name} → ${target.name}`,kind:'support',command:{type:'first_aid',method:'item',targetId:id,itemId:item.id}});}
+    for(const id of targetIds){const help=firstAid.publicStatus(state,adventure,id),target=firstAid.targetFor(state,adventure,id);if(help.canStabilize)available.push({id:`aid:stabilize:${id}`,label:`Первая помощь: ${target.name}`,kind:'support',targetId:id,aidMethod:'stabilize',command:{type:'first_aid',method:'stabilize',targetId:id}});if(help.canHeal)for(const item of firstAid.healingItems(hero).slice(0,4))available.push({id:`aid:item:${item.id}:${id}`,label:`Лечение: ${item.name} → ${target.name}`,kind:'support',targetId:id,aidMethod:'item',command:{type:'first_aid',method:'item',targetId:id,itemId:item.id}});}
     for (const id of location.connectsTo) { const target = adventure.locations.find(n => n.id === id); if (target) available.push({ id: `travel:${id}`, label: `Пойти: ${target.name}`, kind: 'travel', command: { type: 'travel', locationId: id } }); }
     for (const item of adventure.items.filter(i => loot.remainingQuantity(i)>0 && i.locationId === location.id&&access.describe(state,adventure,i).available)) available.push({ id: `pickup:${item.id}`, label: `Взять 1 × ${item.name}`, kind: 'inventory',quantity:1,maxQuantity:loot.remainingQuantity(item),remainingQuantity:loot.remainingQuantity(item),command: { type: 'pickup', itemId: item.id,quantity:1 } });
     available.push({ id: 'rest:short', label: 'Короткий отдых', kind: 'rest', command: { type: 'rest', kind: 'short', hitDiceToSpend: 1 } }, { id: 'rest:long', label: 'Долгий отдых', kind: 'rest', command: { type: 'rest', kind: 'long' } });
-    const supplier=adventure.economy?.markets.find(m=>m.locationId===location.id&&m.offers.some(o=>o.kind==='supplies'&&o.stock>0)&&(!m.merchantId||npcAvailable(adventure,m.merchantId)));
+    const supplier=adventure.economy?.markets.find(m=>m.locationId===location.id&&m.offers.some(o=>o.kind==='supplies'&&o.stock>0)&&(!m.merchantId||npcAvailable(adventure,m.merchantId,state)));
     if(adventure.survival.enabled&&supplier){const offer=supplier.offers.find(o=>o.kind==='supplies'&&o.stock>0);available.push({id:'supplies',label:`Пополнить припасы · ${economy.price(supplier,offer)} монеты`,kind:'survival',command:{type:'supplies'}});}
   }
   for(const member of state.party.members.filter(m=>m.kind==='ally')){const order=partyOrders.publicStatus(state,adventure,member.id);if(order?.canOrder)for(const [mode,label]of [['auto','Действовать самостоятельно'],['conserve','Беречь ячейки'],['defend','Обороняться'],...(order.canSupport?[['support','Поддерживать союзников']]:[])])available.push({id:`order:${member.id}:${mode}`,label:`${member.name}: ${label}`,kind:'party',command:{type:'party_order',npcId:member.id,mode}});}
   for (const action of service.getAvailableActions(state.campaign.id).actions.filter(a => !a.id.startsWith('open_world.') && !a.id.startsWith('system.'))) available.push({ id: `core:${action.id}`, label: action.label, kind: state.combat ? 'combat' : 'progression', command: { type: 'action', actionId: action.id } });
-  return [...available,...quests.available(service,state,adventure)].filter(a=>!blockedNpcCommand(adventure,a.command));
+  return [...available,...quests.available(service,state,adventure)].filter(a=>!blockedNpcCommand(adventure,a.command,state));
 }
 function questChecks(state,adventure){
   const ids=new Set(adventure.quests.filter(q=>['offered','active'].includes(q.status)).flatMap(q=>q.objectives.flatMap(o=>o.kind==='check'?[o.targetId,...(o.alternativeTargetIds||[])]:[])));
-  const checks=lore.publicChecks(state);return adventure.loreDefinitions.filter(d=>access.targets(adventure,d.id).some(id=>ids.has(id))).map(d=>{const c=checks.find(c=>c.id===adventure.loreCheckIds[d.id]);return {id:d.id,alternativeFor:d.alternativeFor,title:d.title,locationId:d.locationId,npcId:d.npcId,skill:d.skill,dc:d.dc,trigger:d.trigger,attempted:Boolean(c?.attempted),success:c?.result?.success,total:c?.result?.roll?.total};});
+  const checks=lore.publicChecks(state);return adventure.loreDefinitions.filter(d=>(!d.npcId||!adventure.npcs.find(n=>n.id===d.npcId)?.hidden)&&access.targets(adventure,d.id).some(id=>ids.has(id))).map(d=>{const c=checks.find(c=>c.id===adventure.loreCheckIds[d.id]);return {id:d.id,alternativeFor:d.alternativeFor,title:d.title,locationId:d.locationId,npcId:d.npcId,skill:d.skill,dc:d.dc,trigger:d.trigger,attempted:Boolean(c?.attempted),success:c?.result?.success,total:c?.result?.roll?.total};});
 }
 async function publicView(service, state, adventure) {
   const raw = await srd.getState(state.campaign.id), hero = raw.hero;
@@ -123,20 +124,20 @@ async function publicView(service, state, adventure) {
     }
     return true;
   };
-  const commerce=economy.publicEconomy(state,adventure);commerce.markets=commerce.markets.filter(m=>!blockedNpcCommand(adventure,{type:'trade',marketId:m.id}));commerce.sellable=commerce.sellable.map(i=>String(i.itemId).startsWith('scene_prop_')?{...i,blocked:'Этот торговец не покупает эту вещь.'}:i);
+  const commerce=economy.publicEconomy(state,adventure);commerce.markets=commerce.markets.filter(m=>!blockedNpcCommand(adventure,{type:'trade',marketId:m.id},state));commerce.sellable=commerce.sellable.map(i=>String(i.itemId).startsWith('scene_prop_')?{...i,blocked:'Этот торговец не покупает эту вещь.'}:i);
   const createdSpellActions=[];
   for(const spell of spellbooks.spellsFor(state,adventure))for(const target of (state.combat?.participants||state.party.members)){const check=core.preflightOriginalSpell(state,spellbooks.spellDefinition(spell),{casterId:state.party.heroId,targetId:target.id});if(check.ok)createdSpellActions.push({spellId:spell.id,targetId:target.id,cost:spell.cost});}
   const companionCasts=new Map(await Promise.all(state.party.members.filter(p=>p.kind==='ally').slice(0,3).map(async p=>[p.id,await partyOrders.spellOptions(state,adventure,p.id)])));
   return { ready: true, campaign: { id: state.campaign.id, title: adventure.title, revision: adventure.revision, turn: adventure.turn, day: adventure.day, hours: adventure.hours, worldIdea: adventure.worldIdea, tone: adventure.tone, language: adventure.language || 'ru',narration:prose.normalize(adventure.narration) },
     hero: { ...cleanCharacter(hero), medical:medicine.publicStatus(state,adventure,hero.id),rest:rest.status(hero,adventure),concept:adventure.heroConcept,classLabel: classNames[hero.classLevels?.[0]?.classId?.replace(/^class_/, '')] || hero.className.replace(' SRD', ''), raceLabel: raceNames[hero.raceId?.replace(/^race_/,'')] || raceNames[hero.ancestry.replace(/-/g,'_')] || hero.ancestry },
     party: state.party.members.map(p=>({...cleanCharacter(p),medical:{...medicine.publicStatus(state,adventure,p.id),...firstAid.publicStatus(state,adventure,p.id)},order:partyOrders.publicStatus(state,adventure,p.id)?{...partyOrders.publicStatus(state,adventure,p.id),spellOptions:companionCasts.get(p.id)||[]}:null,rest:rest.status(p,adventure),createdSpells:spellbooks.spellsFor(state,adventure,p.id),...(p.kind==='ally'?{spells:service.getSpellbook(state.campaign.id,p.id).spells.filter(s=>s.accessible).map(s=>({id:s.id,name:s.name,level:s.level,prepared:s.prepared}))}:{})})), scene: adventure.locations.find(n => n.id === adventure.currentLocationId),
-    locations: adventure.locations, npcs: adventure.npcs.map(({receivedItems,...n})=>{const record=adventure.environment?.npcStates?.find(r=>r.npcId===n.id);return {...n,receivedCount:receivedItems?.length||0,body:record?{hp:record.body.hp,ac:record.body.ac,conditions:record.body.conditions,profile:record.profile}:undefined,canInteract:npcAvailable(adventure,n.id),relationship:social.publicStatus(adventure,n.id),companion:companions.publicStatus(adventure,n.id,state),medical:{...medicine.publicStatus(state,adventure,n.id),...firstAid.publicStatus(state,adventure,n.id)}};}), items: adventure.items.map(i=>{const visible=access.publicItem(state,adventure,i);return visible.concealed?visible:{...visible,quantity:i.quantity??1,remainingQuantity:loot.remainingQuantity(i)};}), quests: quests.publicQuests(adventure,state),questChecks:questChecks(state,adventure), journal: adventure.journal.slice(0,100).map(require('./journal-categories').publicEntry), journalTotal:adventure.journal.length,
+    locations: adventure.locations, npcs: adventure.npcs.filter(n=>!n.hidden).map(({receivedItems,...n})=>{const record=adventure.environment?.npcStates?.find(r=>r.npcId===n.id),body=actors.bodyFor(state,adventure,n.id);return {...n,receivedCount:receivedItems?.length||0,body:body?{hp:body.hp,ac:body.ac,conditions:body.conditions,profile:record?.profile}:undefined,canInteract:npcAvailable(adventure,n.id,state),relationship:social.publicStatus(adventure,n.id),companion:companions.publicStatus(adventure,n.id,state),medical:{...medicine.publicStatus(state,adventure,n.id),...firstAid.publicStatus(state,adventure,n.id)}};}), items: adventure.items.map(i=>{const visible=access.publicItem(state,adventure,i);return visible.concealed?visible:{...visible,quantity:i.quantity??1,remainingQuantity:loot.remainingQuantity(i)};}), quests: quests.publicQuests(adventure,state),questChecks:questChecks(state,adventure), journal: adventure.journal.slice(0,100).map(require('./journal-categories').publicEntry), journalTotal:adventure.journal.length,
     notes:adventure.notes||[], facts: state.facts.filter(f=>f.id!=='hero_identity').map(f=>({...f,pinned:Boolean(f.pinned||(adventure.pinnedFactIds||[]).includes(f.id))})), messages: adventure.messages,partyInventory:await partyInventory.publicOptions({state,adventure}),
     actions: choices(service, state, adventure).filter(a=>affordable(a)&&(!/^core:combat\.(action|bonus|reaction)\.(?:cast_spell|metamagic\.(?:quickened|subtle|twinned|careful))\./.test(a.id)||castIds.has(a.id))).map(({ command, ...entry }) => ({...entry,...(castAreas.get(entry.id)||{})})), combat: raw.combat, turnBudget: raw.actions.turn,
     spellbook: {...raw.spellbook,spells:(raw.spellbook.spells||[]).filter(s=>s.accessible)}, createdSpells: spellbooks.spellsFor(state,adventure), createdSpellActions, spellOwners:state.party.members.filter(p=>spellbooks.ownerFor(state,adventure,p.id).ok).map(p=>({id:p.id,name:p.name})), rolls: raw.rolls, survival: adventure.survival, reputation: adventure.reputation,
     progression:{nextLevelXp:core.srdXpThresholds[hero.level]??null,levelStartXp:core.srdXpThresholds[hero.level-1]??0},
     environment:environment.currentSceneSummary(adventure),economy:commerce,images:require('./adventure-images').publicImages(state,adventure),
-    loreChecks: lore.publicChecks(state).filter(c => c.sceneId === adventure.currentLocationId).map(c=>({...c,definitionId:Object.keys(adventure.loreCheckIds).find(id=>adventure.loreCheckIds[id]===c.id)})), memory: contextFor(state, adventure).metrics,
+    loreChecks: lore.publicChecks(state).filter(c => c.sceneId === adventure.currentLocationId&&!adventure.loreDefinitions.some(d=>adventure.loreCheckIds[d.id]===c.id&&d.npcId&&!actors.interactionStatus(state,adventure,d.npcId).known)).map(c=>({...c,definitionId:Object.keys(adventure.loreCheckIds).find(id=>adventure.loreCheckIds[id]===c.id)})), memory: contextFor(state, adventure).metrics,
     provider: { id: configuration.provider, model: configuration.modelLabel, configured: ai.isConfigured(configuration), usage: configuration.usage },
     dialogueSummary:dialogue.summary(adventure.dialogue,adventure.turn,adventure.currentLocationId),
     inferenceUsage:adventure.usage||null,pendingNarration: Boolean(adventure.pendingNarration), narrationFailure:adventure.pendingNarration?.correction?{kind:adventure.pendingNarration.failure||'provider',message:adventure.pendingNarration.correction.reason||'Описание не завершено.',providerFailure:adventure.pendingNarration.correction.providerFailure}:null, campaigns: service.listCampaigns().map(c => ({ id: c.id, title: c.title })) };
@@ -185,7 +186,10 @@ async function create(input) {
 }
 async function select(id) { const { service, state, adventure } = await loaded(id); await activate(id); return publicView(service, state, adventure); }
 async function runChecks(service, id, adventure, trigger, npcId, seed, definitionId) {
-  const results = await lore.triggerSceneChecks(service, id, { sceneId: adventure.currentLocationId, trigger, subjectId: npcId,checkId:definitionId?adventure.loreCheckIds[definitionId]:undefined }, { seed });
+  const state=service.loadCampaign(id),attempts=lore.publicChecks(state),results=[];
+  const eligible=adventure.loreDefinitions.filter(d=>d.locationId===adventure.currentLocationId&&d.trigger===trigger&&(!definitionId||d.id===definitionId)&&(!d.npcId||d.npcId===npcId&&actors.interactionStatus(state,adventure,d.npcId).available));
+  eligible.sort((a,b)=>Number(Boolean(attempts.find(c=>c.id===adventure.loreCheckIds[a.id])?.attempted))-Number(Boolean(attempts.find(c=>c.id===adventure.loreCheckIds[b.id])?.attempted)));
+  for(const definition of eligible.slice(0,3))if(adventure.loreCheckIds[definition.id])results.push(...await lore.triggerSceneChecks(service,id,{sceneId:adventure.currentLocationId,trigger,subjectId:npcId,checkId:adventure.loreCheckIds[definition.id]},{seed}));
   for (const result of results) if (!result.replayed) {
     const definitionId = Object.keys(adventure.loreCheckIds).find(key => adventure.loreCheckIds[key] === result.checkId);
     const rollText = `${result.title}: ${result.roll?.total ?? '—'} против ${adventure.loreDefinitions.find(c => c.id === definitionId)?.dc ?? '—'} — ${result.success ? 'успех' : 'неудача'}. ${result.text}`;
@@ -372,7 +376,7 @@ async function perform(body, { seed } = {}) {
     npcStart=await npcEncounters.start({state:initial,adventure,npcIds:[command.npcId],sourceId:body.operationId,seed});
     if(!npcStart.ok)return lastingRefusal(service,initial,adventure,body,input,npcStart.refusal);
   }
-  const npcBlock=blockedNpcCommand(adventure,command);
+  const npcBlock=blockedNpcCommand(adventure,command,initial);
   if(npcBlock)return lastingRefusal(service,initial,adventure,body,input,{code:'npc_unavailable',message:npcBlock,alternatives:['Выберите другого доступного персонажа.']});
   if(command.type==='trade'&&command.direction==='sell'&&String(command.itemId||'').startsWith('scene_prop_'))return lastingRefusal(service,initial,adventure,body,input,{code:'unsupported_prop_transfer',message:'Этот торговец не покупает эту вещь.',alternatives:['Оставьте предмет или используйте его в сцене.']});
   let interaction;
@@ -394,7 +398,7 @@ async function perform(body, { seed } = {}) {
     if(!adventure.survival.enabled||!market)bad('Припасы можно пополнить в поселении.');
     command={type:'trade',direction:'buy',marketId:market.id,offerId:market.offers.find(o=>o.kind==='supplies'&&o.stock>0).id,quantity:1};
   }
-  const transformedNpcBlock=blockedNpcCommand(adventure,command);
+  const transformedNpcBlock=blockedNpcCommand(adventure,command,initial);
   if(transformedNpcBlock)return lastingRefusal(service,initial,adventure,body,input,{code:'npc_unavailable',message:transformedNpcBlock});
   let proposed = inventoryResult?inventoryResult.adventure:aidResult?aidResult.adventure:companionResult?companionResult.adventure:socialResult?socialResult.adventure:npcStart?npcStart.adventure:interaction?interaction.adventure:structuredClone(adventure);
   proposed.turn+=1;

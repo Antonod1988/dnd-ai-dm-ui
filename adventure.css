@@ -129,3 +129,9 @@ button:disabled{cursor:not-allowed}body.is-busy button:disabled{cursor:progress}
 .map-node.quest-location{box-shadow:0 0 0 3px #d6bc7655,0 8px 20px #0004}
 .world-card.quest-location{border-color:var(--gold)}
 @media(max-width:1000px){.quest-workspace{grid-template-columns:1fr}.quest-sidebar{display:flex;max-height:none;overflow-x:auto;padding:0 0 6px}.quest-choice{min-width:230px;max-width:290px;flex-shrink:0}.quest-detail{padding:21px}.quest-invitation{flex-wrap:wrap}}
+/* Only the current quest stage explains an obstruction; later stages remain collapsed. */
+.quest-obstacle{margin:14px 0;padding:14px 16px;border:1px solid var(--line);border-left:3px solid var(--gold);border-radius:12px;background:rgba(194,162,101,.06)}
+.quest-obstacle strong{font-size:.9rem;color:var(--gold)}
+.quest-obstacle p{margin:8px 0;line-height:1.5}
+.quest-obstacle small{display:block;color:var(--muted);line-height:1.5;margin:8px 0 12px}
+.quest-brief{margin:12px 0;color:var(--muted);font-size:13px}.quest-brief summary{cursor:pointer;color:#c8bda8}.quest-brief p{margin:10px 0 0}

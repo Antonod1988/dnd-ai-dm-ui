@@ -51,3 +51,24 @@ test('a handover task without owned supplies offers only the actual local pickup
 test('more-history loading/errors preserve existing text and valid pages remain available through explicit local control',()=>{
   const view=fixture();for(const status of ['ready','loading','error']){const html=ui.render(ui.select(view),view,{history:{status,data:{entries:[{id:'receipt',turn:1,text:'Already read original record.'}],nextOffset:13,total:100}}});assert.ok(html.includes('Already read original record.'));assert.ok(html.includes('data-quest-history-more'));if(status==='loading')assert.ok(html.includes('data-quest-history-more disabled'));if(status==='error')assert.ok(html.includes('data-quest-history-retry'));}
 });
+
+test('authoritative current obstructions explain temporary and blocked routes without failing or completing quests',()=>{
+  const view=fixture(),q=view.quests[0],o=q.objectives[1];view.actions=[];
+  for(const [code,state,label]of [['actor_dead','blocked','Прежний путь закрыт'],['actor_unconscious','waiting','Что мешает сейчас'],['source_depleted','waiting','Что мешает сейчас']]){
+    o.availability={state,reasons:[{code}],recovery:[{kind:'discuss'}],source:'current_state'};
+    const before=JSON.stringify(view),html=ui.render(ui.select(view),view);assert.ok(html.includes(label));assert.ok(html.includes('data-quest-advice="active"'));assert.ok(html.includes('data-objective-id="b"'));assert.ok(!html.includes('data-action="deliver'));assert.equal(JSON.stringify(view),before);assert.equal(q.status,'active');assert.equal(o.completed,false);
+  }
+});
+
+test('a fallen objective contact offers only actual server-supplied aid actions for that exact person',()=>{
+  const view=fixture(),o=view.quests[0].objectives[1];o.availability={state:'waiting',reasons:[{code:'actor_stable'}],recovery:[{kind:'aid',targetId:'iris'}],source:'current_state'};
+  view.actions=[{id:'aid:item:potion:iris',label:'Heal Iris',kind:'support',aidMethod:'item',targetId:'iris'},{id:'aid:item:potion:other',label:'Heal Other',kind:'support',aidMethod:'item',targetId:'other'}];
+  const html=ui.render(ui.select(view),view);assert.ok(html.includes('data-action="aid:item:potion:iris"'));assert.ok(!html.includes('Heal Other'));assert.ok(!html.includes('data-action="deliver'));view.actions=[];assert.ok(!ui.render(ui.select(view),view).includes('Heal Iris'));
+});
+
+test('obstruction guidance is limited to the actual current stage and busy advice cannot issue another request',()=>{
+  const view=fixture(),q=view.quests[0];q.objectives[2].availability={state:'blocked',reasons:[{code:'actor_dead'}],source:'current_state'};
+  let html=ui.render(ui.select(view),view);assert.ok(!html.includes('Этот персонаж погиб'));assert.ok(!html.includes('data-quest-advice'));
+  q.objectives[1].availability={state:'waiting',reasons:[{code:'item_held_by_party'},{code:'untrusted-html<script>'}],recovery:[{kind:'party_transfer'}],source:'current_state'};
+  html=ui.render(ui.select(view),view,{busy:true,t:text=>`EN:${text}`});assert.ok(html.includes('EN:Нужная вещь у спутника'));assert.ok(/data-quest-advice="active"[^>]*disabled/.test(html));assert.ok(!html.includes('untrusted-html'));q.status='abandoned';html=ui.render(ui.select(view,{filter:'archive',selectedId:q.id}),view);assert.ok(!html.includes('data-quest-advice'));
+});
