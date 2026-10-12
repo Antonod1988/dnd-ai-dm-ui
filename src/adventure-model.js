@@ -114,8 +114,12 @@ function addEvent(adventure, kind, targetId, text, details = {}) {
 }
 function processQuestEvent(adventure, event) {
   const completed = [];
+  // A physical handover spends an item for one declared obligation. Unlike
+  // shared knowledge, its receipt cannot be reused by another quest or stage.
+  if(event.kind==='deliver'&&(!event.questId||!event.objectiveId||!event.id||adventure.quests.some(q=>q.objectives.some(o=>o.evidenceEventId===event.id))))return completed;
   for (const quest of adventure.quests.filter(q => q.status === 'active')) {
-    for (const [index, objective] of quest.objectives.entries()) if (!objective.completed && (!quest.sequential || quest.objectives.slice(0, index).every(o => o.completed)) && objective.kind === event.kind && (objective.kind!=='check'||event.source==='scene_check') && (!objective.targetId || [objective.targetId,...(objective.alternativeTargetIds||[])].some(id=>event.kind==='check'?access.targets(adventure,event.targetId).includes(id):id===event.targetId)) && (objective.kind!=='deliver'||objective.recipientId===event.recipientId) && event.success !== false) {
+    if(event.kind==='deliver'&&quest.id!==event.questId)continue;
+    for (const [index, objective] of quest.objectives.entries()) if (!objective.completed && (!quest.sequential || quest.objectives.slice(0, index).every(o => o.completed)) && objective.kind === event.kind && (objective.kind!=='check'||event.source==='scene_check') && (!objective.targetId || [objective.targetId,...(objective.alternativeTargetIds||[])].some(id=>event.kind==='check'?access.targets(adventure,event.targetId).includes(id):id===event.targetId)) && (objective.kind!=='deliver'||objective.id===event.objectiveId&&objective.recipientId===event.recipientId) && event.success !== false) {
       objective.completed = true; objective.evidenceEventId = event.id;
       break;
     }

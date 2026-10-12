@@ -73,6 +73,50 @@ test('one handover is bound to its recipient and cannot fulfill another recipien
   await act({type:'accept_quest',questId:'for-tarn'});await act({type:'travel',locationId:'cache'});await act({type:'pickup',itemId:'compass'});await act({type:'travel',locationId:'camp'});await act(handover());
   assert.equal(view.quests.find(q=>q.id==='for-tarn').status,'active');assert.equal(view.npcs.find(n=>n.id==='tarn').receivedCount,0);await rejectUnchanged(handover('for-tarn'),/нет в инвентаре/);
 });
+
+test('one real handover fulfills only its bound identical order and grants exactly one persisted reward',async()=>{
+  await deliveryOnly();let loaded=await engine.loaded(view.campaign.id);
+  model.applyDevelopments(loaded.adventure,{quests:[{id:'second-handover',title:'A second personal delivery',summary:'Hand over another compass.',rewardTheme:'A second route token',objectives:[{text:'Hand over another compass',kind:'deliver',targetId:'compass',recipientId:'iris'}]}]});
+  await engine.save(loaded.service,loaded.state,loaded.adventure,'identical_order_fixture');view=await engine.getView(view.campaign.id);
+  await act({type:'accept_quest',questId:'second-handover'});await act({type:'travel',locationId:'cache'});await act({type:'pickup',itemId:'compass'});await act({type:'travel',locationId:'camp'});
+  loaded=await engine.loaded(view.campaign.id);loaded.state.party.members.find(m=>m.id===loaded.state.party.heroId).inventory.find(i=>i.tags.includes('compass')).quantity=2;
+  await engine.save(loaded.service,loaded.state,loaded.adventure,'two_real_units_fixture');view=await engine.getView(view.campaign.id);
+  const beforeXp=view.hero.xp,rewardXp=Math.min(300,50*view.hero.level+25),body=await act(handover());
+  assert.equal(view.quests.find(q=>q.id==='handover').status,'completed');assert.equal(view.quests.find(q=>q.id==='second-handover').status,'active');
+  assert.equal(view.hero.inventory.find(i=>i.tags.includes('compass')).quantity,1);assert.equal(view.hero.xp-beforeXp,rewardXp);
+  loaded=await engine.loaded(view.campaign.id);const receipt=loaded.adventure.events.find(e=>e.kind==='deliver'&&e.questId==='handover');
+  assert.equal(loaded.adventure.events.filter(e=>e.kind==='quest_reward').length,1);assert.equal(loaded.adventure.npcs.find(n=>n.id==='iris').receivedItems.length,1);
+  assert.equal(loaded.adventure.quests.find(q=>q.id==='handover').objectives[0].evidenceEventId,receipt.id);assert.equal(loaded.adventure.quests.find(q=>q.id==='second-handover').objectives[0].evidenceEventId,null);
+  view=await engine.perform(body);assert.equal(view.replayed,true);assert.equal(view.hero.xp-beforeXp,rewardXp);assert.equal(view.hero.inventory.find(i=>i.tags.includes('compass')).quantity,1);
+  await srd.closeSessions();view=await engine.getView(view.campaign.id);view=await engine.perform(body);assert.equal(view.replayed,true);assert.equal(view.quests.find(q=>q.id==='second-handover').status,'active');
+  loaded=await engine.loaded(view.campaign.id);assert.equal(loaded.adventure.events.filter(e=>e.kind==='quest_reward').length,1);assert.equal(loaded.adventure.npcs.find(n=>n.id==='iris').receivedItems.length,1);
+  await act(handover('second-handover'));assert.equal(view.quests.find(q=>q.id==='second-handover').status,'completed');assert.ok(!view.hero.inventory.some(i=>i.tags.includes('compass')));assert.equal(view.hero.xp-beforeXp,2*rewardXp);
+  loaded=await engine.loaded(view.campaign.id);assert.equal(loaded.adventure.events.filter(e=>e.kind==='quest_reward').length,2);assert.equal(loaded.adventure.npcs.find(n=>n.id==='iris').receivedItems.length,2);
+  const second=loaded.adventure.events.find(e=>e.kind==='deliver'&&e.questId==='second-handover');assert.notEqual(second.id,receipt.id);assert.equal(loaded.adventure.quests.find(q=>q.id==='second-handover').objectives[0].evidenceEventId,second.id);
+});
+
+test('legacy or repeated delivery evidence never advances an unbound quest or a later identical stage',()=>{
+  const adventure=model.makeAdventure(model.validateSeed(structuredClone(world)),{language:'en',worldIdea:'Maps'});
+  model.applyDevelopments(adventure,{quests:[{id:'two-stages',title:'Two actual handovers',summary:'Deliver each separately.',objectives:[1,2].map(i=>({text:`Handover ${i}`,kind:'deliver',targetId:'compass',recipientId:'iris'}))},{id:'other-order',title:'Another order',summary:'Deliver separately.',objectives:[{text:'Handover',kind:'deliver',targetId:'compass',recipientId:'iris'}]}]});
+  const quest=adventure.quests.find(q=>q.id==='two-stages'),other=adventure.quests.find(q=>q.id==='other-order');quest.status=other.status='active';
+  const event={id:'physical-receipt',kind:'deliver',targetId:'compass',recipientId:'iris'};
+  assert.deepEqual(model.processQuestEvent(adventure,event),[]);assert.ok(quest.objectives.every(o=>!o.completed));assert.ok(other.objectives.every(o=>!o.completed));
+  const bound={...event,questId:quest.id,objectiveId:quest.objectives[0].id};model.processQuestEvent(adventure,bound);
+  assert.equal(quest.objectives[0].completed,true);assert.equal(quest.objectives[1].completed,false);assert.equal(other.objectives[0].completed,false);
+  model.processQuestEvent(adventure,bound);model.processQuestEvent(adventure,{...bound,objectiveId:quest.objectives[1].id});model.processQuestEvent(adventure,{...bound,questId:other.id,objectiveId:other.objectives[0].id});
+  assert.equal(quest.objectives[1].completed,false);assert.equal(other.objectives[0].completed,false);
+  model.processQuestEvent(adventure,{...bound,id:'second-physical-receipt',objectiveId:quest.objectives[1].id});assert.equal(quest.status,'completed');assert.equal(other.status,'active');
+});
+
+test('ordinary visit, talk and successful declared check evidence still serves multiple active quests',()=>{
+  for(const [kind,targetId] of [['visit','camp'],['talk','iris'],['check','old-map']]){
+    const adventure=model.makeAdventure(model.validateSeed(structuredClone(world)),{language:'en',worldIdea:'Maps'});
+    model.applyDevelopments(adventure,{quests:['shared-first','shared-second'].map(id=>({id,title:id,summary:'Shared knowledge.',objectives:[{text:'Observe the common fact',kind,targetId}]}))});
+    const pair=adventure.quests.filter(q=>q.id.startsWith('shared-'));pair.forEach(q=>q.status='active');
+    const event={id:`shared-${kind}`,kind,targetId,success:true,...(kind==='check'?{source:'scene_check'}:{})};model.processQuestEvent(adventure,event);
+    assert.ok(pair.every(q=>q.status==='completed'&&q.objectives[0].evidenceEventId===event.id));
+  }
+});
 test('an earlier successful discovery remains evidence when the quest is accepted later',async()=>{
   await create();await act({type:'travel',locationId:'cache'});await act({type:'scene_check',checkId:'old-map'},await seedFor('old-map',true));
   const rolls=view.rolls.length,event=view.journal.find(e=>e.kind==='check');await act({type:'accept_quest',questId:'return-compass'});

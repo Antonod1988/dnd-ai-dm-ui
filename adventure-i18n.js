@@ -1,6 +1,19 @@
 // UI labels are translated locally. Story content is generated in the campaign's language.
 const uiLanguage = new URLSearchParams(location.search).get('lang') === 'en' ? 'en' : 'ru';
 const englishLabels = {
+  'Следующие этапы':'Upcoming objectives',
+  'Показать ещё задачи':'Show more quests',
+  'Отрывок':'Excerpt','В журнале':'In the journal','Открыть весь журнал':'Open the full journal',
+  'Найти задачу':'Find a quest','Название, имя или цель…':'Title, name, or objective…','Раздел задач':'Quest category','Список задач':'Quest list','В пути':'In progress','Предложения':'Offers','Предложение':'Offer','Архив':'Archive','Завершено':'Completed','Не выполнено':'Unfulfilled','Сделано':'Done','Сейчас':'Now','После принятия':'After accepting','Следом':'Next','Осталось':'Remaining','Собеседник':'Contact','На карте':'On the map','От кого':'From','Пройдено этапов':'Objectives completed','Прогресс задачи':'Quest progress','Из журнала':'From the journal',
+  'Сейчас нет принятых задач. Посмотри предложения или продолжи свою историю.':'No quests accepted yet. Browse the offers or continue your own story.',
+  'Новых предложений пока нет. Поговори с персонажами или расскажи мастеру, что ищет герой.':'No new offers yet. Talk to characters or tell the game master what your hero is seeking.',
+  'Завершённые задачи и неудачи останутся здесь.':'Completed quests and failures will remain here.',
+  'Подходящих задач нет. Измени поиск или выбери другой раздел.':'No matching quests. Change the search or choose another category.',
+  'Это предложение. Решение остаётся за тобой.':'This is an offer. The choice is yours.',
+  'Этот персонаж сейчас не может помочь. Обсуди с мастером другой путь.':'This character cannot help right now. Discuss another way with the game master.',
+  'Известные способы уже испробованы. Предложи мастеру другой подход.':'The known approaches have already been tried. Suggest a different approach to the game master.',
+  'Открой, чтобы перечитать связанные события.':'Open to reread the related events.','Открываю записи…':'Opening records…','Не удалось открыть записи. Попробуй ещё раз.':'Could not open the records. Try again.','Связанных записей пока нет.':'No related records yet.','Слова персонажа':'Character statement',
+  'Часть подтверждений не найдена в старом сохранении. Новые события их не заменяют.':'Some evidence is missing from this older save. New events do not replace it.',
   'Как звучит история':'The voice of the story','Стиль рассказа':'Narrative style','Подробность':'Detail','Твои пожелания к рассказу':'Your storytelling preferences','Закрыть настройки рассказа':'Close storytelling settings','Сохранить стиль':'Save style',
   'Выбери голос рассказа. Герои сохранят свои характеры, а события — свои последствия.':'Choose the voice of the story. Characters keep their personalities, and events keep their consequences.',
   'Новый голос появится в следующих сценах. Прежние главы останутся как были.':'The new voice applies to future scenes. Earlier chapters stay as they are.',

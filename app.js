@@ -26,6 +26,8 @@ function openStorySettings(){
   $('#narrationStyleHint').textContent=T(narrationHints[prefs.style]||narrationHints.classic);$('#storySettingsStatus').textContent='';$('#sectionMenu').open=false;$('#storySettings').showModal();
 }
 let historyPage=null,historyVersion='',historyRequest=0,historyTimer;
+let questState={campaignId:null,filter:null,query:'',selectedId:null};
+let questHistory=null,questHistoryOpen=false,questHistoryRequest=0,mapFocusId=null;
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 const storyText=value=>esc(value).replace(/\*\*([^*\n]{1,300})\*\*/g,'<strong>$1</strong>').replace(/\*([^*\n]{1,300})\*/g,'<em>$1</em>').replace(/\n/g,'<br>');
@@ -176,19 +178,30 @@ function renderActions(view) {
 function renderMap(view) {
   const seen=new Set(),edges=[],places=new Map(view.locations.map(l=>[l.id,l]));
   for(const node of view.locations) for(const id of node.connectsTo) { const key=[node.id,id].sort().join(':'); if(seen.has(key))continue;seen.add(key);const other=places.get(id);if(other)edges.push(`<line x1="${node.x}%" y1="${node.y}%" x2="${other.x}%" y2="${other.y}%" stroke="#695b43" stroke-width="1.5" stroke-dasharray="4 5"/>`); }
-  $('#worldMap').innerHTML=`<svg aria-hidden="true">${edges.join('')}</svg>`+view.locations.map(n=>`<button class="map-node ${n.id===view.scene.id?'current':n.visited?'visited':''}" style="left:${n.x}%;top:${n.y}%" data-place="${esc(n.id)}" ${!view.scene.connectsTo.includes(n.id)||view.combat?'disabled':''}>${n.visited?'◆':'◇'} ${esc(n.name)}</button>`).join('');
-  $('#placeCards').innerHTML=view.locations.map(n=>`<article class="world-card"><p class="eyebrow">${n.id===view.scene.id?'ТЫ ЗДЕСЬ':n.visited?'ИССЛЕДОВАНО':'ИЗВЕСТНОЕ МЕСТО'}</p><h3>${esc(n.name)}</h3><p>${esc(n.description)}</p>${view.scene.connectsTo.includes(n.id)?`<button data-action="travel:${esc(n.id)}" ${view.combat?'disabled':''}>Отправиться →</button>`:''}</article>`).join('');
+  $('#worldMap').innerHTML=`<svg aria-hidden="true">${edges.join('')}</svg>`+view.locations.map(n=>`<button class="map-node ${n.id===view.scene.id?'current':n.visited?'visited':''} ${questState.campaignId===view.campaign.id&&mapFocusId===n.id?'quest-location':''}" style="left:${n.x}%;top:${n.y}%" data-place="${esc(n.id)}" ${!view.scene.connectsTo.includes(n.id)||view.combat?'disabled':''}>${n.visited?'◆':'◇'} ${esc(n.name)}</button>`).join('');
+  $('#placeCards').innerHTML=view.locations.map(n=>`<article class="world-card ${questState.campaignId===view.campaign.id&&mapFocusId===n.id?'quest-location':''}" data-map-location="${esc(n.id)}"><p class="eyebrow">${n.id===view.scene.id?'ТЫ ЗДЕСЬ':n.visited?'ИССЛЕДОВАНО':'ИЗВЕСТНОЕ МЕСТО'}</p><h3>${esc(n.name)}</h3><p>${esc(n.description)}</p>${view.scene.connectsTo.includes(n.id)?`<button data-action="travel:${esc(n.id)}" ${view.combat?'disabled':''}>Отправиться →</button>`:''}</article>`).join('');
 }
 function renderQuests(view) {
-  $('#questList').innerHTML=view.quests.map(q=>`<article class="quest-card ${esc(q.status)}"><span class="quest-status">${T({offered:'ПРЕДЛОЖЕНИЕ',active:'В ПУТИ',completed:'ЗАВЕРШЕНО',failed:'НЕ ВЫПОЛНЕНО'}[q.status])}</span><h3>${esc(q.title)}</h3><p>${esc(q.summary)}</p><ul class="objectives">${q.objectives.map(o=>{
-    const next=q.status==='active'&&!o.completed&&(!q.sequential||q.objectives.slice(0,q.objectives.indexOf(o)).every(p=>p.completed));
-    const npc=o.recipientId&&view.npcs.find(n=>n.id===o.recipientId),place=npc&&view.locations.find(l=>l.id===npc.locationId);
-    const ids=new Set([o.targetId,...(o.alternativeTargetIds||[])]);for(let pass=0;pass<(view.questChecks||[]).length;pass++)for(const c of view.questChecks||[])if(ids.has(c.alternativeFor))ids.add(c.id);
-    const methods=(view.questChecks||[]).filter(c=>ids.has(c.id));
-    const attempts=methods.filter(c=>c.attempted);
-    const actions=view.actions.filter(a=>a.questId===q.id&&a.objectiveId===o.id);
-    return `<li class="${o.completed?'done':next?'current':''}"><span>${o.completed?'✓':next?'◆':'○'}</span><div>${esc(o.text)}${!o.completed&&npc?`<p class="objective-detail">${T('Адресат')}: ${esc(npc.name)} · ${esc(place?.name||'')}</p>`:''}${!o.completed&&o.kind==='check'?methods.map(c=>`<p class="objective-detail">${esc(c.title)} · ${T(skillLabels[c.skill]||c.skill)} ${c.dc} · ${esc(view.locations.find(l=>l.id===c.locationId)?.name||'')}${c.attempted?` · ${T(c.success?'Успех':'Неудача')} (${c.total}/${c.dc})`:''}</p>`).join(''):''}${next&&attempts.some(c=>!c.success)&&methods.some(c=>!c.attempted)?`<p class="objective-hint">${T('Этот подход не помог. Можно попробовать другой способ.')}</p>`:''}${next&&o.kind==='deliver'?`<p class="objective-hint">${T('Передача заберёт предмет из инвентаря. Разговор сам по себе её не заменяет.')}</p>`:''}${actions.length?`<div class="objective-actions">${actions.map(a=>`<button data-action="${esc(a.id)}">${esc(a.label)}</button>`).join('')}</div>`:''}</div></li>`;
-  }).join('')}</ul>${q.status==='offered'?`<button data-quest="${esc(q.id)}">${T('Принять задачу')}</button>`:''}${q.rewardClaimed?`<p class="muted">${T('Награда получена и записана в журнале.')}</p>`:''}</article>`).join('')||`<div class="empty">${T('Задач пока нет. Поговори с персонажами или расскажи мастеру, что ищет герой.')}</div>`;
+  if(questState.campaignId!==view.campaign.id){questState={campaignId:view.campaign.id,filter:null,query:'',selectedId:null};questHistory=null;questHistoryOpen=false;questHistoryRequest++;mapFocusId=null;$('#questSearch').value='';}
+  const model=QuestUI.select(view,questState);
+  if(model.selectedId!==questState.selectedId){questHistory=null;questHistoryOpen=false;questHistoryRequest++;}
+  questState={...questState,filter:model.filter,selectedId:model.selectedId,selectedStatus:model.selectedStatus};
+  if(questHistory&&(questHistory.revision!==view.campaign.revision||questHistory.questId!==model.selectedId)){questHistory=null;questHistoryRequest++;}
+  $('#questList').innerHTML=QuestUI.render(model,view,{t:T,esc,skillLabels,busy,history:questHistory,historyOpen:questHistoryOpen});
+  localizeUi($('#questsView'));
+  if(questHistoryOpen&&!questHistory&&model.selectedId)void loadQuestHistory();
+}
+async function loadQuestHistory(){
+  if(!currentView?.ready||!questState.selectedId||questHistory?.status==='loading')return;
+  const campaignId=currentView.campaign.id,revision=currentView.campaign.revision,questId=questState.selectedId,sequence=++questHistoryRequest;
+  questHistory={campaignId,revision,questId,status:'loading'};renderQuests(currentView);
+  const current=()=>sequence===questHistoryRequest&&currentView?.ready&&currentView.campaign.id===campaignId&&currentView.campaign.revision===revision&&questState.selectedId===questId;
+  try{
+    const data=await request(`quest-history?campaignId=${encodeURIComponent(campaignId)}&questId=${encodeURIComponent(questId)}`);
+    if(!current())return;
+    if(data.campaignId!==campaignId||data.questId!==questId||data.revision!==revision){questHistory={campaignId,revision,questId,status:'error'};renderQuests(currentView);return;}
+    questHistory={campaignId,revision,questId,status:'ready',data};renderQuests(currentView);
+  }catch(error){if(current()){questHistory={campaignId,revision,questId,status:'error'};renderQuests(currentView);}}
 }
 function renderJournal(view) {
   const query=$('#journalSearch').value.trim().toLowerCase();
@@ -374,6 +387,8 @@ async function init() {
   document.querySelectorAll('[data-sheet]').forEach(b=>b.addEventListener('click',()=>showSheet(b.dataset.sheet)));
   $('#journalSearch').addEventListener('input',()=>{if(!currentView?.ready)return;historyRequest++;historyPage=null;renderJournal(currentView);clearTimeout(historyTimer);historyTimer=setTimeout(()=>loadJournal(true),250);});
   $('#journalCategory').addEventListener('change',()=>{if(!currentView?.ready)return;clearTimeout(historyTimer);historyPage=null;renderJournal(currentView);loadJournal(true);});
+  $('#questSearch').addEventListener('input',()=>{if(!currentView?.ready)return;questState.query=$('#questSearch').value;questState.visibleCount=40;renderQuests(currentView);});
+  document.addEventListener('toggle',event=>{const details=event.target;if(!details.isConnected||!details.matches?.('[data-quest-history]')||details.dataset.questHistory!==questState.selectedId)return;questHistoryOpen=details.open;if(details.open&&!questHistory)void loadQuestHistory();},true);
   $('#moreJournal').addEventListener('click',()=>loadJournal(false));
   $('#journalNoteForm').addEventListener('submit',async event=>{event.preventDefault();if(await memoryChange('note',{text:$('#journalNote').value,pinned:$('#pinNewNote').checked})){$('#journalNote').value='';$('#noteStatus').textContent=T('Запись сохранена.');}});
   $('#newCampaign').addEventListener('click',()=>{if(busy)return;creatingNew=true;document.body.classList.remove('has-campaign','is-story-view');$('#welcome').hidden=false;$('#game').hidden=true;$('#worldSubtitle').textContent='Новое приключение — предыдущие кампании сохранены';});
@@ -401,6 +416,13 @@ async function init() {
     await act({command},{stay:true});
   });
   document.addEventListener('click',async event=>{
+    const questFilter=event.target.closest('[data-quest-filter]');if(questFilter){questState.filter=questFilter.dataset.questFilter;questState.visibleCount=40;renderQuests(currentView);return;}
+    if(event.target.closest('[data-quest-more]')){questState.visibleCount=(questState.visibleCount||40)+40;renderQuests(currentView);return;}
+    const questChoice=event.target.closest('[data-quest-select]');if(questChoice){questState.selectedId=questChoice.dataset.questSelect;questHistory=null;questHistoryOpen=false;questHistoryRequest++;renderQuests(currentView);return;}
+    if(event.target.closest('[data-quest-history-retry]')){questHistory=null;void loadQuestHistory();return;}
+    const questRecord=event.target.closest('[data-quest-record]');if(questRecord){const record=questHistory?.data?.entries.find(entry=>entry.id===questRecord.dataset.questRecord);if(record){$('#journalCategory').value='all';$('#journalSearch').value=String(record.text).slice(0,80);historyPage=null;renderJournal(currentView);showSection('journal');void loadJournal(true);}return;}
+    if(event.target.closest('[data-quest-journal]')){$('#journalCategory').value='all';$('#journalSearch').value='';historyPage=null;renderJournal(currentView);showSection('journal');void loadJournal(true);return;}
+    const questPlace=event.target.closest('[data-quest-place]');if(questPlace){mapFocusId=questPlace.dataset.questPlace;renderMap(currentView);showSection('map');[...document.querySelectorAll('[data-map-location]')].find(card=>card.dataset.mapLocation===mapFocusId)?.scrollIntoView({block:'nearest'});return;}
     if(event.target.closest('[data-open-character]')){showSection('character');return;}
     const commerce=event.target.closest('[data-commerce]');if(commerce&&!commerce.disabled){
       const kind=commerce.dataset.commerce;const command=kind==='choice'?{type:'market_choice',marketId:commerce.dataset.market,choiceId:commerce.dataset.choice}:kind==='service'?{type:'service',marketId:commerce.dataset.market,offerId:commerce.dataset.offer}:{type:'trade',direction:kind,marketId:commerce.dataset.market,...(kind==='sell'?{itemId:commerce.dataset.sellItem}:{offerId:commerce.dataset.offer}),quantity:1};
@@ -411,7 +433,7 @@ async function init() {
     const a=event.target.closest('[data-action]');if(a){const chosen=currentView.actions.find(action=>action.id===a.dataset.action),spell=chosen?.mayAffectAllies&&chosen.id.match(/^(core:combat\.(?:action|bonus)\.(?:cast_spell|metamagic\.(?:quickened|subtle|twinned|careful))\.([^.]+)\.)/);if(spell){target({type:'cast_spell',spellId:spell[2],actionPrefix:spell[1]},T('Заклинание и цель'));return;}await act({actionId:a.dataset.action,input:label(chosen?.label||a.textContent.trim())},{stay:currentSection==='people'&&/^(recruit|dismiss|aid):/.test(a.dataset.action)});return;}
     const spellAction=event.target.closest('[data-target-action]');if(spellAction){const consent=$('#heroAreaConsent')?.checked;$('#targetDialog').close();const action=currentView.actions.find(a=>a.id===spellAction.dataset.targetAction);await act({actionId:spellAction.dataset.targetAction,...(consent?{command:{allowFriendlyFire:true}}:{}),input:label(action?.label||spellAction.textContent.trim())});return;}
     const p=event.target.closest('[data-place]');if(p&&!p.disabled){await act({actionId:`travel:${p.dataset.place}`,input:p.textContent.trim()});return;}
-    const q=event.target.closest('[data-quest]');if(q){await act({command:{type:'accept_quest',questId:q.dataset.quest},input:`Принимаю задачу: ${currentView.quests.find(quest=>quest.id===q.dataset.quest).title}`});return;}
+    const q=event.target.closest('[data-quest]');if(q){const questId=q.dataset.quest;if(await act({command:{type:'accept_quest',questId},input:`Принимаю задачу: ${currentView.quests.find(quest=>quest.id===questId).title}`})){questState.filter=QuestUI.groupOf(currentView.quests.find(quest=>quest.id===questId));questState.selectedId=questId;renderQuests(currentView);}return;}
     const i=event.target.closest('[data-command]');if(i){await act({command:{type:i.dataset.command,itemId:i.dataset.item}});return;}
     const c=event.target.closest('[data-created-spell]');if(c){target({type:'cast_created_spell',spellId:c.dataset.createdSpell},currentView.createdSpells.find(s=>s.id===c.dataset.createdSpell).name);return;}
     const s=event.target.closest('[data-spell]');if(s){target({type:'cast_spell',spellId:s.dataset.spell},'Кому адресовать заклинание?');return;}
