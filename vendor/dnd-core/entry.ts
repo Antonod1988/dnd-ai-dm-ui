@@ -29,3 +29,4 @@ export { rollDeathSave as rollSrdDeathSave, applyDeathSaveResult, createDeathSav
 export { hasSrdHalflingLucky } from './src/core/rules/checks.js';
 export { hasGeneratedFeatPresetOnTarget } from './src/core/homebrew/generated-feats.js';
 export { canSpendInventoryItemUse, spendInventoryItemUse } from './src/core/content/items.js';
+export { availableAutomatedSrdSpells } from './src/core/rulesets/srd5e2014/spell-engine.js';

@@ -57,6 +57,16 @@ test('player interjection cancels unspoken dialogue and offered actions without 
   assert.equal((await discussion.next(view.campaign.id, queue.id)).spoken.length, result.spoken.length); assert.equal(calls.length, 1);
 });
 
+test('joined companion voices still require actual local visibility and both death markers',async()=>{
+  const {state,adventure:meta}=await engine.loaded(view.campaign.id),hero=state.party.members[0];
+  state.party.members.push({...structuredClone(hero),id:'guide',name:'Iris',kind:'ally'});
+  assert.ok(narration.scenePacket(state,meta,[]).actors.some(a=>a.id==='guide'));
+  const npc=meta.npcs.find(n=>n.id==='guide');npc.hidden=true;assert.ok(!narration.scenePacket(state,meta,[]).actors.some(a=>a.id==='guide'));
+  npc.hidden=false;npc.locationId='road';assert.ok(!narration.scenePacket(state,meta,[]).actors.some(a=>a.id==='guide'));
+  npc.locationId=meta.currentLocationId;state.party.members.at(-1).deathSaves={dead:true};
+  meta.environment={npcStates:[{npcId:'guide',body:{hp:{current:4,max:4},conditions:[],deathSaves:{dead:true}}}]};
+  assert.ok(!narration.scenePacket(state,meta,[]).actors.some(a=>a.id==='guide'));
+});
 test('invalid, absent and human speaker references and guessed actions are rejected before queue installation', async () => {
   const { state, adventure: meta, service } = await engine.loaded(view.campaign.id);
   const packet = narration.scenePacket(state, meta, engine.choices(service, state, meta));

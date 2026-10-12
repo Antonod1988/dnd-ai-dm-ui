@@ -2,6 +2,7 @@ const {recall,relevance}=require('./context-memory');
 const social=require('./adventure-social');
 const medicine=require('./adventure-medicine');
 const rest=require('./adventure-rest');
+const partyOrders=require('./adventure-party-orders');
 function life(state,adventure,id){const value=medicine.publicStatus(state,adventure,id);return value&&value.phase!=='awake'?{phase:value.phase,deathSaves:value.deathSaves,remainingSeconds:value.remainingSeconds,recoveryAt:value.dueAt}:undefined;}
 const MAX_CHARS=12000;
 const clip=(text,size=400)=>String(text??'').replace(/\s+/g,' ').trim().slice(0,size);
@@ -36,15 +37,16 @@ function contextFor(state,adventure,query='') {
     survival:adventure.survival.enabled?{foodDays:adventure.survival.foodDays,waterDays:adventure.survival.waterDays,hungerDays:adventure.survival.hungerDays}:undefined,
     combat:state.combat?{round:state.combat.round,actorId:state.combat.participants[state.combat.turnIndex]?.id,turnBudget:state.combat.turnBudget,
       participants:state.combat.participants.slice(0,10).map(p=>({id:p.id,name:clip(p.name,80),kind:p.kind,hp:p.hp,conditions:p.conditions}))}:undefined,
-    party:[],bookmarks:[],quests:[],checks:[],objects:[],sceneProps:[],questIndex:[],questHistory:[],activeFacts:[],recollections:[],npcs:[],inventory:[],createdSpells:[],nearbyPlaces:[],recentDialogue:[],recentEvents:[],markets:[],transactions:[],
+    party:[],partyInventory:[],bookmarks:[],quests:[],checks:[],objects:[],sceneProps:[],questIndex:[],questHistory:[],activeFacts:[],recollections:[],npcs:[],inventory:[],createdSpells:[],nearbyPlaces:[],recentDialogue:[],recentEvents:[],markets:[],transactions:[],
     omitted:{quests:pending.length,facts:state.facts.length,notes:(adventure.notes||[]).length,archive:(adventure.archive||[]).length}};
-  const budgets={party:2800,bookmarks:2800,quests:3200,checks:1600,objects:1100,sceneProps:1600,questIndex:1400,questHistory:1000,activeFacts:2000,recollections:2000,npcs:1500,inventory:900,createdSpells:1400,nearbyPlaces:1000,recentDialogue:1200,recentEvents:1000,markets:1600,transactions:600};
+  const budgets={party:2800,partyInventory:1600,bookmarks:2800,quests:3200,checks:1600,objects:1100,sceneProps:1600,questIndex:1400,questHistory:1000,activeFacts:2000,recollections:2000,npcs:1500,inventory:900,createdSpells:1400,nearbyPlaces:1000,recentDialogue:1200,recentEvents:1000,markets:1600,transactions:600};
   const append=(key,value)=>{
     packet[key].push(value);
     if(JSON.stringify(packet[key]).length>budgets[key]||JSON.stringify(packet).length>MAX_CHARS){packet[key].pop();return false;}
     return true;
   };
-  for(const member of state.party.members.filter(m=>m.id!==hero.id).slice(0,3)){const npc=adventure.npcs.find(n=>n.id===member.id);append('party',{id:member.id,name:clip(member.name,80),kind:member.kind,className:clip(member.className,80),level:member.level,hp:member.hp,ac:member.ac+(member.activeEffects||[]).reduce((n,e)=>n+(e.armorClassBonus||0),0),life:life(state,adventure,member.id),conditions:member.conditions,abilities:member.abilities,skills:member.skillProficiencies.slice(0,6),proficiencyBonus:member.proficiencyBonus,resources:member.resources.filter(r=>!r.id.startsWith('spell_slots_')).slice(0,6).map(r=>({id:r.id,current:r.current,max:r.max})),slots:member.spellcasting?.slots,prepared:member.spellcasting?.prepared?.slice(0,4),role:clip(npc?.role,80)});}
+  for(const member of state.party.members.filter(m=>m.id!==hero.id).slice(0,3)){const npc=adventure.npcs.find(n=>n.id===member.id);append('party',{id:member.id,name:clip(member.name,80),kind:member.kind,order:partyOrders.publicStatus(state,adventure,member.id)?.mode,className:clip(member.className,80),level:member.level,hp:member.hp,ac:member.ac+(member.activeEffects||[]).reduce((n,e)=>n+(e.armorClassBonus||0),0),life:life(state,adventure,member.id),conditions:member.conditions,abilities:member.abilities,skills:member.skillProficiencies.slice(0,6),proficiencyBonus:member.proficiencyBonus,resources:member.resources.filter(r=>!r.id.startsWith('spell_slots_')).slice(0,6).map(r=>({id:r.id,current:r.current,max:r.max})),slots:member.spellcasting?.slots,prepared:member.spellcasting?.prepared?.slice(0,4),role:clip(npc?.role,80)});}
+  for(const member of [...state.party.members].sort((a,b)=>Number(b.id===hero.id)-Number(a.id===hero.id)).slice(0,4))append('partyInventory',{ownerId:member.id,name:clip(member.name,80),items:recall(member.inventory.map(item=>({...item,text:item.description})),query,scene,3).map(item=>({id:item.itemId,name:clip(item.name,60),quantity:item.quantity,equipped:Object.values(member.equipment||{}).includes(item.itemId)||undefined,attuned:item.attuned||undefined,charges:item.charges?{current:item.charges.current,max:item.charges.max}:undefined}))});
   const props=(adventure.environment?.props||[]).filter(p=>(p.locationId===location.id||p.holderId===hero.id)&&p.visibility==='visible').map((p,index)=>({p,index,score:relevance({...p,text:[p.name,...(p.aliases||[])].join(' ')},query,scene)*8+(p.holderId===hero.id?3:0)})).sort((a,b)=>b.score-a.score||a.index-b.index);
   for(const {p} of props.slice(0,8))append('sceneProps',{id:p.id,name:clip(p.name,100),aliases:p.aliases,locationId:p.locationId,anchorId:p.anchorId,material:p.material,size:p.size,weightLb:p.weightLb,portable:p.portable,condition:p.condition,holderId:p.holderId,ownerNpcId:p.ownerNpcId,accessible:p.accessible,source:'established'});
   // Bookmarks and relevant active objectives get space before optional prose.

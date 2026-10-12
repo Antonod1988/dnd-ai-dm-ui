@@ -29,10 +29,19 @@ function nextLine(dialogue) {
   if (dialogue.cursor >= dialogue.planned.length) dialogue.status = 'finished';
   return line;
 }
-function intervene(dialogue, text, playerName) {
+function addressedActor(dialogue,targetSpeakerId){
+  if(targetSpeakerId===undefined)return null;
+  const id=z.string().min(1).max(120).parse(targetSpeakerId);
+  const actor=array(dialogue?.actors).find(actor=>actor.id===id);
+  if(!actor||['dm','player'].includes(id)||['dm','player'].includes(actor.kind))throw Object.assign(new Error('Choose a current NPC dialogue speaker'),{status:400});
+  return actor;
+}
+function intervene(dialogue, text, playerName, targetSpeakerId) {
   if (!dialogue) throw new Error('No discussion to interrupt');
   const clean = z.string().trim().min(1).max(1200).parse(text);
+  const target=addressedActor(dialogue,targetSpeakerId);
   const line = { id: `line-${crypto.randomUUID()}`, speakerId: 'player', speakerName: playerName, text: clean };
+  if(target){line.targetSpeakerId=target.id;line.targetSpeakerName=target.name;}
   dialogue.spoken=array(dialogue.spoken);dialogue.spoken.push(line); dialogue.planned = []; dialogue.cursor = 0; dialogue.status = 'interrupted'; dialogue.revision += 1;
   dialogue.proposals = array(dialogue.proposals).map(p => p.status === 'offered' ? { ...p, status: 'withdrawn' } : p);
   return line;
@@ -54,4 +63,4 @@ function summary(dialogue, turn, sceneId) {
   const view = publicDialogue(dialogue, turn, sceneId);
   return view ? { id: view.id, status: view.status, remaining: view.remaining, spokenCount: view.spoken.length, sceneId: view.sceneId, source: view.source } : null;
 }
-module.exports = { createDialogue, nextLine, intervene, publicDialogue, isCurrent, invalidate, summary };
+module.exports = { createDialogue, nextLine, intervene, publicDialogue, isCurrent, invalidate, summary, addressedActor };

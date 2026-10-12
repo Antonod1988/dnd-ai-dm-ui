@@ -6,8 +6,8 @@ const SCENE_DIALOGUE_RULES='When characters are talking or responding to a socia
 function scenePacket(state,meta,actions,targetId) {
   const humanIds=new Set(state.party.members.filter(m=>m.kind==='player'||m.id===state.party.heroId).map(m=>m.id));
   const actors=[{id:'dm',name:meta.language==='en'?'Dungeon Master':'Мастер',kind:'dm',role:'Narrator'}];
-  const cannotSpeak=body=>body&&(typeof body.hp==='number'?body.hp:body.hp?.current)<=0||body?.conditions?.some(c=>['dead','unconscious','incapacitated','stunned','paralyzed','petrified','fled'].includes(c));
-  const companions=state.party.members.filter(m=>m.kind==='ally'&&!cannotSpeak(m));
+  const cannotSpeak=body=>body&&(typeof body.hp==='number'?body.hp:body.hp?.current)<=0||body?.deathSaves?.dead||body?.conditions?.some(c=>['dead','unconscious','incapacitated','stunned','paralyzed','petrified','fled'].includes(c));
+  const companions=state.party.members.filter(m=>{const npc=meta.npcs.find(n=>n.id===m.id);return m.kind==='ally'&&!cannotSpeak(m)&&(!npc||!npc.hidden&&npc.locationId===meta.currentLocationId);});
   const bodies=new Map((meta.environment?.npcStates||[]).map(record=>[record.npcId,record.body]));
   const npcs=meta.npcs.filter(n=>n.locationId===meta.currentLocationId&&!n.hidden&&!cannotSpeak(bodies.get(n.id))).sort((a,b)=>Number(b.id===targetId)-Number(a.id===targetId));
   let detailChars=0;

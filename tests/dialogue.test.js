@@ -18,3 +18,13 @@ test('unrecognized speakers and unavailable actions cannot enter the discussion'
   assert.throws(() => createDialogue({ lines: [{ speakerId: 'invented', text: 'Я герой.' }] }, actors, [], 1));
   assert.throws(() => createDialogue(batch, actors, [], 1));
 });
+test('addressed player interjection preserves exact target identity and untargeted legacy calls stay optional',()=>{
+  const state=createDialogue(batch,actors,['inspect'],1);nextLine(state);nextLine(state);
+  const line=intervene(state,'Маг, объясни подробнее.','Игрок','mage');assert.equal(line.targetSpeakerId,'mage');assert.equal(line.targetSpeakerName,'Маг');assert.equal(state.proposals[0].status,'withdrawn');assert.equal(state.status,'interrupted');
+  assert.equal(publicDialogue(state).spoken.at(-1).targetSpeakerId,'mage');
+  const untargeted=intervene(state,'Обращаюсь ко всем.','Игрок');assert.ok(!Object.hasOwn(untargeted,'targetSpeakerId'));
+});
+test('DM, human, missing and malformed addressees cannot mutate or cancel the old queue',()=>{
+  const roster=[...actors,{id:'dm',name:'Мастер',kind:'dm'},{id:'human-two',name:'Человек',kind:'player'}];
+  for(const target of ['dm','player','human-two','missing','',null,42]){const state=createDialogue(batch,roster,['inspect'],1),before=structuredClone(state);assert.throws(()=>intervene(state,'Нет.','Игрок',target));assert.deepEqual(state,before);}
+});

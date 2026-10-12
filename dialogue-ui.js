@@ -6,6 +6,9 @@
   let pending = false, current = null;
   const responseButton=document.createElement('button');responseButton.id='respondDiscussion';responseButton.type='button';responseButton.hidden=true;
   document.querySelector('#nextDiscussionLine').insertAdjacentElement('afterend',responseButton);
+  const recipientLabel=document.createElement('label');recipientLabel.htmlFor='discussionRecipient';recipientLabel.className='discussion-recipient';
+  const recipientCaption=document.createElement('span'),recipient=document.createElement('select');recipient.id='discussionRecipient';recipientLabel.append(recipientCaption,recipient);
+  document.querySelector('#interventionText').insertAdjacentElement('beforebegin',recipientLabel);
   const english=()=>typeof uiLanguage!=='undefined'?uiLanguage==='en':typeof currentView!=='undefined'&&currentView?.campaign?.language==='en';
   const caption=(ru,en)=>english()?en:translate(ru);
   function portrait(speakerId,kind) {
@@ -22,6 +25,11 @@
   }
   function render(data) {
     current = data;
+    recipientCaption.textContent=caption('К кому обращаешься?','Who are you addressing?');
+    const selected=recipient.value,eligible=data?.eligibleAddressees||data?.actors?.filter(a=>!['dm','player'].includes(a.id))||[];
+    recipient.replaceChildren(new Option(caption('Ко всем','Everyone'),''),...eligible.map(a=>new Option(a.name,a.id)));
+    if(eligible.some(a=>a.id===selected))recipient.value=selected;
+    recipientLabel.hidden=document.body.dataset.adventure!=='true'||!data;recipient.disabled=pending||!data||data.status==='stale';
     responseButton.textContent=caption('Ответ персонажей','Character response');responseButton.hidden=document.body.dataset.adventure!=='true'||!data?.canRespond;responseButton.disabled=pending;
     panel.querySelector('.modal-heading h2').textContent=data?.source==='scene'?caption('Разговор в сцене','Scene conversation'):caption('Совет отряда','Party council');
     const tools=document.querySelector('#newDialogueDetails');if(tools)tools.open=!data||data.status==='stale';
@@ -38,6 +46,7 @@
       const role=document.createElement('small');role.className='discussion-role';role.textContent=kind==='player'?caption('Игрок','Player'):String(actor?.role||caption(kind==='companion'?'Компаньон':'Персонаж',kind==='companion'?'Companion':'NPC')).slice(0,90);
       const identity=document.createElement('div');identity.append(name);if(kind!=='dm')identity.append(role);header.append(identity);
       const text = document.createElement('p'); text.textContent = line.text; card.append(header, text);
+      if(line.targetSpeakerId){const addressed=data.actors.find(a=>a.id===line.targetSpeakerId);const note=document.createElement('small');note.className='discussion-addressee';note.textContent=`${caption('Обращение к','Addressed to')}: ${addressed?.name||line.targetSpeakerId}`;card.insertBefore(note,text);}
       const interrupted=data.actors.find(a=>a.id===line.interruptsSpeakerId);
       if(interrupted){const note=document.createElement('small');note.className='discussion-interruption';note.textContent=`${caption('Перебивает','Interrupts')}: ${interrupted.name}`;card.insertBefore(note,text);}
       const proposal = data.proposals.find(p => p.id === line.proposalId);
@@ -59,7 +68,7 @@
     pending = true;responseButton.disabled=true;status.textContent = route==='respond'?caption('Персонажи готовят ответ…','The characters are preparing a response…'):translate(route === 'start' ? 'Персонажи собираются с мыслями…' : 'Обновляю обсуждение…');
     try { render(await api(route, {...body,...(route!=='start'&&current?{dialogueId:current.id}:{})})); if(route==='intervene')document.querySelector('#interventionText').value=''; await refreshState(); }
     catch (error) { if(route==='respond'||[400,409].includes(error.status))try{render(await api('status'));if(route==='respond')await refreshState();}catch{} status.textContent = error.message; }
-    finally { pending = false;responseButton.disabled=false; document.querySelector('#nextDiscussionLine').disabled = !current?.remaining; content.querySelectorAll('button').forEach(button=>button.disabled=false);document.querySelector('#interventionText').disabled=!current||current.status==='stale'; }
+    finally { pending = false;responseButton.disabled=false; document.querySelector('#nextDiscussionLine').disabled = !current?.remaining; content.querySelectorAll('button').forEach(button=>button.disabled=false);document.querySelector('#interventionText').disabled=!current||current.status==='stale';recipient.disabled=!current||current.status==='stale'; }
   }
   const open=async()=>{panel.showModal();try{render(await api('status'));}catch(error){status.textContent=error.message;}};
   document.querySelector('#openDiscussion')?.addEventListener('click', open);
@@ -68,5 +77,5 @@
   document.querySelector('#startDiscussion').addEventListener('click', () => act('start', { topic: document.querySelector('#discussionTopic').value }));
   document.querySelector('#nextDiscussionLine').addEventListener('click', () => act('next', {}));
   responseButton.addEventListener('click',()=>act('respond',{}));
-  document.querySelector('#discussionIntervention').addEventListener('submit', event => { event.preventDefault(); const field = document.querySelector('#interventionText'); if (field.value.trim()) act('intervene', { text: field.value.trim() }); });
+  document.querySelector('#discussionIntervention').addEventListener('submit', event => { event.preventDefault(); const field = document.querySelector('#interventionText'); if (field.value.trim()) act('intervene', { text: field.value.trim(),...(recipient.value?{targetSpeakerId:recipient.value}:{}) }); });
 })();

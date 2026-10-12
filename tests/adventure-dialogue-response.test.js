@@ -69,3 +69,39 @@ test('overlapping response requests create one batch, and an intervention during
   await discussion.intervene(view.campaign.id,'This is my newer interjection.',interrupted.id);release();await assert.rejects(response,e=>e.status===409);
   const preserved=await discussion.status(view.campaign.id);assert.equal(preserved.spoken.at(-1).text,'This is my newer interjection.');assert.equal(preserved.id,interrupted.id);assert.equal(preserved.status,'interrupted');assert.ok(!preserved.spoken.some(line=>line.text==='A delayed response.'));
 });
+test('explicit NPC address is persisted in spoken/chat/journal and the selected real NPC answers first',async()=>{
+  const addressed=await discussion.intervene(view.campaign.id,'Ren, what do those marks mean?',interrupted.id,'scholar');assert.equal(calls.length,0);
+  assert.equal(addressed.spoken.at(-1).targetSpeakerId,'scholar');assert.equal(addressed.spoken.at(-1).targetSpeakerName,'Ren');assert.deepEqual(addressed.eligibleAddressees.map(actor=>actor.id),['guide','scholar']);
+  const before=await engine.getView(view.campaign.id),journal=before.journal.find(event=>event.lineId===addressed.spoken.at(-1).id);assert.equal(journal.targetSpeakerId,'scholar');assert.equal(journal.targetSpeakerName,'Ren');assert.equal(journal.source,'player_statement');assert.equal(before.messages.at(-1).targetSpeakerId,'scholar');
+  handler=(type,payload)=>{assert.equal(payload.responseTarget.id,'scholar');assert.equal(payload.responseTarget.name,'Ren');assert.equal(payload.heard.at(-1).targetSpeakerId,'scholar');assert.match(payload.instruction,/FIRST line MUST/);return {lines:[{speakerId:'scholar',text:'These marks record the old water level.'},{speakerId:'guide',text:'That is why I want caution.'}]};};
+  const replied=await discussion.respond(view.campaign.id,addressed.id);assert.equal(replied.spoken.at(-1).speakerId,'scholar');assert.equal(calls.length,1);assert.ok(!JSON.stringify(calls).includes('CANCELLED_UNHEARD_REPLY'));
+  const after=await engine.getView(view.campaign.id);assert.equal(after.campaign.turn,before.campaign.turn);assert.deepEqual(after.hero,before.hero);assert.deepEqual(after.facts,before.facts);
+  await srd.closeSessions();const persisted=await discussion.status(view.campaign.id);assert.ok(persisted.spoken.some(line=>line.targetSpeakerId==='scholar'));assert.ok((await engine.getView(view.campaign.id)).journal.some(event=>event.lineId===journal.lineId&&event.targetSpeakerId==='scholar'));
+});
+test('a wrong first response is corrected once instead of silently reordering speaker text',async()=>{
+  const addressed=await discussion.intervene(view.campaign.id,'Ren, answer me first.',interrupted.id,'scholar');
+  handler=type=>type.endsWith('_repair')?{lines:[{speakerId:'scholar',text:'My own answer.'}]}:{lines:[{speakerId:'guide',text:'REJECTED_WRONG_FIRST'},{speakerId:'scholar',text:'Late reply.'}]};
+  const replied=await discussion.respond(view.campaign.id,addressed.id);assert.deepEqual(calls.map(call=>call.type),['adventure_dialogue_response','adventure_dialogue_response_repair']);assert.equal(replied.spoken.at(-1).text,'My own answer.');assert.ok(!replied.spoken.some(line=>line.text==='REJECTED_WRONG_FIRST'));assert.match(calls[1].payload.correction.reason,/answer first/);
+});
+test('invalid/missing/human/DM addressees and unavailable historical NPCs reject before interjection or AI',async()=>{
+  for(const target of ['dm','player',view.hero.id,'absent','missing','',null,42]){
+    const before=await discussion.status(view.campaign.id),revision=(await engine.getView(view.campaign.id)).campaign.revision;
+    await assert.rejects(discussion.intervene(view.campaign.id,'Invalid address.',interrupted.id,target));assert.deepEqual((await discussion.status(view.campaign.id)).spoken,before.spoken);assert.equal((await engine.getView(view.campaign.id)).campaign.revision,revision);assert.equal(calls.length,0);
+  }
+  const loaded=await engine.loaded(view.campaign.id);loaded.adventure.environment={version:1,props:[],npcStates:[{npcId:'guide',body:{hp:{current:0,max:4},conditions:['dead']}}],consequences:[],appliedPlans:[]};await engine.save(loaded.service,loaded.state,loaded.adventure,'dead_address_fixture');
+  const current=await discussion.status(view.campaign.id);assert.ok(current.actors.some(actor=>actor.id==='guide'));assert.ok(!current.eligibleAddressees.some(actor=>actor.id==='guide'));
+  await assert.rejects(discussion.intervene(view.campaign.id,'Dead guide, answer.',interrupted.id,'guide'),error=>error.status===409);assert.equal(calls.length,0);
+});
+test('a saved addressed interjection cannot silently switch to someone else when its NPC disappears',async()=>{
+  const addressed=await discussion.intervene(view.campaign.id,'Ren, tell me.',interrupted.id,'scholar'),loaded=await engine.loaded(view.campaign.id);
+  loaded.adventure.npcs.find(npc=>npc.id==='scholar').hidden=true;await engine.save(loaded.service,loaded.state,loaded.adventure,'hidden_address_fixture');
+  const status=await discussion.status(view.campaign.id);assert.equal(status.canRespond,false);assert.equal(status.responseTargetUnavailable,true);assert.ok(!status.eligibleAddressees.some(actor=>actor.id==='scholar'));
+  await assert.rejects(discussion.respond(view.campaign.id,addressed.id),error=>error.status===409);assert.equal(calls.length,0);assert.equal((await discussion.status(view.campaign.id)).spoken.at(-1).targetSpeakerId,'scholar');
+  const untargeted=await discussion.intervene(view.campaign.id,'Then I ask everyone else.',addressed.id);assert.ok(!Object.hasOwn(untargeted.spoken.at(-1),'targetSpeakerId'));assert.equal(untargeted.canRespond,true);
+});
+test('an addressed NPC disappearing during generation cannot commit a ghost reply even without a turn change',async()=>{
+  const addressed=await discussion.intervene(view.campaign.id,'Ren, please reply.',interrupted.id,'scholar');
+  let entered,release;const pending=new Promise(resolve=>entered=resolve);handler=async()=>{entered();await new Promise(resolve=>release=resolve);return {lines:[{speakerId:'scholar',text:'GHOST_REPLY'}]};};
+  const response=discussion.respond(view.campaign.id,addressed.id);await pending;const loaded=await engine.loaded(view.campaign.id);loaded.adventure.npcs.find(npc=>npc.id==='scholar').hidden=true;await engine.save(loaded.service,loaded.state,loaded.adventure,'disappeared_address_fixture');release();
+  await assert.rejects(response,error=>error.status===409);assert.equal(calls.length,1);const after=await discussion.status(view.campaign.id);assert.equal(after.id,addressed.id);assert.ok(!after.spoken.some(line=>line.text==='GHOST_REPLY'));assert.equal(after.spoken.at(-1).targetSpeakerId,'scholar');
+});

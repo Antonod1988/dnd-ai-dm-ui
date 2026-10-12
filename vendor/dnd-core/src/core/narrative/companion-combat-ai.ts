@@ -1,15 +1,27 @@
 import type { Character, CombatState, Combatant, GameState, RollLogEntry, RulesConfig } from '../types.js';
-import type { Rng } from '../dice.js';
+import { rollExpression, type Rng } from '../dice.js';
 import { availableAutomatedSrdSpells, automatedSrdSpellLevel, type AutomatedSrdSpellId } from '../rulesets/srd5e2014/spell-engine.js';
 import { getAutomatedSrdSpellAction, resolveAutomatedSrdCombatSpellTurnAction } from '../actions/automated-spell-actions.js';
 import { resolveDeathSaveTurnAction } from '../actions/death-save-actions.js';
-import { combatCover, combatDistanceBand, combatantStatusFlags, needsDeathSave, resolveReadiedReactionsWithRollLogs, runAutomaticTurns, syncCombatantToCharacter } from '../rules/combat.js';
-import { isCharmedBySource } from '../rules/conditions.js';
+import { applyAiMovementToAttackRange, applyAiStandUp, applyHealing, combatCover, combatDistanceBand, combatantStatusFlags, isAttackInDistanceBand, needsDeathSave, resolveReadiedReactionsWithRollLogs, runAutomaticTurns, syncCombatantToCharacter } from '../rules/combat.js';
+import { effectiveHitPointMaximum, isCharmedBySource } from '../rules/conditions.js';
 import { syncPartyFromCombat } from './consequence-engine.js';
+import { hasAvailableAction, spendAction } from '../rulesets/srd5e2014/action-economy.js';
+import { resolveRegisteredStandardCombatAction } from '../actions/standard-combat-actions.js';
+import { canUseSrdAttackWithEquipment } from '../rulesets/srd5e2014/character-builder.js';
+import { canSpendInventoryItemUse, hasAmmunitionForAttack, inventoryItemForAttack, itemCatalog, modeledInventoryUseEffect, spendInventoryItemUse } from '../content/items.js';
 
 const healing: AutomatedSrdSpellId[] = ['spell_healing_word', 'spell_cure_wounds'];
 const damage = new Set(['spell_magic_missile', 'spell_sacred_flame', 'spell_toll_the_dead', 'spell_poison_spray', 'spell_vicious_mockery', 'spell_dissonant_whispers']);
 const melee = new Set(['spell_shocking_grasp', 'spell_inflict_wounds', 'spell_vampiric_touch']);
+type CompanionOrder={mode:'auto'|'conserve'|'defend'|'support'|'focus';targetId?:string;combatId?:string};
+function orders(state:GameState):Record<string,CompanionOrder>{
+  const raw=state.flags.ui_companion_orders;if(typeof raw!=='string'||raw.length>3000)return {};
+  try{const value=JSON.parse(raw);if(!value||Array.isArray(value)||typeof value!=='object'||Object.keys(value).length>3)return {};
+    for(const [id,order] of Object.entries(value) as [string,CompanionOrder][]){if(!id||id.length>160||!order||typeof order!=='object'||!['auto','conserve','defend','support','focus'].includes(order.mode)||Object.keys(order).some(k=>!['mode','targetId','combatId'].includes(k))||order.targetId!==undefined&&(typeof order.targetId!=='string'||!order.targetId||order.targetId.length>160)||order.combatId!==undefined&&(typeof order.combatId!=='string'||!order.combatId||order.combatId.length>160))return {};}
+    return value;
+  }catch{return {};}
+}
 function enabledIds(state: GameState): Set<string> {
   const raw=state.flags.ui_companion_ai_ids;
   if(typeof raw!=='string'||raw.length>2000)return new Set();
@@ -28,6 +40,7 @@ function reaches(combat: CombatState, actorId: string, targetId: string, spellId
 /** One finite automatic turn for explicitly registered NPC companions. Speech never calls this. */
 export function createCompanionAutomaticHook(state: GameState, rng: Rng) {
   const ids=enabledIds(state);
+  const preferences=orders(state);
   let members=state.party.members;
   const rollLogs: RollLogEntry[]=[];
   const beforeAutomaticDeathSave=({combat,actor}: {combat:CombatState;actor:Combatant;rules:RulesConfig;rng:Rng})=>{
@@ -40,28 +53,56 @@ export function createCompanionAutomaticHook(state: GameState, rng: Rng) {
   const beforeAutomaticActor=({combat: original,actor: supplied}: {combat:CombatState;actor:Combatant;rules:RulesConfig;rng:Rng}) => {
     if(original.participants[original.turnIndex]?.id!==supplied.id||supplied.kind!=='ally'||!ids.has(supplied.id)||supplied.hp.current<=0||combatantStatusFlags(supplied).cannotAct)return undefined;
     const character=members.find(m=>m.kind==='ally'&&m.id===supplied.id&&(supplied.sourceCharacterId||supplied.id)===m.id);
-    if(!character?.spellcasting)return undefined;
+    if(!character)return undefined;
+    let order=preferences[supplied.id]||{mode:'auto'};
+    if(order.mode==='focus'){
+      const target=original.participants.find(p=>p.id===order.targetId);
+      if(order.combatId!==original.id||!target||target.kind!=='enemy'||!combatantStatusFlags(target).validAttackTarget||target.conditions.some(c=>['fled','captured'].includes(c))||isCharmedBySource(supplied,target.id)||combatCover(original,supplied.id,target.id)==='total'||combatDistanceBand(original,supplied.id,target.id)==='out_of_range')order={mode:'auto'};
+    }
     let combat=original,changed=false,mainUsed=false,bonusUsed=false;
     const caster=()=>{
       const actor=combat.participants.find(p=>p.id===supplied.id)!;
       return syncCombatantToCharacter(members.find(m=>m.id===supplied.id)!,actor) as Character;
     };
-    const woundedTargets=()=>combat.participants.filter(p=>p.kind!=='enemy'&&!p.conditions.includes('dead')&&!p.deathSaves?.dead&&(p.hp.current===0||p.hp.current<=p.hp.max/3)&&!(p.activeEffects||[]).some(e=>e.healingPrevented))
+    const woundedTargets=()=>combat.participants.filter(p=>p.kind!=='enemy'&&!p.conditions.includes('dead')&&!p.deathSaves?.dead&&!p.conditions.some(c=>['fled','captured'].includes(c))&&(order.mode==='support'?(p.hp.current<p.hp.max&&(!order.targetId||p.id===order.targetId)):order.mode==='conserve'?p.hp.current===0:order.mode==='focus'?false:(p.hp.current===0||p.hp.current<=p.hp.max/3))&&!(p.activeEffects||[]).some(e=>e.healingPrevented))
       .sort((a,b)=>a.hp.current/a.hp.max-b.hp.current/b.hp.max);
-    const offensiveTargets=()=>{const actor=combat.participants.find(p=>p.id===supplied.id)!;return combat.participants.filter(p=>p.kind==='enemy'&&combatantStatusFlags(p).validAttackTarget&&!isCharmedBySource(actor,p.id)).sort((a,b)=>a.hp.current-b.hp.current);};
-    const offensiveSpells=(cantripOnly=false)=>availableAutomatedSrdSpells(caster()).filter(id=>slotAvailable(caster(),id)&&(!cantripOnly||automatedSrdSpellLevel(id)==='0')&&(getAutomatedSrdSpellAction(id).kind==='spell_attack'||damage.has(id)))
+    const offensiveTargets=()=>{const actor=combat.participants.find(p=>p.id===supplied.id)!;return combat.participants.filter(p=>p.kind==='enemy'&&combatantStatusFlags(p).validAttackTarget&&!isCharmedBySource(actor,p.id)&&(order.mode!=='focus'||p.id===order.targetId)).sort((a,b)=>a.hp.current-b.hp.current);};
+    const offensiveSpells=(cantripOnly=false)=>availableAutomatedSrdSpells(caster()).filter(id=>slotAvailable(caster(),id)&&(!(cantripOnly||order.mode==='conserve')||automatedSrdSpellLevel(id)==='0')&&(getAutomatedSrdSpellAction(id).kind==='spell_attack'||damage.has(id)))
       .sort((a,b)=>Number(automatedSrdSpellLevel(b))-Number(automatedSrdSpellLevel(a)));
+    const ownHealingItem=()=>{
+      if(!['auto','conserve'].includes(order.mode)||!combat.turnBudget?.action||!spendAction(combat.turnBudget,'use_object').ok)return undefined;
+      const actor=combat.participants.find(p=>p.id===supplied.id)!;
+      if(actor.hp.current<=0||actor.hp.current>effectiveHitPointMaximum(actor)/3||actor.conditions.includes('dead')||actor.deathSaves?.dead||combatantStatusFlags(actor).cannotAct||applyHealing(actor,1).hp.current<=actor.hp.current)return undefined;
+      const current=caster();
+      for(const item of current.inventory){
+        if(item.quantity<=0||item.requiresAttunement&&!item.attuned||!canSpendInventoryItemUse(item).ok)continue;
+        const effect=modeledInventoryUseEffect(item,current.inventory);
+        if(effect?.type==='healing'&&(item.charges||effect.consume)&&typeof effect.dice==='string')return {item,effect};
+      }
+      return undefined;
+    };
     const initialKnown=availableAutomatedSrdSpells(caster());
     const intendsHealing=healing.some(id=>initialKnown.includes(id)&&slotAvailable(caster(),id)&&(id==='spell_healing_word'?combat.turnBudget?.bonusAction:combat.turnBudget?.action)&&woundedTargets().some(target=>reaches(combat,supplied.id,target.id,id)));
     const intendsOffense=combat.turnBudget?.action&&offensiveSpells().some(id=>offensiveTargets().some(target=>reaches(combat,supplied.id,target.id,id)));
     // Declining the hook leaves the ordinary weapon AI's turn-start trigger untouched.
-    if(!intendsHealing&&!intendsOffense)return undefined;
+    const controlled=order.mode==='defend'||order.mode==='support'||order.mode==='focus';
+    const intendsWeapon=['auto','conserve'].includes(order.mode)&&hasAvailableAction(combat.turnBudget);
+    if(!controlled&&!intendsHealing&&!intendsOffense&&!ownHealingItem()&&!intendsWeapon)return undefined;
     // The core invokes this hook before its normal hostile-turn-start reactions. A handled
     // caster turn must resolve that same trigger before spell preparation, exactly once.
     const readied=resolveReadiedReactionsWithRollLogs(combat,supplied.id,rng,state.campaign.rules,'hostile_turn_start');
     combat=readied.combat;rollLogs.push(...readied.rollLogs);changed=readied.combat!==original;
     const afterReady=combat.participants.find(p=>p.id===supplied.id);
     if(!afterReady||afterReady.hp.current<=0||combatantStatusFlags(afterReady).cannotAct)return {handled:true,combat};
+    const standard=(kind:'dodge'|'attack',targetId?:string,attackId?:string)=>{
+      const actor=combat.participants.find(p=>p.id===supplied.id)!;
+      const spent=spendAction(combat.turnBudget!,kind);if(!spent.ok)return false;
+      const result=resolveRegisteredStandardCombatAction({state:{...state,party:{...state.party,members}},combat:{...combat,turnBudget:spent.budget},actor,actionKind:kind,primaryId:attackId,secondaryId:targetId,spentBudget:spent.budget,rng});
+      if(!result.handled||!result.ok)return false;
+      combat=result.combat;if(result.partyMembers)members=result.partyMembers;rollLogs.push(...result.rollLogs);changed=true;mainUsed=true;
+      combat={...combat,log:[...combat.log,{id:`companion-order-${supplied.id}-${combat.round}-${combat.log.length}`,ts:new Date().toISOString(),round:combat.round,actorId:supplied.id,title:`${supplied.name}: ${kind}`,body:result.message}]};return true;
+    };
+    if(order.mode==='defend'){if(hasAvailableAction(combat.turnBudget))standard('dodge');return {handled:true,combat};}
     const cast=(spellId:AutomatedSrdSpellId,targetId:string,bonus=false)=>{
       const current=caster();members=members.map(m=>m.id===current.id?current:m);
       const result=resolveAutomatedSrdCombatSpellTurnAction({combat,actorId:supplied.id,actionId:`combat.${bonus?'bonus':'action'}.cast_spell.${spellId}.${targetId}`,members,rng,rules:state.campaign.rules});
@@ -83,9 +124,44 @@ export function createCompanionAutomaticHook(state: GameState, rng: Rng) {
     }
     const actor=combat.participants.find(p=>p.id===supplied.id)!;
     if(mainUsed||combatantStatusFlags(actor).cannotAct||actor.hp.current<=0)return changed?{handled:true,combat}:undefined;
+    if(order.mode==='support'){if(hasAvailableAction(combat.turnBudget))standard('dodge');return {handled:true,combat};}
+    const potion=ownHealingItem();
+    if(potion){
+      const spent=spendAction(combat.turnBudget!,'use_object');
+      if(spent.ok){
+        const roll=rollExpression(potion.effect.dice,{rng}),healed=applyHealing(actor,roll.total);
+        if(healed.hp.current>actor.hp.current){
+          const current=caster(),inventory=spendInventoryItemUse(current.inventory,potion.item.itemId,potion.effect.consume);
+          const updated=syncCombatantToCharacter({...current,inventory},healed);
+          members=members.map(m=>m.id===supplied.id?updated:m);
+          const logId=`companion-item-${supplied.id}-${combat.round}-${combat.log.length}`;
+          const message=`${actor.name} uses own ${potion.item.name} (${potion.item.itemId}) on ${actor.name} (${actor.id}) and restores ${healed.hp.current-actor.hp.current} HP.`;
+          combat={...combat,turnBudget:spent.budget,participants:combat.participants.map(p=>p.id===actor.id?healed:p),log:[...combat.log,{id:logId,ts:new Date().toISOString(),round:combat.round,actorId:actor.id,title:`${actor.name}: Use ${potion.item.name}`,body:message}]};
+          rollLogs.push({id:logId,ts:new Date().toISOString(),actorId:actor.id,label:`${potion.item.name} → ${actor.name}`,result:roll});
+          changed=true;mainUsed=true;return {handled:true,combat};
+        }
+      }
+    }
     if(combat.turnBudget?.action){
       const enemies=offensiveTargets(),spells=offensiveSpells(bonusUsed);
       for(const spellId of spells){const target=enemies.find(p=>reaches(combat,actor.id,p.id,spellId));if(target&&cast(spellId,target.id))break;}
+    }
+    if(['auto','conserve','focus'].includes(order.mode)&&!mainUsed&&hasAvailableAction(combat.turnBudget)){
+      let focused=order.mode==='focus'?combat.participants.find(p=>p.id===order.targetId):offensiveTargets().filter(p=>combatCover(combat,actor.id,p.id)!=='total'&&combatDistanceBand(combat,actor.id,p.id)!=='out_of_range').sort((a,b)=>({engaged:0,near:1,far:2,out_of_range:3}[combatDistanceBand(combat,actor.id,a.id)]-({engaged:0,near:1,far:2,out_of_range:3}[combatDistanceBand(combat,actor.id,b.id)]))||a.hp.current-b.hp.current)[0];
+      if(focused&&combatantStatusFlags(focused).validAttackTarget&&!isCharmedBySource(actor,focused.id)&&combatCover(combat,actor.id,focused.id)!=='total'){
+        const current=caster();members=members.map(m=>m.id===current.id?current:m);
+        const usable=(attack:Combatant['attacks'][number])=>{
+          const itemId=inventoryItemForAttack(attack)||(itemCatalog[attack.id]||current.inventory.some(i=>i.itemId===attack.id)?attack.id:undefined);
+          return (!itemId||(Object.values(current.equipment).includes(itemId)&&current.inventory.some(i=>i.itemId===itemId&&i.quantity>0)))&&canUseSrdAttackWithEquipment(current,attack).ok&&hasAmmunitionForAttack(current.inventory,attack);
+        };
+        combat=applyAiStandUp(combat,actor);const moving=combat.participants.find(p=>p.id===actor.id)!;
+        combat=applyAiMovementToAttackRange(combat,{...moving,attacks:moving.attacks.filter(usable)},focused,rng,state.campaign.rules);
+        const now=combat.participants.find(p=>p.id===actor.id)!;focused=combat.participants.find(p=>p.id===focused!.id);
+        if(now.hp.current<=0||combatantStatusFlags(now).cannotAct)return {handled:true,combat};
+        const attack=now.attacks.find(a=>focused&&usable(a)&&isAttackInDistanceBand(a,combatDistanceBand(combat,now.id,focused.id)));
+        if(attack&&focused)standard('attack',focused.id,attack.id);else standard('dodge');
+      }else standard('dodge');
+      return {handled:true,combat};
     }
     // A bonus heal may leave the normal weapon AI a main action. No second main cast runs.
     return changed?{handled:mainUsed,combat}:undefined;

@@ -6,7 +6,9 @@ const { contextFor } = require('./adventure-context');
 const measuredAi = require('./adventure-usage');
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 function append(meta, line) {
-  if (line) model.addMessage(meta, line.speakerId === 'player' ? 'player' : line.speakerId === 'dm' ? 'dm' : 'companion', line.speakerName, line.text);
+  if (line){model.addMessage(meta, line.speakerId === 'player' ? 'player' : line.speakerId === 'dm' ? 'dm' : 'companion', line.speakerName, line.text);
+    if(line.targetSpeakerId)Object.assign(meta.messages.at(-1),{targetSpeakerId:line.targetSpeakerId,targetSpeakerName:line.targetSpeakerName});
+  }
 }
 function recordDecision(meta, source, decision, playerName) {
   if(meta.events.some(event=>event.kind==='dialogue_decision'&&event.dialogueId===source.dialogueId&&event.proposalId===source.proposalId))return false;
@@ -21,9 +23,26 @@ function recordDecision(meta, source, decision, playerName) {
   return true;
 }
 const responseRequests=new Set();
+function eligibleAddressees(meta,state){
+  if(!meta?.dialogue||!state||!dialogue.isCurrent(meta.dialogue,meta.turn,meta.currentLocationId))return [];
+  const current=narration.scenePacket(state,meta,[]).actors;
+  const roster=Array.isArray(meta.dialogue.actors)?meta.dialogue.actors:[];
+  return current.filter(actor=>actor.id!=='dm'&&actor.id!=='player'&&actor.kind!=='player'&&roster.some(heard=>heard.id===actor.id)).filter(actor=>{
+    const npc=meta.npcs.find(npc=>npc.id===actor.id);if(npc?.hidden)return false;
+    const represented=[state.party.members.find(m=>m.id===actor.id),meta.environment?.npcStates?.find(record=>record.npcId===actor.id)?.body,state.combat?.participants.find(p=>(p.sourceCharacterId||p.id)===actor.id)].filter(Boolean);
+    return represented.every(person=>person.hp.current>0&&!person.deathSaves?.dead&&!person.conditions?.some(condition=>['dead','unconscious','incapacitated','stunned','paralyzed','petrified','fled'].includes(condition)));
+  }).map(({id,name,kind,role})=>({id,name,kind,role}));
+}
+function checkedAddressee(meta,state,targetSpeakerId){
+  if(targetSpeakerId===undefined)return null;
+  let actor;try{actor=dialogue.addressedActor(meta.dialogue,targetSpeakerId);}catch(error){fail('Выберите точного NPC-участника текущего разговора.');}
+  if(!eligibleAddressees(meta,state).some(current=>current.id===actor.id))fail('Этот адресат сейчас отсутствует или не может отвечать.',409);
+  return actor;
+}
 const publicState = (meta,state) => {
   const view=dialogue.publicDialogue(meta?.dialogue, meta?.turn, meta?.currentLocationId);
-  return view?{...view,canRespond:view.status==='interrupted'&&!state?.combat&&view.spoken.at(-1)?.speakerId==='player',responseFailure:meta.dialogue.responseFailure?.kind||null}:null;
+  const targets=eligibleAddressees(meta,state),last=view?.spoken.at(-1),targetUnavailable=Boolean(last?.targetSpeakerId&&!targets.some(actor=>actor.id===last.targetSpeakerId));
+  return view?{...view,eligibleAddressees:targets,responseTargetUnavailable:targetUnavailable,canRespond:view.status==='interrupted'&&!state?.combat&&last?.speakerId==='player'&&!targetUnavailable,responseFailure:meta.dialogue.responseFailure?.kind||null}:null;
 };
 async function checked(id, expectedDialogueId) {
   const loaded = await adventure.loaded(id), meta = loaded.adventure;
@@ -48,24 +67,30 @@ async function start(id, topic = '') {
   }, () => ({ lines: [{ speakerId: packet.actors[1]?.id || 'dm', text: meta.language === 'en' ? 'Let us discuss our next step. What do you want to do?' : 'Давай обсудим следующий шаг. Как ты хочешь поступить?' }] }));
   meta.dialogue = dialogue.createDialogue(batch, packet.actors, packet.actions.map(a => a.id), meta.turn, { sceneId: meta.currentLocationId });
   append(meta, dialogue.nextLine(meta.dialogue)); meta.revision += 1;
-  await adventure.save(service, state, meta, 'adventure_discussion'); return publicState(meta);
+  await adventure.save(service, state, meta, 'adventure_discussion'); return publicState(meta,state);
 }
 async function next(id, expectedDialogueId) {
   const { service, state, adventure: meta } = await checked(id, expectedDialogueId);
   const line = dialogue.nextLine(meta.dialogue);
   if (line) { append(meta, line); meta.revision += 1; await adventure.save(service, state, meta, 'discussion_line'); }
-  return publicState(meta);
+  return publicState(meta,state);
 }
-async function intervene(id, text, expectedDialogueId) {
+async function intervene(id, text, expectedDialogueId, targetSpeakerId) {
   const { service, state, adventure: meta } = await checked(id, expectedDialogueId);
+  checkedAddressee(meta,state,targetSpeakerId);
   const hero = state.party.members.find(m => m.id === state.party.heroId);
-  append(meta, dialogue.intervene(meta.dialogue, text, hero.name));delete meta.dialogue.responseFailure;meta.revision += 1;
+  const line=dialogue.intervene(meta.dialogue,text,hero.name,targetSpeakerId);append(meta,line);
+  const details={dialogueId:meta.dialogue.id,lineId:line.id,actorId:hero.id,sourceSceneId:meta.currentLocationId,source:'player_statement',...(line.targetSpeakerId?{targetSpeakerId:line.targetSpeakerId,targetSpeakerName:line.targetSpeakerName}:{})};
+  const textSummary=`${hero.name}${line.targetSpeakerName?` → ${line.targetSpeakerName}`:''}: ${line.text}`;
+  const event=model.addEvent(meta,'dialogue_interjection',line.targetSpeakerId||meta.currentLocationId,textSummary,details);Object.assign(meta.journal.find(entry=>entry.id===event.id),details);
+  delete meta.dialogue.responseFailure;meta.revision += 1;
   await adventure.save(service, state, meta, 'discussion_intervene'); return publicState(meta,state);
 }
 function heardWindow(queue){
   const lines=[];
   for(const line of queue.spoken.slice(-8).reverse()){
     const entry={speakerId:line.speakerId,speakerName:String(line.speakerName).slice(0,80),text:line.text.slice(0,1200),source:line.speakerId==='player'?'player_statement':'heard_speech'};
+    if(line.targetSpeakerId){entry.targetSpeakerId=line.targetSpeakerId;entry.targetSpeakerName=line.targetSpeakerName;}
     lines.unshift(entry);if(JSON.stringify(lines).length>4000){lines.shift();break;}
   }
   return lines;
@@ -84,12 +109,19 @@ async function respond(id,expectedDialogueId){
     const publicView=await adventure.publicView(service,state,meta);
     const packet=narration.scenePacket(state,meta,publicView.actions);
     const heard=heardWindow(meta.dialogue),last=heard.at(-1);
+    const responseTarget=checkedAddressee(meta,state,last?.targetSpeakerId);
     const context=contextFor(state,meta,last?.text||'').packet;
     const payload={instruction:`Continue the ${meta.language==='en'?'English':'Russian'} RPG conversation in response to the player's last interjection. Return EXACT JSON {lines:[{speakerId,text,interruptsSpeakerId?,proposal?:{actionId,label}}]}, 1-5 lines, each at most 650 characters. Use only supplied exact actor/action ids. Never speak for the human player. React to heard speech only; cancelled future replies do not exist. Player statements may be lies or hypotheses, not confirmed world facts. Speech executes no actions, changes no mechanics, facts, NPC body, money or resources. Proposals reference current actions and await acceptance. Keep the same scene and turn; distinct personalities may disagree or interrupt another supplied actor. Do not wrap the reply in narration or developments.`,actors:packet.actors,actions:packet.actions,heard,context};
+    if(responseTarget){payload.responseTarget={id:responseTarget.id,name:responseTarget.name};payload.instruction+=` The player explicitly addressed responseTarget. The FIRST line MUST use speakerId ${responseTarget.id}; let that actual actor answer first before other speakers respond.`;}
     for(const key of ['transactions','recentEvents','recentDialogue','recollections','questHistory','questIndex','inventory','createdSpells','nearbyPlaces','markets','objects','sceneProps','checks','quests','activeFacts','bookmarks','npcs'])while(JSON.stringify(payload).length>18000&&Array.isArray(context[key])&&context[key].length)context[key].pop();
     if(JSON.stringify(payload).length>18000)fail('Слишком много участников для короткого ответа. Начните новый разговор.');
-    const queue=await narration.generate(working,payload,()=>({lines:[{speakerId:packet.actors[1]?.id||'dm',text:meta.language==='en'?'I hear you. Tell me what matters most before we decide.':'Я тебя услышал. Скажи, что для тебя важнее всего, прежде чем мы решим.'}]}),batch=>dialogue.createDialogue(batch,packet.actors,packet.actions.map(action=>action.id),meta.turn,{sceneId:meta.currentLocationId,source:meta.dialogue.source||'council'}),{task:'adventure_dialogue_response'});
+    const queue=await narration.generate(working,payload,()=>({lines:[{speakerId:responseTarget?.id||packet.actors[1]?.id||'dm',text:meta.language==='en'?'I hear you. Tell me what matters most before we decide.':'Я тебя услышал. Скажи, что для тебя важнее всего, прежде чем мы решим.'}]}),batch=>{
+      const queue=dialogue.createDialogue(batch,packet.actors,packet.actions.map(action=>action.id),meta.turn,{sceneId:meta.currentLocationId,source:meta.dialogue.source||'council'});
+      if(responseTarget&&queue.planned[0].speakerId!==responseTarget.id)throw new Error('Addressed dialogue speaker must answer first');
+      return queue;
+    },{task:'adventure_dialogue_response'});
     const latest=await adventure.loaded(state.campaign.id);if(!stillCurrent(latest))fail('Разговор уже изменился. Ответ отменён.',409);
+    if(responseTarget)checkedAddressee(latest.adventure,latest.state,responseTarget.id);
     queue.spoken=structuredClone(meta.dialogue.spoken);queue.proposals=structuredClone(meta.dialogue.proposals);
     queue.actors=[...packet.actors,...(meta.dialogue.actors||[]).filter(actor=>!packet.actors.some(current=>current.id===actor.id))];
     working.dialogue=queue;append(working,dialogue.nextLine(queue));working.revision+=1;
@@ -112,7 +144,7 @@ async function decide(id, proposalId, decision, expectedDialogueId) {
     speakerName:meta.dialogue.actors?.find(actor=>actor.id===proposal.speakerId)?.name||proposal.speakerId,sourceSceneId:meta.dialogue.sceneId||meta.currentLocationId,sourceTurn:meta.dialogue.baseTurn};
   if (decision === 'reject') {
     proposal.status = 'rejected'; recordDecision(meta,source,'rejected',playerName);meta.revision += 1;
-    await adventure.save(service, state, meta, 'proposal_rejected'); return publicState(meta);
+    await adventure.save(service, state, meta, 'proposal_rejected'); return publicState(meta,state);
   }
   if (!(await adventure.publicView(service, state, meta)).actions.some(a => a.id === proposal.actionId)) fail('Это действие больше недоступно.', 409);
   // Persist consumption before the ordinary rules path. The deterministic operation ID
@@ -150,6 +182,6 @@ async function decide(id, proposalId, decision, expectedDialogueId) {
   }
   recordDecision(updated.adventure,source,'accepted',playerName);
   updated.adventure.revision += 1; await adventure.save(updated.service, updated.state, updated.adventure, 'proposal_accepted');
-  return publicState(updated.adventure);
+  return publicState(updated.adventure,updated.state);
 }
 module.exports = { status, start, next, intervene, respond, decide };

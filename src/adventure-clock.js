@@ -1,6 +1,6 @@
 // Fictional exploration uses minutes/hours; combat uses six-second rounds.
 function elapsedSeconds(command, beforeCombat, afterCombat, outcome = {}) {
-  if(['trade','service','market_choice','social','recruit','dismiss','first_aid'].includes(command.type))return outcome.elapsedSeconds;
+  if(['trade','service','market_choice','social','recruit','dismiss','first_aid','party_item','party_gear'].includes(command.type))return outcome.elapsedSeconds;
   if (command.type === 'recover_stable') return outcome.recoveryHours * 3600;
   if (beforeCombat) {
     return afterCombat ? Math.max(0, afterCombat.round - beforeCombat.round) * 6 : 6;
