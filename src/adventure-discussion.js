@@ -26,7 +26,7 @@ function recordDecision(meta, source, decision, playerName) {
 const responseRequests=new Set();
 function eligibleAddressees(meta,state){
   if(!meta?.dialogue||!state||!dialogue.isCurrent(meta.dialogue,meta.turn,meta.currentLocationId))return [];
-  const current=narration.scenePacket(state,meta,[]).actors;
+  const current=narration.eligibleSpeakers(state,meta).map(person=>({id:person.id,name:String(person.name||'').slice(0,80),kind:person.kind==='ally'?'companion':'npc',role:String(meta.npcs.find(npc=>npc.id===person.id)?.role||person.role||person.className||'').slice(0,140)}));
   const roster=Array.isArray(meta.dialogue.actors)?meta.dialogue.actors:[];
   return current.filter(actor=>actor.id!=='dm'&&actor.id!=='player'&&actor.kind!=='player'&&roster.some(heard=>heard.id===actor.id)).filter(actor=>{
     const npc=meta.npcs.find(npc=>npc.id===actor.id);if(npc?.hidden)return false;
@@ -61,7 +61,7 @@ async function status(id) {const loaded=await adventure.loaded(id);return public
 async function start(id, topic = '') {
   const { service, state, adventure: meta } = await adventure.loaded(id);
   if (!state) fail('Создайте приключение.');
-  const packet = narration.scenePacket(state, meta, (await adventure.publicView(service, state, meta)).actions);
+  const packet = narration.scenePacket(state, meta, (await adventure.publicView(service, state, meta)).actions,undefined,{query:String(topic)});
   const batch = await measuredAi.generate(meta, 'adventure_discussion', prose.apply({
     instruction: `Write a short ${meta.language === 'en' ? 'English' : 'Russian'} conversation with 2-5 lines. Return {lines:[{speakerId,text,interruptsSpeakerId?,proposal?:{actionId,label}}]}. Use exact supplied actor ids and only exact supplied action ids for proposals. Give different personalities different viewpoints. Never speak for the human player. No mechanics or actions are executed by speech. Leave the final decision to the player. A specific plan should include a proposal referencing a supplied action id. Keep every line under 650 characters. An interruption references another supplied actor only.`,
     topic: String(topic).slice(0, 1000), actors: packet.actors, actions: packet.actions, context: contextFor(state, meta, topic).packet
@@ -108,9 +108,9 @@ async function respond(id,expectedDialogueId){
   const stillCurrent=loaded=>loaded.adventure?.revision===revision&&loaded.adventure.dialogue?.id===expectedDialogueId&&loaded.adventure.dialogue.status==='interrupted'&&dialogue.isCurrent(loaded.adventure.dialogue,loaded.adventure.turn,loaded.adventure.currentLocationId)&&!loaded.state?.combat;
   try{
     const publicView=await adventure.publicView(service,state,meta);
-    const packet=narration.scenePacket(state,meta,publicView.actions);
     const heard=heardWindow(meta.dialogue),last=heard.at(-1);
     const responseTarget=checkedAddressee(meta,state,last?.targetSpeakerId);
+    const packet=narration.scenePacket(state,meta,publicView.actions,last?.targetSpeakerId,{query:last?.text||'',preferredIds:meta.dialogue.spoken.slice(-8).map(line=>line.speakerId)});
     const context=contextFor(state,meta,last?.text||'').packet;
     const payload={instruction:`Continue the ${meta.language==='en'?'English':'Russian'} RPG conversation in response to the player's last interjection. Return EXACT JSON {lines:[{speakerId,text,interruptsSpeakerId?,proposal?:{actionId,label}}]}, 1-5 lines, each at most 650 characters. Use only supplied exact actor/action ids. Never speak for the human player. React to heard speech only; cancelled future replies do not exist. Player statements may be lies or hypotheses, not confirmed world facts. Speech executes no actions, changes no mechanics, facts, NPC body, money or resources. Proposals reference current actions and await acceptance. Keep the same scene and turn; distinct personalities may disagree or interrupt another supplied actor. Do not wrap the reply in narration or developments.`,actors:packet.actors,actions:packet.actions,heard,context};
     if(responseTarget){payload.responseTarget={id:responseTarget.id,name:responseTarget.name};payload.instruction+=` The player explicitly addressed responseTarget. The FIRST line MUST use speakerId ${responseTarget.id}; let that actual actor answer first before other speakers respond.`;}

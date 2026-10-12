@@ -1,6 +1,6 @@
 # Game token usage audit — 2026-10-12
 
-Verdict: long-history selection is bounded, but the current request design is not yet economical. Repeated input dominates usage; no prompt-cache savings have been reported. This audit makes no new inference requests and does not change prompts or game mechanics.
+Initial snapshot verdict: long-history selection was bounded, but repeated input dominated usage and no prompt-cache savings were reported. That snapshot was read-only. The implemented follow-ups and their separately measured inference costs are recorded below.
 
 ## Measured provider reports
 
@@ -93,3 +93,28 @@ Both completed without format corrections. Hero HP stayed 9/9, Rae HP 3/8, arrow
 **No cache saving has been demonstrated.** The newer inputs differ from the earlier 5,920-token battle description and therefore do not establish a percentage improvement. This checkpoint supplies accurate measurement and a working request boundary; selective contract/context reduction and quality comparisons remain next work.
 
 503 tests, 102 JavaScript syntax checks, isolated smoke and diff checks passed after the transport correction. New regressions cover lossless message reconstruction, dynamic-data provenance, numeric-only diagnostics, unsupported cache parameters, stream-error usage, per-request model/counter binding, overlapping completions, migration/bounds and actual controller persistence. Local live artifacts are under `../outputs/adventure_token_audit/`; private campaign data is excluded from Git.
+
+## Compact contracts and bounded scene voices
+
+Seven reusable domain contracts now occupy 6,547 rather than 8,747 characters, a 25.2% reduction in those strings. Creation, intent and narration are pure payload builders; player data, exact IDs, state, resources, outcomes, provenance, consent and chronology remain intact. A separate semantic review restored settlement markets, promised-item delivery, manual alternatives and typed item focus instead of relying on server rejection to excuse missing prompt guidance. World/development schemas remain explicit. More schema guidance makes the narration saving smaller than the contract-string reduction.
+
+Freeform intent receives the same affordable/preflight-filtered action menu as the UI, while a known spell remains knowledge rather than permission to cast. Physical plans distinguish new prop definitions from existing IDs and require taking an unheld prop before throwing/striking it. Exact spell outcomes identify the actual caster and recipient in prose. No model switch, classifier, extra narration rewrite or production inference stage was added.
+
+Scene voice packets include at most 12 actors, including the master. Exact targets, joined companions, recently heard voices and relevant names receive priority. All world NPCs and archived dialogue remain saved. Old large conversations retain eligible addressees; a reply explicitly addressed to a late actor includes that actor first. Available proposal actions remain supplied exact IDs. An offline 500-NPC fixture proves bounds, targeting, body eligibility and unchanged world records; it is not a 500-NPC live-play benchmark.
+
+### Controlled live comparison on GPT-6-Luna
+
+The final comparisons used identical dynamic data and the same model/prose preferences within each pair. These are declared test scenes; their outcomes were never applied to a campaign. Responses were generated through the normal authenticated transport, without cache options or automatic repairs.
+
+| Case | Original input / output | Final compact input / output | Input reduction |
+| --- | ---: | ---: | ---: |
+| Take an existing mug, then throw at the actual bartender | 3,537 / 101 | 3,051 / 139 | 13.7% |
+| Ongoing battle, earlier retreat, distinct healer/patient and caster/target | 3,044 / 106 | 2,975 / 79 | 2.3% |
+
+Combined input is 6,581 → 6,026 (8.4%); combined input plus output is 6,788 → 6,244 (8.0%). Cached input is zero in every report. This small comparison demonstrates the cost of these two requests, not an average campaign saving or an account-quota discount.
+
+Exploratory compact replies exposed a duplicate definition of an existing prop, a missing prerequisite take step and an unnamed caster. Those are preserved as failed quality findings in the local artifacts; they were not counted as final successes. The intent fixture was also corrected to use the actual `holderId`/`accessible` context fields. The corrected intent was paired again against the original prompt using identical corrected data. The final intent uses only the saved mug ID, take then throw, exact bartender ID and no new prop definition. Its plan passes the native schema. The final battle prose names Luma healing Quill and Ray casting, keeps the second enemy in the ongoing battle and invents no numerical reward or extra healing. Broader semantic/prose reliability still needs gameplay evaluation.
+
+Eight completed diagnostic requests, including exploratory and follow-up calls, consumed **25,149 input and 1,000 output tokens**, with no reported cache use. These diagnostic calls are recorded separately in `../outputs/contract_compaction/paired-live*.json`, not presented as ordinary campaign usage. No game turn, clock, HP, slots, money or story was altered by the fixture evaluation. Mira remains turn 1 / HP 8/8; the main QA campaign remains turn 30 / HP 9/9. The server was restarted normally and the existing UI reopened without further inference.
+
+541 tests, 111 JavaScript syntax checks, isolated smoke and diff checks pass. The 18 new tests cover contract budgets/boundaries, immutable payload data, live-state authority, valid world enums and a real offline controller response to an old 501-actor queue. No raw prompts, campaign data or auth material from the local evaluation are published. Larger varied-case quality evaluation, safer context deduplication and the two-stage freeform design remain future work.

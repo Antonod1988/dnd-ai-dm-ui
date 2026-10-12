@@ -2,6 +2,8 @@ const measuredAi=require('./adventure-usage');
 const prose=require('./adventure-prose');
 const dialogue=require('./dialogue');
 const crypto=require('node:crypto');
+const {relevance}=require('./context-memory');
+const MAX_SCENE_ACTORS=12;
 const clip=(value,max)=>String(value||'').slice(0,max);
 // A narrow guard for explicit current-battle closure claims. This is not a
 // general semantic/prose validator; historical questions use a separate path.
@@ -11,22 +13,30 @@ function assertOngoingCombat(text,ongoing){
   if(direct.test(text))throw new Error('Current battle is still ongoing. Retreat/morale movement does not end combat until the engine confirms it; do not claim the fight is over.');
 }
 const SCENE_DIALOGUE_RULES='When characters are talking or responding to a social player intent, include optional lines:[{speakerId,text,interruptsSpeakerId?,proposal?:{actionId,label}}] in this SAME response. narration frames the scene; lines carry the actual character speech without repeating it in narration. At most 5 lines, each at most 650 characters. Use only exact dialogue.actors ids; never speak for the human player. Give present characters distinct motives and reactions. interruptsSpeakerId may mark an interruption of another supplied speaker; it is presentation, not an action. Proposals use only exact dialogue.actions ids and are invitations pending player acceptance. Never execute a proposal or describe future planned replies as already heard. No extra speaker requests are made.';
-function scenePacket(state,meta,actions,targetId) {
+function eligibleSpeakers(state,meta){
   const humanIds=new Set(state.party.members.filter(m=>m.kind==='player'||m.id===state.party.heroId).map(m=>m.id));
-  const actors=[{id:'dm',name:meta.language==='en'?'Dungeon Master':'Мастер',kind:'dm',role:'Narrator'}];
   const cannotSpeak=body=>body&&(typeof body.hp==='number'?body.hp:body.hp?.current)<=0||body?.deathSaves?.dead||body?.conditions?.some(c=>['dead','unconscious','incapacitated','stunned','paralyzed','petrified','fled'].includes(c));
-  const companions=state.party.members.filter(m=>{const npc=meta.npcs.find(n=>n.id===m.id);return m.kind==='ally'&&!cannotSpeak(m)&&(!npc||!npc.hidden&&npc.locationId===meta.currentLocationId);});
   const bodies=new Map((meta.environment?.npcStates||[]).map(record=>[record.npcId,record.body]));
-  const npcs=meta.npcs.filter(n=>n.locationId===meta.currentLocationId&&!n.hidden&&!cannotSpeak(bodies.get(n.id))).sort((a,b)=>Number(b.id===targetId)-Number(a.id===targetId));
+  const combatBody=id=>state.combat?.participants?.find(person=>(person.sourceCharacterId||person.id)===id);
+  const companions=state.party.members.filter(m=>{const npc=meta.npcs.find(n=>n.id===m.id);return m.kind==='ally'&&[m,bodies.get(m.id),combatBody(m.id)].every(body=>!cannotSpeak(body))&&(!npc||!npc.hidden&&npc.locationId===meta.currentLocationId);});
+  const npcs=meta.npcs.filter(n=>n.locationId===meta.currentLocationId&&!n.hidden&&[bodies.get(n.id),combatBody(n.id)].every(body=>!cannotSpeak(body)));
+  const seen=new Set(['dm','player',...humanIds]);
+  return [...companions,...npcs].filter(person=>{if(seen.has(person.id))return false;seen.add(person.id);return true;});
+}
+function scenePacket(state,meta,actions,targetId,{query='',preferredIds=[]}={}) {
+  const actors=[{id:'dm',name:meta.language==='en'?'Dungeon Master':'Мастер',kind:'dm',role:'Narrator'}];
+  const preferred=new Set(preferredIds),eligible=eligibleSpeakers(state,meta);
+  const ranked=eligible.map((person,index)=>({person,index,score:(person.id===targetId?1e9:0)+(person.kind==='ally'?1e7:0)+(preferred.has(person.id)?1e5:0)+relevance({text:`${person.name} ${person.id} ${person.role||person.className||''}`},query,{})})).sort((a,b)=>b.score-a.score||a.index-b.index);
   let detailChars=0;
-  for(const person of [...companions,...npcs]) {
-    if(humanIds.has(person.id)||['dm','player'].includes(person.id)||actors.some(a=>a.id===person.id))continue;
+  for(const {person} of ranked.slice(0,MAX_SCENE_ACTORS-1)) {
     const actor={id:person.id,name:clip(person.name,80),kind:person.kind==='ally'?'companion':'npc'};
     const source=meta.npcs.find(n=>n.id===person.id);const role=clip(source?.role||person.role||person.className,140),personality=clip(source?.personality||person.personality,240);
     if(actors.length<=6&&detailChars+role.length+personality.length<=2400){actor.role=role;actor.personality=personality;detailChars+=role.length+personality.length;}
     actors.push(actor);
   }
-  return {sceneId:meta.currentLocationId,actors,actions:actions.filter(a=>a.id.length<=120).slice(0,20).map(a=>({id:a.id,label:clip(a.label,100)}))};
+  const actorIds=new Set(actors.map(actor=>actor.id));
+  const rankedActions=actions.map((action,index)=>({action,index,score:(['talk','recruit','dismiss'].some(prefix=>actorIds.has(action.id.slice(prefix.length+1))&&action.id.startsWith(prefix+':'))?100:0)+relevance({text:action.label},query,{})})).sort((a,b)=>b.score-a.score||a.index-b.index);
+  return {sceneId:meta.currentLocationId,actors,omittedActors:Math.max(0,eligible.length-(actors.length-1)),actions:rankedActions.map(entry=>entry.action).filter(a=>a.id.length<=120).slice(0,20).map(a=>({id:a.id,label:clip(a.label,100)}))};
 }
 function validateSceneDialogue(lines,packet,turn) {
   if(lines===undefined||Array.isArray(lines)&&lines.length===0)return null;
@@ -56,4 +66,4 @@ async function generate(adventure,payload,fallback,validate,{task='adventure_nar
     }catch(second){second.correction=repaired?feedback(second,repaired):{...correction,repairError:String(second.message).slice(0,200)};throw second;}
   }
 }
-module.exports={generate,feedback,scenePacket,validateSceneDialogue,installSceneDialogue,assertOngoingCombat,SCENE_DIALOGUE_RULES};
+module.exports={generate,feedback,scenePacket,eligibleSpeakers,MAX_SCENE_ACTORS,validateSceneDialogue,installSceneDialogue,assertOngoingCombat,SCENE_DIALOGUE_RULES};
