@@ -43,6 +43,9 @@ test('HTTP notes, pinning and full journal search use revision checks without ta
   const replay=await post('/api/adventure/memory/note',note);assert.equal(replay.body.replayed,true);assert.equal(replay.body.notes.length,1);
   const stale=await post('/api/adventure/memory/pin',{campaignId:view.campaign.id,expectedRevision:note.expectedRevision,operationId:crypto.randomUUID(),kind:'note',recordId:view.notes[0].id,pinned:false});assert.equal(stale.status,409);
   const search=await fetch(url+`/api/adventure/history?campaignId=${encodeURIComponent(view.campaign.id)}&query=${encodeURIComponent('капитану Тарену')}`).then(r=>r.json());assert.equal(search.total,1);assert.equal(search.entries[0].kind,'player_note');
+  const categorized=await fetch(url+`/api/adventure/history?campaignId=${view.campaign.id}&category=notes`).then(r=>r.json());assert.equal(categorized.total,1);assert.equal(categorized.entries[0].category,'notes');
+  const other=await fetch(url+`/api/adventure/history?campaignId=${view.campaign.id}&category=quests&query=${encodeURIComponent('Тарену')}`).then(r=>r.json());assert.equal(other.total,0);
+  assert.equal((await fetch(url+`/api/adventure/history?campaignId=${view.campaign.id}&category=bogus`)).status,400);
 });
 test('concurrent HTTP purchases are serialized and cannot spend the same revision twice',async()=>{
   const created=await post('/api/adventure/create',{heroName:'Торговец',worldIdea:'Город мастеров и дороги к поселениям',survival:true});assert.equal(created.status,200);view=created.body;

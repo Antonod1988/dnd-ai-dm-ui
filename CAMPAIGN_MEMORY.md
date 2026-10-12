@@ -11,11 +11,14 @@ Artwork stays outside the text context: no image bytes, gallery labels or bindin
 - Current world and hero concept; exact HP, armor class, abilities, resources, spell slots, conditions and combat turn.
 - Relevant unfinished quest objectives, exact delivery recipients, declared alternative check IDs/attempt results and their recorded completion evidence. A compact index covers additional quests when space permits. Previously completed quests can be recalled with their actual status and reward flag.
 - Player bookmarks, confirmed discoveries and relevant excerpts of older dialogue, including their speaker and turn.
+- Relevant older journal outcomes in `pastEvents`, with exact event/actor/item/proposal/action identities and explicit source/confidence. Matching mechanical events supply outcomes; player statements, NPC reports and legacy rows without an authoritative event remain distinct. At most five records/2,200 serialized characters enter this slice. No unspoken dialogue, unopened lore or complete event payload/body is retrieved.
 - Nearby people and routes, selected inventory and created spells, a short recent dialogue window and the latest events.
 - Nearby world objects with actual access state. Concealed finds contribute their visible container and conditions, not their unopened contents.
 - Exact wallet balance, selected local market offers and at most three relevant receipts. Unpaid information remains hidden. Purchased information retains its attribution and rumor status.
 
 The packet has a hard 12,000-character budget and smaller budgets for individual sections. It is assembled by relevance and priority. A long history therefore does not mean resending every previous turn. This is retrieval and structured context reduction, rather than a paid AI summary after every turn.
+
+Current party state is selected first. Exact queried goals, related pins and historical evidence then receive space before unrelated bookmarks and optional prose. Quest ranking includes objective text and actual referenced item/recipient/place names, not just the title. Compact objectives/index entries retain their IDs and recipients. Only actually selected bookmarks are excluded from the later fact pass, so a pinned fact that did not fit can still be recalled. Current state supersedes an older injury or condition; historical evidence does not perform an action again.
 
 Limits do not delete source records. If the campaign has more facts, notes or quests than fit, the packet reports omissions. A query can bring a previously omitted record back. No finite packet can include an unlimited number of full records simultaneously.
 
@@ -27,13 +30,20 @@ Dialogue continuation after a player interjection uses at most eight heard lines
 
 The player can write a note, pin/unpin it, and pin a confirmed discovery. These operations save locally, check the campaign revision, and do not advance the game, roll dice or call AI. Search covers the full stored journal. Older entries are paginated, so the main state response does not grow by resending the entire journal.
 
+Notes/reminders are collapsed by default. The chronicle has a category dropdown for quests, dialogue/party, combat/aid, loot/possessions, economy, exploration/checks and player notes. Search and pagination apply to the entire stored journal within the selected category, without changing source records. Empty discoveries no longer consume half the journal view. Russian/English controls and wide/narrow layouts are supported; story text remains in the campaign's chosen language.
+
 The composer also has an “Ask the game master” mode. It uses one narrative request, skips intent resolution and preserves time, turn, resources, quests and world records. It can review the current situation or recall old records without performing a hero action. Suggested world developments in such a reply are not applied.
 
 The memory panel shows the current context size, archive and journal counts. For completed requests that report usage, the campaign records actual input/output/cache counters from the provider. These counters are not the account's remaining allowance, and they are not a complete bill for requests that did not report or persist usage. Character counts and token estimates are explicitly separate from provider counters.
 
+The last reported request also stores its exact selected context character count and number of journal events/dialogue excerpts retrieved. This differs from the default current-scene packet and from the provider's input tokens, which include instructions and other request material. Measuring this selection makes no additional inference request.
+
 ## Evidence
 
-- A 600-turn rules-backed adventure fixture retains all 601 messages and all 600 events; an early promise/password is recalled from the archive. The context stays within its budget without mutating the source.
+- A 600-turn adventure data fixture retains all 601 messages and all 600 events; an early promise/password is recalled from the archive. The context stays within its budget without mutating the source.
+- New crowded-history regressions retrieve a pinned engine fact among unrelated pinned notes, an objective-only match among80 active quests and old confirmed acceptance/delivery events after600 later journal entries. Completed quest status/reward remains retrievable by objective text. Source records are unchanged and the selected packet remains within12,000 characters.
+- Twelve journal-retrieval tests cover610+ events, exact actor/item identities, duplicate/migrated rows, player claims and NPC reports, long/escaped text, hidden payloads and quest evidence validation. Derived evidence links require a real matching target, successful scene check or exact delivery recipient; a wrong/missing target cannot derive a link.
+- Live GPT-6-Luna recalled Rэй's rejected proposal at turn13 and accepted proposal at turn20, distinguishing the performed conversation from an unperformed journey. One reported request used3,816 input/148 output tokens; the selected packet was11,321 characters with five journal outcomes and four dialogue excerpts. Turn20/10:18, HP, coins, slots, quests and30 journal records remained unchanged. A later pinned reminder was saved locally without another model request.
 - A relevant active quest after 80 earlier quests is selected. Completed quest status and the reward flag remain recoverable.
 - A 200-turn run executes the actual adventure controller and reopens SQLite halfway through and at the end. All 401 messages and 202 journal events (200 actions, one initial visit, one daily market restock) persist, HP/XP remain stable, and an early promise is recalled from the stored archive.
 - Short names and words such as “Bob” and “key” are recalled without treating “monkey” as a match; speaker names participate in retrieval. Distant NPCs and late inventory items can enter the packet by relevance.

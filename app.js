@@ -98,6 +98,7 @@ function renderHero(view) {
   $('#memorySize').textContent = `Контекст мастера: ${view.memory.chars.toLocaleString('ru-RU')} символов`;
   $('#memoryDetails').innerHTML=`<p>${T('Полная история хранится локально. Мастер получает компактную подборку состояния, задач и воспоминаний.')}</p><p>${T('Записей в журнале')}: ${view.memory.journalEntries} · ${T('Сообщений в архиве')}: ${view.memory.archivedMessages}</p><p>${T('Текущий контекст')}: ${view.memory.chars} / ${view.memory.maxChars} ${T('символов')}</p>`;
   if(view.inferenceUsage?.reportedCalls)$('#memoryDetails').innerHTML+=`<p>${T('Учтённые AI-запросы')}: ${view.inferenceUsage.reportedCalls}<br>${T('Входные токены')}: ${view.inferenceUsage.inputTokens}<br>${T('Выходные токены')}: ${view.inferenceUsage.outputTokens}<br>${T('Из входных в кэше')}: ${view.inferenceUsage.cachedTokens}</p><p>${T('Счётчики ответов провайдера для этой кампании. Это не остаток лимита аккаунта.')}</p>`;
+  const selection=view.inferenceUsage?.last;if(selection?.contextChars)$('#memoryDetails').innerHTML+=`<p>${T('Выборка для последнего AI-запроса')}: ${selection.contextChars} ${T('символов')}<br>${T('Найдено событий хроники')}: ${selection.recalledEvents||0} · ${T('Отрывков прошлых разговоров')}: ${selection.recalledMessages||0}</p><p>${T('Это размер выбранных данных; инструкции и ответ учитываются отдельно.')}</p>`;
   $('#survivalPanel').hidden = !view.survival.enabled;
   $('#survivalPanel').innerHTML = `<h3>Путешествие</h3><p class="muted">Еда: ${view.survival.foodDays} дн. · Вода: ${view.survival.waterDays} дн.</p>`;
 }
@@ -160,24 +161,26 @@ function renderQuests(view) {
 }
 function renderJournal(view) {
   const query=$('#journalSearch').value.trim().toLowerCase();
+  const category=$('#journalCategory').value,categoryName=$('#journalCategory').selectedOptions[0].textContent;
   const version=`${view.campaign.id}:${view.campaign.revision}`;
   if(historyVersion!==version){historyVersion=version;historyRequest++;historyPage=null;}
   $('#notesList').innerHTML=(view.notes||[]).filter(n=>n.text.toLowerCase().includes(query)).slice().reverse().map(n=>`<article class="journal-entry"><small>${T('Запись игрока')}${n.pinned?' · ★':''}</small><p>${esc(n.text)}</p><button class="subtle" data-memory-pin="${esc(n.id)}" data-memory-kind="note" data-pinned="${n.pinned?'false':'true'}">${T(n.pinned?'Открепить':'Закрепить')}</button></article>`).join('')||`<p class="empty">${T('Здесь можно хранить цели, обещания и свои догадки.')}</p>`;
   $('#factsList').innerHTML=view.facts.filter(f=>f.text.toLowerCase().includes(query)).slice(-200).reverse().map(f=>`<article class="journal-entry"><small>${T(f.tags?.includes('rumor')?'СВЕДЕНИЯ ОТ СОБЕСЕДНИКА':'ПРОВЕРЕННОЕ ОТКРЫТИЕ')}${f.pinned?' · ★':''}</small><p>${esc(f.text)}</p><button class="subtle" data-memory-pin="${esc(f.id)}" data-memory-kind="fact" data-pinned="${f.pinned?'false':'true'}">${T(f.pinned?'Открепить':'Закрепить')}</button></article>`).join('') || '<p class="empty">Открытия появятся после исследований.</p>';
-  const entries=historyPage?.entries||view.journal.filter(e=>e.text.toLowerCase().includes(query));
-  $('#journalList').innerHTML=entries.map(e=>`<article class="journal-entry"><small>ХОД ${e.turn}</small>${esc(e.text)}</article>`).join('') || '<p class="empty">Подходящих записей нет.</p>';
-  $('#journalCount').textContent=`${T('Показано записей')}: ${entries.length} / ${historyPage?.total??view.journalTotal}`;
-  $('#moreJournal').hidden=historyPage?historyPage.nextOffset===null:Boolean(query)||entries.length>=view.journalTotal;
+  const hasFacts=view.facts.some(f=>f.text.toLowerCase().includes(query));$('#factsList').closest('section').hidden=!hasFacts;$('#journalView .journal-columns').classList.toggle('has-facts',hasFacts);
+  const entries=historyPage?.entries||view.journal.filter(e=>(category==='all'||e.category===category)&&e.text.toLowerCase().includes(query));
+  $('#journalList').innerHTML=entries.map(e=>`<article class="journal-entry"><small>${T('ХОД')} ${e.turn}${category!=='all'?` · ${esc(categoryName)}`:''}</small>${esc(e.text)}</article>`).join('') || `<p class="empty">${T('Подходящих записей нет.')}</p>`;
+  $('#journalCount').textContent=!historyPage&&(query||category!=='all')?T('Ищу во всей хронике…'):`${T('Показано записей')}: ${entries.length} / ${historyPage?.total??view.journalTotal}`;
+  $('#moreJournal').hidden=historyPage?historyPage.nextOffset===null:Boolean(query)||category!=='all'||entries.length>=view.journalTotal;
   localizeUi($('#journalView'));
 }
 async function loadJournal(reset=true) {
   if(!currentView?.ready)return;
-  const campaignId=currentView.campaign.id,query=$('#journalSearch').value.trim(),version=historyVersion,sequence=++historyRequest;
+  const campaignId=currentView.campaign.id,query=$('#journalSearch').value.trim(),category=$('#journalCategory').value,version=historyVersion,sequence=++historyRequest;
   $('#moreJournal').disabled=true;
   try {
     const offset=reset?0:historyPage?.nextOffset??currentView.journal.length;
-    const page=await request(`history?campaignId=${encodeURIComponent(campaignId)}&query=${encodeURIComponent(query)}&offset=${offset}&limit=50`);
-    if(sequence!==historyRequest||campaignId!==currentView.campaign.id||version!==historyVersion)return;
+    const page=await request(`history?campaignId=${encodeURIComponent(campaignId)}&query=${encodeURIComponent(query)}&category=${encodeURIComponent(category)}&offset=${offset}&limit=50`);
+    if(sequence!==historyRequest||campaignId!==currentView.campaign.id||version!==historyVersion||query!==$('#journalSearch').value.trim()||category!==$('#journalCategory').value)return;
     historyPage={...page,entries:reset?page.entries:[...(historyPage?.entries||currentView.journal),...page.entries]};renderJournal(currentView);
   }catch(error){toast(error.message);}finally{$('#moreJournal').disabled=false;}
 }
@@ -322,13 +325,14 @@ async function init() {
   if(uiLanguage==='en') { $('#createForm [name=location]').value='The threshold of a new world'; $('#createForm [name=heroName]').placeholder='Mira'; $('#worldSubtitle').textContent=T('Мир, который начинается с твоей идеи'); }
   document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>showSection(b.dataset.view)));
   document.querySelectorAll('[data-sheet]').forEach(b=>b.addEventListener('click',()=>showSheet(b.dataset.sheet)));
-  $('#journalSearch').addEventListener('input',()=>{if(!currentView?.ready)return;historyPage=null;renderJournal(currentView);clearTimeout(historyTimer);historyTimer=setTimeout(()=>loadJournal(true),250);});
+  $('#journalSearch').addEventListener('input',()=>{if(!currentView?.ready)return;historyRequest++;historyPage=null;renderJournal(currentView);clearTimeout(historyTimer);historyTimer=setTimeout(()=>loadJournal(true),250);});
+  $('#journalCategory').addEventListener('change',()=>{if(!currentView?.ready)return;clearTimeout(historyTimer);historyPage=null;renderJournal(currentView);loadJournal(true);});
   $('#moreJournal').addEventListener('click',()=>loadJournal(false));
   $('#journalNoteForm').addEventListener('submit',async event=>{event.preventDefault();if(await memoryChange('note',{text:$('#journalNote').value,pinned:$('#pinNewNote').checked})){$('#journalNote').value='';$('#noteStatus').textContent=T('Запись сохранена.');}});
   $('#newCampaign').addEventListener('click',()=>{if(busy)return;creatingNew=true;$('#welcome').hidden=false;$('#game').hidden=true;$('#worldSubtitle').textContent='Новое приключение — предыдущие кампании сохранены';});
   $('#campaignPicker').addEventListener('change',async()=>{if(busy)return;try{creatingNew=false;render(await request('select',{campaignId:$('#campaignPicker').value}));}catch(e){toast(e.message);}});
   $('#createForm').addEventListener('submit',async event=>{event.preventDefault();if(busy)return;const values=Object.fromEntries(new FormData(event.target));values.survival=Boolean(values.survival);values.language=uiLanguage;setBusy(true,'Рождается новый мир…');$('#creationStatus').textContent=T('Мастер создаёт первую сцену и её обитателей…');try{const view=await request('create',values);creatingNew=false;render(view);showSection('story');}catch(e){$('#creationStatus').textContent=e.message;}finally{setBusy(false);}});
-  document.querySelectorAll('[data-intent-mode]').forEach(button=>button.addEventListener('click',()=>{intentMode=button.dataset.intentMode;document.querySelectorAll('[data-intent-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.intentMode===intentMode)));$('#playerIntent').placeholder=T(intentMode==='question'?'Спроси о мире, правилах или прошлых событиях…':'Что делает твой герой?');}));
+  document.querySelectorAll('[data-intent-mode]').forEach(button=>button.addEventListener('click',()=>{intentMode=button.dataset.intentMode;document.querySelectorAll('[data-intent-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.intentMode===intentMode)));$('#playerIntent').placeholder=T(intentMode==='question'?'Спроси о мире, правилах или прошлых событиях…':'Что делает твой герой?');$('#playerIntent').setAttribute('aria-label',T(intentMode==='question'?'Вопрос мастеру':'Действие героя'));$('#intentForm button').setAttribute('aria-label',T(intentMode==='question'?'Отправить вопрос':'Отправить действие'));}));
   for(const container of ['#peopleList','#partyRoster'])$(container).addEventListener('change',event=>{const form=event.target.closest('[data-social-npc]');if(!form)return;if(event.target.name==='propIds'){const npc=currentView.npcs.find(n=>n.id===form.dataset.socialNpc);form.elements.coins.value=Math.min(20,(npc.relationship.dueCoins||0)+[...form.querySelectorAll('[name=propIds]:checked')].reduce((n,p)=>n+Number(p.dataset.claimCoins),0));return;}if(event.target.name!=='approach')return;const paying=event.target.value==='restitution';form.querySelector('.social-payment').hidden=!paying;form.querySelector('.social-claims').hidden=!paying||!form.querySelectorAll('[name=propIds]').length;form.elements.coins.disabled=!paying;form.querySelectorAll('[name=propIds]').forEach(input=>input.disabled=!paying);});
   for(const container of ['#peopleList','#partyRoster'])$(container).addEventListener('submit',async event=>{const form=event.target.closest('[data-social-npc]');if(!form)return;event.preventDefault();if(busy)return;const formData=new FormData(form),values=Object.fromEntries(formData),npc=currentView.npcs.find(n=>n.id===form.dataset.socialNpc);const command={type:'social',npcId:npc.id,goal:values.goal,approach:values.approach,statement:values.statement.trim(),...(values.approach==='restitution'?{coins:Number(values.coins),...(formData.getAll('propIds').length?{propIds:formData.getAll('propIds')}:{})}:{})};await act({command,input:command.statement||[T('Подход'),npc.name,T(({persuasion:'Убеждение',deception:'Обман',intimidation:'Запугивание',restitution:'Возмещение ущерба'})[command.approach])].join(': ')},{stay:true});});
   $('#intentForm').addEventListener('submit',async event=>{event.preventDefault();const input=$('#playerIntent').value.trim();if(input&&await(intentMode==='question'?askMaster(input):act({input})))$('#playerIntent').value='';});

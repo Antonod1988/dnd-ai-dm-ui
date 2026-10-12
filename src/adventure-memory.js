@@ -2,6 +2,7 @@ const crypto=require('node:crypto');
 const {z}=require('zod');
 const engine=require('./adventure-engine');
 const model=require('./adventure-model');
+const journal=require('./journal-categories');
 const base={campaignId:z.string().min(1).max(120),expectedRevision:z.number().int(),operationId:z.string().min(1).max(100)};
 const noteSchema=z.object({...base,text:z.string().trim().min(1).max(650),pinned:z.boolean().default(true)}).strict();
 const pinSchema=z.object({...base,recordId:z.string().min(1).max(120),kind:z.enum(['note','fact']),pinned:z.boolean()}).strict();
@@ -35,11 +36,12 @@ async function pin(input) {
     }
   });
 }
-async function history(campaignId,{query='',offset=0,limit=50}={}) {
+async function history(campaignId,{query='',category='all',offset=0,limit=50}={}) {
+  if(!journal.categories.includes(category))error('Неизвестный раздел хроники.');
   const {adventure}=await engine.loaded(campaignId);if(!adventure)error('Нет приключения.');
   const search=String(query).trim().toLocaleLowerCase('ru').slice(0,200);
   const start=Math.max(0,Math.floor(Number(offset)||0)),count=Math.max(1,Math.min(100,Math.floor(Number(limit)||50)));
-  const records=search?adventure.journal.filter(e=>e.text.toLocaleLowerCase('ru').includes(search)):adventure.journal;
-  return {entries:records.slice(start,start+count),total:records.length,offset:start,nextOffset:start+count<records.length?start+count:null};
+  const records=adventure.journal.filter(e=>(category==='all'||journal.categoryOf(e.kind)===category)&&(!search||e.text.toLocaleLowerCase('ru').includes(search)));
+  return {entries:records.slice(start,start+count).map(journal.publicEntry),category,total:records.length,offset:start,nextOffset:start+count<records.length?start+count:null};
 }
 module.exports={addNote,pin,history};

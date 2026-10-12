@@ -7,6 +7,28 @@ let directory,generate;
 before(async()=>{directory=await fs.mkdtemp(path.join(os.tmpdir(),'dnd-memory-'));process.env.DND_DATA_DIR=directory;process.env.AI_PROVIDER='fallback';generate=ai.generateStructured;ai.generateStructured=async(type,payload,fallback)=>fallback();});
 after(async()=>{ai.generateStructured=generate;await srd.closeSessions();await fs.rm(directory,{recursive:true,force:true});});
 
+function contextFixture(){const input={heroName:'Mira',worldIdea:'Islands of stories'},adventure=model.makeAdventure(model.fallbackSeed(input),input),hero={id:'hero',name:'Mira',level:1,hp:{current:8,max:8},ac:12,conditions:[],abilities:{},skillProficiencies:[],resources:[],inventory:[]};return {adventure,state:{party:{heroId:'hero',members:[hero]},facts:[]}};}
+test('queried pinned engine facts survive unrelated note pins and unused bookmark candidates stay recallable',()=>{
+  const {state,adventure}=contextFixture();adventure.notes=Array.from({length:12},(_,i)=>({id:`pin-${i}`,text:'Unrelated weather note '.repeat(25),pinned:true}));
+  state.facts=[{id:'actual-key',text:'The Astral Lyre belongs to Captain Lumen.',confidence:'confirmed'},{id:'unselected-pin',text:'The seventh tower contains a brass archive.',confidence:'confirmed'}];adventure.pinnedFactIds=state.facts.map(f=>f.id);
+  const before=JSON.stringify({state,adventure}),context=contextFor(state,adventure,'Who owns the Astral Lyre?');assert.ok(context.packet.bookmarks.some(b=>b.id==='actual-key'));assert.ok(context.metrics.chars<=MAX_CHARS);assert.equal(JSON.stringify({state,adventure}),before);
+  const ordinary=contextFor(state,adventure,'A quiet day');assert.ok(ordinary.packet.activeFacts.some(f=>f.id==='unselected-pin')||ordinary.packet.bookmarks.some(f=>f.id==='unselected-pin'));
+});
+test('an objective-only query reserves exact quest/goal/item/recipient identities among eighty active quests',()=>{
+  const {state,adventure}=contextFixture();adventure.quests=[];
+  for(let i=0;i<80;i++)adventure.quests.push({id:`task-${i}`,title:`Task ${i}`,summary:'Help a local resident.',status:'active',objectives:[{id:`goal-${i}`,text:i===0?'Deliver the Astral Lyre to Captain Lumen.':'Walk along a road.',kind:i===0?'deliver':'visit',targetId:i===0?'astral-lyre':'threshold',recipientId:i===0?'guide':undefined,completed:false,evidenceEventId:null}]});
+  adventure.notes=Array.from({length:20},(_,i)=>({id:`p-${i}`,text:'Unrelated note '.repeat(45),pinned:true}));const before=JSON.stringify(adventure),context=contextFor(state,adventure,'What remains to deliver the Astral Lyre?');
+  const q=context.packet.quests.find(q=>q.id==='task-0');assert.ok(q);assert.equal(q.objectives[0].id,'goal-0');assert.equal(q.objectives[0].targetId,'astral-lyre');assert.equal(q.objectives[0].recipientId,'guide');assert.equal(q.objectives[0].completed,false);assert.ok(context.metrics.chars<=MAX_CHARS);assert.equal(JSON.stringify(adventure),before);
+  adventure.quests[0].status='completed';adventure.quests[0].rewardClaimed=true;assert.ok(contextFor(state,adventure,'Was the Astral Lyre task completed?').packet.questHistory.some(q=>q.id==='task-0'&&q.status==='completed'&&q.rewardClaimed));
+});
+test('old journal-only accepted decisions and delivery evidence enter bounded context after six hundred later events',()=>{
+  const {state,adventure}=contextFixture();const delivery=model.addEvent(adventure,'deliver','amber-locket','The Amber Locket was given to Captain Lumen.',{recipientId:'guide',questId:'q-amber',objectiveId:'goal-amber',inventoryItemId:'world_amber'});
+  const decision=model.addEvent(adventure,'dialogue_decision','proposal-amber','Mira accepted Rae\'s proposal about the Amber Locket.',{dialogueId:'dialogue-amber',proposalId:'proposal-amber',actionId:'talk:guide',speakerId:'rae',decision:'accepted'});
+  for(let turn=2;turn<=602;turn++){adventure.turn=turn;model.addEvent(adventure,'story','start',`Unrelated road ${turn}`);}adventure.notes=Array.from({length:20},(_,i)=>({id:`pin-${i}`,text:'Unrelated weather '.repeat(30),pinned:true}));
+  const before=JSON.stringify({state,adventure}),context=contextFor(state,adventure,'Did we accept the proposal and deliver the Amber Locket to Captain Lumen?');
+  const handed=context.packet.pastEvents.find(e=>e.id===delivery.id),accepted=context.packet.pastEvents.find(e=>e.id===decision.id);assert.ok(handed);assert.equal(handed.recipientId,'guide');assert.equal(handed.questId,'q-amber');assert.ok(accepted);assert.equal(accepted.actionId,'talk:guide');assert.equal(accepted.decision,'accepted');assert.ok(context.metrics.chars<=MAX_CHARS);assert.equal(JSON.stringify({state,adventure}),before);
+});
+
 test('600 turns preserve complete history and recall an old promise from the real adventure archive',()=>{
   const input={heroName:'Мира',worldIdea:'Острова над светлым океаном'},adventure=model.makeAdventure(model.fallbackSeed(input),input);
   const hero={id:'hero',name:'Мира',level:1,hp:{current:8,max:8,temp:0},ac:12,conditions:[],abilities:{int:16},skillProficiencies:['history'],resources:[],inventory:[]};
@@ -80,6 +102,22 @@ test('the journal searches all archived entries and paginates without duplicatin
   const search=await memory.history(view.campaign.id,{query:'пароль маяка'});assert.equal(search.total,1);assert.match(search.entries[0].text,/серебро/);
   const ids=[];let offset=0;do{const page=await memory.history(view.campaign.id,{offset,limit:50});ids.push(...page.entries.map(e=>e.id));offset=page.nextOffset;}while(offset!==null);
   assert.equal(new Set(ids).size,loaded.adventure.journal.length);assert.equal(ids.length,loaded.adventure.journal.length);
+});
+test('journal categories search the entire saved history, paginate exact results and never rewrite source or spend actions',async()=>{
+  const view=await engine.create({heroName:'Мира',worldIdea:'Море света'}),loaded=await engine.loaded(view.campaign.id);
+  const accepted=model.addEvent(loaded.adventure,'dialogue_decision','proposal-old','Рэй: приняли разговор про янтарный ключ.',{decision:'accepted',actionId:'talk:guide'});
+  for(let i=0;i<180;i++)model.addEvent(loaded.adventure,'story','start',`Дорожная запись ${i}`);
+  const second=model.addEvent(loaded.adventure,'dialogue_interjection','guide','Мира спрашивает про янтарный ключ.');
+  model.addEvent(loaded.adventure,'party_item','guide','Мира передала янтарный ключ.');
+  model.addEvent(loaded.adventure,'quest_accept','q','Приняли задачу о янтарном ключе.');
+  await engine.save(loaded.service,loaded.state,loaded.adventure,'categories_fixture');
+  const original=structuredClone(loaded.adventure),before=await engine.getView(view.campaign.id);
+  const page=await memory.history(view.campaign.id,{query:'ЯНТАРНЫЙ',category:'dialogue',limit:1});assert.equal(page.total,2);assert.equal(page.entries[0].id,second.id);assert.equal(page.entries[0].category,'dialogue');assert.equal(page.nextOffset,1);
+  const next=await memory.history(view.campaign.id,{query:'янтарный',category:'dialogue',offset:page.nextOffset,limit:1});assert.equal(next.entries[0].id,accepted.id);assert.equal(next.nextOffset,null);
+  assert.equal((await memory.history(view.campaign.id,{category:'loot',query:'ключ'})).total,1);assert.equal((await memory.history(view.campaign.id,{category:'quests',query:'ключ'})).total,1);
+  await assert.rejects(memory.history(view.campaign.id,{category:'invented'}),e=>e.status===400);
+  const after=await engine.getView(view.campaign.id);assert.equal(after.campaign.revision,before.campaign.revision);assert.equal(after.campaign.turn,before.campaign.turn);assert.deepEqual(after.hero,before.hero);assert.deepEqual((await engine.loaded(view.campaign.id)).adventure,original);
+  assert.ok(!Object.hasOwn(original.journal[0],'category'));await srd.closeSessions();assert.equal((await memory.history(view.campaign.id,{category:'dialogue',query:'янтарный'})).total,2);
 });
 test('200 executed adventure turns survive reopening SQLite with complete dialogue and bounded context',async()=>{
   let view=await engine.create({heroName:'Мира',worldIdea:'Острова над океаном света'});
