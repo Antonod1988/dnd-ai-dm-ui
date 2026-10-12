@@ -68,3 +68,28 @@ No exact cost, remaining subscription allowance or percentage of an account quot
 31 focused tests passed: actual adventure memory/recollections (25), legacy memory and provider counter accounting (6). These include a 600-turn history fixture, 200 actual controller turns with SQLite reopening, old quest evidence, dialogue provenance, non-mutating context selection and avoiding stale usage double counting. They make no live inference requests. The simulated long histories prove bounded selection; they do not prove the quality or cost of 600 live model turns.
 
 Sources: [OpenAI prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching), [Sign in with ChatGPT usage tracking](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions).
+
+## Implemented request accounting and live transport check
+
+The follow-up implementation separates the existing application instructions/rule contracts into a developer message and leaves player input, world/character data, outcomes, correction feedback and rejected drafts in the user message. The JSON contracts remain lossless; no scene, quest, memory or mechanical rule is dropped. Local/compatible chat and CLI formats remain unchanged.
+
+The game now keeps at most 40 reported request records and 32,000 serialized history characters. Lifetime totals remain intact when rows rotate. Records contain numeric text/section sizes, provider token counters, task/model, elapsed time, response/failure category and a correction-task marker. They contain no whole prompts, player speech, historical excerpts, error messages or credentials. Old saves gain only new records, without fabricated earlier rows. Usage callbacks bind counters to the exact request; a serialized compatibility boundary protects providers that only expose a global last report. Concurrent draft-cost merging preserves existing records and exact totals.
+
+App-supplied text character counts include the basic helper instruction and both rendered message contents. They exclude protocol overhead and hidden provider instructions, and are not token estimates. The detailed numeric sections overlap their parent payload/context and must not be summed. Reported reasoning/cache-write counters, when present, are subsets/details of provider usage, not extra tokens to add again.
+
+The character sheet's **Game master memory → Recent request usage** section displays these diagnostics behind an additional disclosure. The main story remains uncluttered. Russian and English labels and number formatting were verified in the actual desktop UI, without new inference during language switching.
+
+Actual GPT-6-Luna testing found that this sign-in route rejects `prompt_cache_options` with HTTP 400. The attempted explicit cache configuration was removed from **all actual transport defaults**, including its input breakpoint. No automatic parameter fallback, request retry, model switch or alternative billable provider was introduced. The optional pure breakpoint-layout helper is not called by production transports. General API documentation is not evidence of support for this particular active grant.
+
+The first QA inspection had already advanced the real game from turn 27 to 28 before that rejection. A diagnostic narration retry also failed without reported usage; neither error fabricated a zero-cost ledger record or repeated the inspection. After the transport fix, an explicit retry finished the original description on turn 28, then a second ordinary inspection advanced to turn 29:
+
+| Completed request | Input / output tokens | Cache read / write | App text / stable / dynamic chars |
+| --- | ---: | ---: | ---: |
+| Saved inspection description retry | 4,990 / 202 | 0 / 0 | 19,860 / 8,891 / 10,969 |
+| Next ordinary inspection | 4,895 / 140 | 0 / 0 | 19,480 / 8,891 / 10,589 |
+
+Both completed without format corrections. Hero HP stayed 9/9, Rae HP 3/8, arrows 17, coins 18 and both first-level slot counts 0/2. The retry did not advance time/turn or award resources. Two actual inspections each advanced ten minutes normally. Recorded calls went 33 → 35, input totals 140,926 → 150,811 and output 6,784 → 7,126. The UI showed the same exact rows and lifetime totals. The original Mira campaign remained turn 1, HP 8/8.
+
+**No cache saving has been demonstrated.** The newer inputs differ from the earlier 5,920-token battle description and therefore do not establish a percentage improvement. This checkpoint supplies accurate measurement and a working request boundary; selective contract/context reduction and quality comparisons remain next work.
+
+503 tests, 102 JavaScript syntax checks, isolated smoke and diff checks passed after the transport correction. New regressions cover lossless message reconstruction, dynamic-data provenance, numeric-only diagnostics, unsupported cache parameters, stream-error usage, per-request model/counter binding, overlapping completions, migration/bounds and actual controller persistence. Local live artifacts are under `../outputs/adventure_token_audit/`; private campaign data is excluded from Git.

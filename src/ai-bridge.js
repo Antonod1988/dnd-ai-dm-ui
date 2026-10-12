@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
 const { chatgpt } = require('./chatgpt-auth');
+const { BASIC_INSTRUCTIONS,structuredPrompt,responseInput } = require('./ai-request');
 
 const rootDir = path.resolve(__dirname, "..");
 loadLocalEnv(path.join(rootDir, ".env.local"));
@@ -89,18 +90,14 @@ async function generateNarration(state, actionResult) {
   return fallbackNarration(state, actionResult);
 }
 
-async function generateStructured(type, promptPayload, fallbackFactory) {
+async function generateStructured(type, promptPayload, fallbackFactory, {onUsage}={}) {
   const config = getAiConfig();
   if (!isConfigured(config)) return fallbackFactory();
 
-  const prompt = {
-    task: `generate_${type}`,
-    instruction: "Return JSON only. Draft flavour is allowed, but mechanics will be validated and clamped by the engine.",
-    payload: promptPayload
-  };
+  const prompt = structuredPrompt(type,promptPayload);
 
   try {
-    const text = await callConfiguredProvider(config, prompt, type);
+    const text = await callConfiguredProvider(config, prompt, type, {onUsage});
     const draft = parseJsonLoose(text);
     if(['master_question','adventure_narration','adventure_narration_repair'].includes(type)&&(!draft||typeof draft==='string')) {
       const answer=(typeof draft==='string'?draft:String(text||'')).trim();
@@ -160,8 +157,8 @@ function fallbackNarration(state, actionResult) {
   };
 }
 
-async function callConfiguredProvider(config, payload, purpose) {
-  if (config.provider === 'chatgpt') return chatgpt.infer(payload, config.timeoutMs);
+async function callConfiguredProvider(config, payload, purpose, {onUsage}={}) {
+  if (config.provider === 'chatgpt') return chatgpt.infer(payload, config.timeoutMs,onUsage);
   if (config.provider === "openai") {
     return callOpenAiResponses(config.openai, payload, config.timeoutMs);
   }
@@ -187,8 +184,8 @@ async function callOpenAiResponses(settings, payload, timeoutMs) {
     },
     body: JSON.stringify({
       model: settings.model,
-      instructions: "You are an AI Dungeon Master helper. Follow JSON contracts exactly when asked.",
-      input: JSON.stringify(payload)
+      instructions: BASIC_INSTRUCTIONS,
+      input: responseInput(payload)
     })
   }, timeoutMs);
   const json = await response.json();

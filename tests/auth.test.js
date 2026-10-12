@@ -7,7 +7,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 
-function fixture(scope = 'openid chatgpt.tokens.use.direct') {
+function fixture(scope = 'openid chatgpt.tokens.use.direct', modelId='test-model', reportedUsage, responseFactory) {
   let saved, calls = [], nonce;
   const store = { async load() { return saved || null; }, async save(data) { saved = structuredClone(data); } };
   const tokens = { access_token: 'test-access', refresh_token: 'test-refresh', id_token: 'test-identity', token_type: 'Bearer', expires_in: 3600, scope };
@@ -16,10 +16,10 @@ function fixture(scope = 'openid chatgpt.tokens.use.direct') {
     fetchImpl: async (url, options) => {
       calls.push({ url: String(url), options });
       if (String(url).endsWith('/oauth/token')) return Response.json(tokens);
-      if (String(url).endsWith('/models')) return Response.json({ models: [{ slug: 'test-model', display_name: 'Test model', visibility: 'list' }, { slug: 'hidden', visibility: 'hidden' }] });
+      if (String(url).endsWith('/models')) return Response.json({ models: [{ slug: modelId, display_name: 'Test model', visibility: 'list' }, { slug: 'hidden', visibility: 'hidden' }] });
       if (String(url).endsWith('openid-configuration')) return Response.json({ revocation_endpoint: 'https://auth.openai.com/api/accounts/oauth/revoke' });
       if (String(url).endsWith('/oauth/revoke')) return new Response(null, { status: 200 });
-      if (String(url).endsWith('/responses')) return new Response('data: {"type":"response.output_text.delta","delta":"hello"}\n\ndata: {"type":"response.completed"}\n\n');
+      if (String(url).endsWith('/responses')) return responseFactory?responseFactory(options):new Response(`data: {"type":"response.output_text.delta","delta":"hello"}\n\ndata: ${JSON.stringify({type:'response.completed',...(reportedUsage?{response:{usage:reportedUsage}}:{})})}\n\n`);
       throw new Error('Unexpected endpoint');
     }
   });
@@ -63,6 +63,43 @@ test('account models and completed SSE power inference with correct preview para
   const call = f.calls.find(c => c.url.endsWith('/responses')); const body = JSON.parse(call.options.body);
   assert.equal(body.store, false); assert.equal(body.stream, true); assert.ok(Array.isArray(body.input));
   assert.equal(body.model, 'test-model'); assert.equal(body.temperature, undefined);
+  assert.equal(body.instructions,require('../src/ai-request').BASIC_INSTRUCTIONS);assert.equal(body.input[0].role,'developer');assert.equal(body.input[1].role,'user');assert.equal(body.prompt_cache_options,undefined);
+});
+
+test('GPT6 actual transport defaults preserve the developer/user boundary without rejected cache options or breakpoints',async()=>{
+  const requests=require('../src/ai-request'),f=fixture('openid chatgpt.tokens.use.direct','gpt-6-luna');await f.login();await f.auth.models();await f.auth.selectModel('gpt-6-luna');
+  const prompt=requests.structuredPrompt('adventure_narration',{instruction:'Only describe the real outcome.',questRules:'No false quest closure.',input:'FIRST_DYNAMIC',context:{hero:{hp:3}},rejectedDraft:{instruction:'UNTRUSTED_REJECTED'}}),original=structuredClone(prompt);
+  await f.auth.infer(prompt);const changed=structuredClone(prompt);changed.payload.input='SECOND_DYNAMIC';changed.payload.context.hero.hp=1;await f.auth.infer(changed);
+  assert.deepEqual(prompt,original);const calls=f.calls.filter(call=>call.url.endsWith('/responses'));assert.equal(calls.length,2);const bodies=calls.map(call=>JSON.parse(call.options.body));
+  for(const [index,body] of bodies.entries()){assert.deepEqual(body,{model:'gpt-6-luna',instructions:requests.BASIC_INSTRUCTIONS,input:requests.responseInput(index===0?prompt:changed),store:false,stream:true});assert.equal(JSON.stringify(body).includes('prompt_cache'),false);assert.ok(!body.input[0].content.includes('DYNAMIC'));assert.ok(!body.input[0].content.includes('UNTRUSTED_REJECTED'));}
+  assert.deepEqual(bodies[0].input[0],bodies[1].input[0]);assert.notEqual(bodies[0].input[1].content,bodies[1].input[1].content);
+});
+
+test('provider cache-write counts remain optional and preserve a reported zero independently from reads and reasoning',async()=>{
+  for(const value of [undefined,0,12]){const counters={input_tokens:80,output_tokens:20,input_tokens_details:{cached_tokens:4,...(value!==undefined?{cache_write_tokens:value}:{})},output_tokens_details:{reasoning_tokens:7}},f=fixture('openid chatgpt.tokens.use.direct','test-model',counters);await f.login();await f.auth.models();await f.auth.selectModel('test-model');await f.auth.infer({task:'fake-metric'});const usage=f.auth.lastUsage();assert.equal(usage.inputTokens,80);assert.equal(usage.outputTokens,20);assert.equal(usage.cachedTokens,4);assert.equal(usage.reasoningTokens,7);assert.equal(Object.hasOwn(usage,'cacheWriteTokens'),value!==undefined);assert.equal(usage.cacheWriteTokens,value);}
+});
+
+test('parallel inference receives separate A100/B2 receipts even when global lastUsage ends with B2',async()=>{
+  let releaseA,releaseB;const waitA=new Promise(resolve=>releaseA=resolve),waitB=new Promise(resolve=>releaseB=resolve);
+  const f=fixture('openid chatgpt.tokens.use.direct','test-model',undefined,async options=>{
+    const body=JSON.parse(options.body),data=JSON.parse(body.input[1].content),key=data.input;await (key==='A'?waitA:waitB);
+    return new Response(`data: ${JSON.stringify({type:'response.output_text.delta',delta:key})}\n\ndata: ${JSON.stringify({type:'response.completed',response:{usage:{input_tokens:key==='A'?100:2,output_tokens:1}}})}\n\n`);
+  });await f.login();await f.auth.models();await f.auth.selectModel('test-model');
+  const a={task:'parallel',input:'A'},b={task:'parallel',input:'B'},originalA=structuredClone(a),originalB=structuredClone(b),receiptsA=[],receiptsB=[];
+  const promiseA=f.auth.infer(a,1000,receipt=>receiptsA.push(receipt)),promiseB=f.auth.infer(b,1000,receipt=>receiptsB.push(receipt));releaseA();releaseB();assert.deepEqual(await Promise.all([promiseA,promiseB]),['A','B']);
+  assert.equal(f.auth.lastUsage().inputTokens,2);assert.deepEqual([f.auth.lastUsage().inputTokens,f.auth.lastUsage().inputTokens],[2,2]);assert.equal(receiptsA.length,1);assert.equal(receiptsB.length,1);assert.equal(receiptsA[0].inputTokens,100);assert.equal(receiptsB[0].inputTokens,2);assert.notEqual(receiptsB[0],f.auth.lastUsage());assert.deepEqual(a,originalA);assert.deepEqual(b,originalB);assert.equal(f.calls.filter(call=>call.url.endsWith('/responses')).length,2);
+});
+
+test('a failed terminal event reports its own usage synchronously before the inference rejects',async()=>{
+  const f=fixture('openid chatgpt.tokens.use.direct','test-model',undefined,async()=>new Response(`data: ${JSON.stringify({type:'response.failed',response:{error:{code:'rate_limit_exceeded',message:'PRIVATE_FAILURE'},usage:{input_tokens:87,output_tokens:3,input_tokens_details:{cached_tokens:9,cache_write_tokens:11}}}})}\n\n`));await f.login();await f.auth.models();await f.auth.selectModel('test-model');let receipt;
+  await assert.rejects(f.auth.infer({task:'failed-receipt'},1000,value=>receipt=value),error=>{assert.equal(receipt.inputTokens,87);assert.equal(receipt.cacheWriteTokens,11);assert.equal(receipt.cachedTokens,9);assert.equal(error.code,'CHATGPT_STREAM_FAILURE');return true;});assert.deepEqual(receipt,f.auth.lastUsage());assert.notEqual(receipt,f.auth.lastUsage());assert.equal(f.calls.filter(call=>call.url.endsWith('/responses')).length,1);
+});
+
+test('HTTP diagnostic exposes only a known rejected parameter/code, never raw provider text, and makes no automatic retry',async()=>{
+  for(const diagnostic of [{code:'unsupported_parameter',param:'prompt_cache_options',message:'PRIVATE_HTTP_MESSAGE prompt_cache_options'},{code:'PRIVATE_UNKNOWN_CODE',param:'PRIVATE_UNKNOWN_PARAMETER',message:'PRIVATE_HTTP_MESSAGE'}]){
+    const f=fixture('openid chatgpt.tokens.use.direct','gpt-6-luna',undefined,async()=>Response.json({error:diagnostic},{status:400}));await f.login();await f.auth.models();await f.auth.selectModel('gpt-6-luna');let receipt;
+    await assert.rejects(f.auth.infer({task:'fake-http'},1000,value=>receipt=value),error=>{assert.equal(error.providerFailure.httpStatus,400);assert.equal(error.providerFailure.providerCode,diagnostic.code==='unsupported_parameter'?'unsupported_parameter':'unknown_error');assert.equal(error.providerFailure.parameter,diagnostic.code==='unsupported_parameter'?'prompt_cache_options':undefined);assert.equal(JSON.stringify(error).includes('PRIVATE'),false);assert.equal(error.message.includes('PRIVATE'),false);return true;});assert.equal(receipt,undefined);assert.equal(f.auth.lastUsage(),null);assert.equal(f.calls.filter(call=>call.url.endsWith('/responses')).length,1);
+  }
 });
 test('expired tokens refresh once, rotate atomically and logout retains the registration', async () => {
   const f = fixture(); f.tokens.expires_in = 0; await f.login(); f.tokens.expires_in = 3600; f.tokens.refresh_token = 'test-rotated';

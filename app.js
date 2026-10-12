@@ -100,8 +100,17 @@ function renderHero(view) {
   $('#memoryDetails').innerHTML=`<p>${T('Полная история хранится локально. Мастер получает компактную подборку состояния, задач и воспоминаний.')}</p><p>${T('Записей в журнале')}: ${view.memory.journalEntries} · ${T('Сообщений в архиве')}: ${view.memory.archivedMessages}</p><p>${T('Текущий контекст')}: ${view.memory.chars} / ${view.memory.maxChars} ${T('символов')}</p>`;
   if(view.inferenceUsage?.reportedCalls)$('#memoryDetails').innerHTML+=`<p>${T('Учтённые AI-запросы')}: ${view.inferenceUsage.reportedCalls}<br>${T('Входные токены')}: ${view.inferenceUsage.inputTokens}<br>${T('Выходные токены')}: ${view.inferenceUsage.outputTokens}<br>${T('Из входных в кэше')}: ${view.inferenceUsage.cachedTokens}</p><p>${T('Счётчики ответов провайдера для этой кампании. Это не остаток лимита аккаунта.')}</p>`;
   const selection=view.inferenceUsage?.last;if(selection?.contextChars)$('#memoryDetails').innerHTML+=`<p>${T('Выборка для последнего отчёта провайдера')}: ${selection.contextChars} ${T('символов')}<br>${T('Найдено событий хроники')}: ${selection.recalledEvents||0} · ${T('Отрывков прошлых разговоров')}: ${selection.recalledMessages||0}</p><p>${T('Это размер выбранных данных; инструкции и ответ учитываются отдельно.')}</p>`;
+  $('#memoryDetails').innerHTML+=usageDetails(view.inferenceUsage);
   $('#survivalPanel').hidden = !view.survival.enabled;
   $('#survivalPanel').innerHTML = `<h3>Путешествие</h3><p class="muted">Еда: ${view.survival.foodDays} дн. · Вода: ${view.survival.waterDays} дн.</p>`;
+}
+function usageDetails(usage){
+  const last=usage?.last;if(!last?.inputChars)return '';
+  const number=value=>Number.isFinite(value)?value.toLocaleString(uiLanguage==='en'?'en-US':'ru-RU'):'—';
+  const tasks={adventure_world:'Создание мира',adventure_intent:'Разбор действия',adventure_narration:'Описание сцены',master_question:'Вопрос мастеру',adventure_discussion:'Совет отряда',adventure_dialogue_response:'Ответ персонажей',created_spell:'Замысел заклинания'};
+  const taskName=row=>T(tasks[String(row.task||'').replace(/_repair$/,'')]||'AI-запрос')+(row.repair?` · ${T('Исправление')}`:'');
+  const rows=(usage.history||[]).slice(-6).reverse();
+  return `<details class="usage-diagnostics"><summary>${T('Расход последних запросов')}</summary><p>${T('Последний текст запроса')}: ${number(last.inputChars)} ${T('символов')}<br>${T('Постоянные инструкции')}: ${number(last.staticChars)} · ${T('Данные сцены')}: ${number(last.dynamicChars)}</p><p class="muted">${T('Размер текста — не число токенов. Скрытые данные провайдера сюда не входят.')}</p><div class="usage-reports">${rows.map(row=>`<article class="usage-report"><strong>${esc(taskName(row))}</strong><small>${esc(row.model)}${row.result!=='response'?` · ${T(row.result==='invalid_format'?'Неверный формат':'Ошибка провайдера')}`:''}</small><p>${T('Вход')}: ${number(row.inputTokens)} · ${T('Ответ')}: ${number(row.outputTokens)} · ${T('Кэш')}: ${number(row.cachedTokens)}</p></article>`).join('')}</div><p class="muted">${T('Показаны последние отчёты. Старые итоги сохранены; запросы без отчёта провайдера сюда не включены.')}</p></details>`;
 }
 function inventoryCard(item,view){
   const effect=item.mechanics?.use,attack=item.mechanics?.equip?.attack;

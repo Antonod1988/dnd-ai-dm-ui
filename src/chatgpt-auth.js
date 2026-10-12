@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
 const { createAuthStore } = require('./auth-store');
+const { BASIC_INSTRUCTIONS,responseInput } = require('./ai-request');
 const ISSUER = 'https://auth.openai.com';
 const RESOURCE = 'https://api.openai.com/v1';
 const TOKEN_ENDPOINT = `${ISSUER}/api/accounts/oauth/token`;
@@ -183,15 +184,26 @@ function createChatgptAuth({ store = createAuthStore(), fetchImpl = fetch, verif
         return { revoked };
       });
     },
-    async infer(payload, timeoutMs = 120000) {
+    async infer(payload, timeoutMs = 120000, onUsage) {
       const account = await credentials();
       if (!account.model) throw new Error('Выберите модель ChatGPT в настройках AI.');
+      const requestModel=account.model;
       const response = await fetchImpl(`${RESOURCE}/responses`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${account.access_token}` },
-        body: JSON.stringify({ model: account.model, instructions: 'You are an AI Dungeon Master helper. Follow JSON contracts exactly when asked.', input: [{ role: 'user', content: JSON.stringify(payload) }], store: false, stream: true }), signal: AbortSignal.timeout(timeoutMs) });
-      if (!response.ok) throw new Error(`ChatGPT HTTP ${response.status}. Проверьте вход и лимиты плана.`);
+        body: JSON.stringify({ model: requestModel, instructions: BASIC_INSTRUCTIONS, input: responseInput(payload), store: false, stream: true }), signal: AbortSignal.timeout(timeoutMs) });
+      if (!response.ok) {
+        const detail=await response.json().catch(()=>null),error=detail?.error;
+        const cacheField=['prompt_cache_options','prompt_cache_breakpoint'].find(field=>String(error?.param||'').includes(field)||String(error?.message||'').includes(field));
+        const code=['unsupported_parameter','invalid_request_error','unsupported_value','invalid_value','rate_limit_exceeded','insufficient_quota'].includes(error?.code)?error.code:'unknown_error';
+        throw Object.assign(new Error(`ChatGPT HTTP ${response.status}. ${cacheField?'Провайдер отклонил параметр кэширования '+cacheField+'.':'Проверьте вход и лимиты плана.'}`),{providerFailure:{type:'http_error',providerCode:code,httpStatus:response.status,...(cacheField?{parameter:cacheField}:{})}});
+      }
       return readResponseStream(response.body, completed => {
         const counters = completed.usage;
-        if (counters) usage = { model: account.model, inputTokens: counters.input_tokens, outputTokens: counters.output_tokens, cachedTokens: counters.input_tokens_details?.cached_tokens || 0, reasoningTokens: counters.output_tokens_details?.reasoning_tokens || 0, reportedByProvider: true };
+        if (counters) {
+          const cacheWriteTokens=counters.input_tokens_details?.cache_write_tokens;
+          const receipt = { model: requestModel, inputTokens: counters.input_tokens, outputTokens: counters.output_tokens, cachedTokens: counters.input_tokens_details?.cached_tokens || 0, ...(Number.isFinite(cacheWriteTokens)&&cacheWriteTokens>=0?{cacheWriteTokens}:{}), reasoningTokens: counters.output_tokens_details?.reasoning_tokens || 0, reportedByProvider: true };
+          usage=receipt;
+          if(typeof onUsage==='function')onUsage({...receipt});
+        }
       });
     }
   };

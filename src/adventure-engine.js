@@ -634,11 +634,7 @@ async function spellDraft(id, idea, casterId, expectedRevision) {
   }
   finally{
     const latest=await loaded(state.campaign.id);
-    if(working.usage?.reportedCalls>(before.reportedCalls||0)){
-      latest.adventure.usage||={reportedCalls:0,inputTokens:0,outputTokens:0,cachedTokens:0};
-      for(const key of ['reportedCalls','inputTokens','outputTokens','cachedTokens'])latest.adventure.usage[key]+=(working.usage[key]||0)-(before[key]||0);
-      latest.adventure.usage.last=working.usage.last;await save(latest.service,latest.state,latest.adventure,'spell_draft_usage');
-    }
+    if(measuredAi.mergeUsage(latest.adventure,working.usage,before))await save(latest.service,latest.state,latest.adventure,'spell_draft_usage');
   }
   const latest=await loaded(state.campaign.id);
   if(latest.adventure.revision!==adventure.revision||!spellbooks.ownerFor(latest.state,latest.adventure,casterId).ok)bad('Кампания или заклинатель изменились. Подготовьте новое предложение.',409);

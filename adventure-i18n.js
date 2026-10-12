@@ -3,6 +3,10 @@ const uiLanguage = new URLSearchParams(location.search).get('lang') === 'en' ? '
 const englishLabels = {
   'Описание места':'Location description',
   'Выборка для последнего отчёта провайдера':'Context in the last provider usage report',
+  'Расход последних запросов':'Recent request usage','Последний текст запроса':'Last request text','Постоянные инструкции':'Stable instructions','Данные сцены':'Scene data',
+  'Размер текста — не число токенов. Скрытые данные провайдера сюда не входят.':'Text size is not a token count. Hidden provider data is not included.',
+  'Создание мира':'World creation','Разбор действия':'Action interpretation','Описание сцены':'Scene narration','Вопрос мастеру':'Ask the game master','Совет отряда':'Party council','Ответ персонажей':'Character response','Замысел заклинания':'Spell design','AI-запрос':'AI request','Исправление':'Correction','Неверный формат':'Invalid format','Ошибка провайдера':'Provider error','Вход':'Input','Ответ':'Output','Кэш':'Cache',
+  'Показаны последние отчёты. Старые итоги сохранены; запросы без отчёта провайдера сюда не включены.':'Latest reports are shown. Earlier totals are preserved; requests without provider usage reports are not included.',
   'Атаки':'Attacks','Магия':'Magic','Движение и манёвры':'Movement and maneuvers','Способности и помощь':'Abilities and aid','Другие боевые действия':'Other combat actions','Выбери действие':'Choose an action','Исполнить':'Execute',
   'Чья книга заклинаний?':'Whose spellbook?', 'Сам заклинатель':'The caster', 'Добавить в книгу заклинателя':'Add to the caster\'s spellbook', 'Заклинание добавлено в книгу заклинателя.':'Spell added to the caster\'s spellbook.', 'Авторские заклинания':'Original spells', 'Создать заклинание для спутника':'Create a companion spell', 'Подготовь предложение для выбранного заклинателя.':'Draft a spell for the selected caster.', 'Уточни эффект и попробуй снова.':'Adjust the effect and try again.',
   'Итог попытки':'Attempt outcome',
