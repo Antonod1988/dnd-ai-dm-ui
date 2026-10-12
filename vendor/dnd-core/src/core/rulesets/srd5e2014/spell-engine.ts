@@ -5666,17 +5666,7 @@ function killTarget<TTarget extends Character | Combatant>(target: TTarget): TTa
 }
 
 function healTarget<TTarget extends Character | Combatant>(target: TTarget, amount: number): TTarget {
-  if (target.kind === "enemy") {
-    return applyHealing(target as Combatant, amount) as TTarget;
-  }
-  return syncConditionInstancesWithConditions({
-    ...target,
-    hp: {
-      ...target.hp,
-      current: Math.min(effectiveHitPointMaximum(target), target.hp.current + amount)
-    },
-    conditions: target.conditions.filter((condition) => condition !== "unconscious" && condition !== "dying")
-  });
+  return applyHealing(target, amount) as TTarget;
 }
 
 function reviveTarget<TTarget extends Character | Combatant>(target: TTarget): TTarget {

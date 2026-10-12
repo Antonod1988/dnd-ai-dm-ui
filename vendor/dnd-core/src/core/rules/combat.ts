@@ -1983,19 +1983,22 @@ function applyRelentlessEndurance<T extends Character | Combatant>(previous: T, 
     });
 }
 export function applyHealing(target, amount) {
-    if (target.conditions.includes("dead")) {
+    if (!Number.isFinite(amount) || amount <= 0 || target.conditions.includes("dead") || target.deathSaves?.dead) {
         return target;
     }
     if (target.activeEffects?.some((effect) => effect.healingPrevented)) {
         return target;
     }
+    const current = Math.min(effectiveHitPointMaximum(target), target.hp.current + amount);
+    if (current <= target.hp.current) return target;
     const healed = {
         ...target,
         hp: {
             ...target.hp,
-            current: Math.min(effectiveHitPointMaximum(target), target.hp.current + amount)
+            current
         },
-        conditions: target.conditions.filter((condition) => condition !== "unconscious" && condition !== "dying")
+        conditions: target.conditions.filter((condition) => condition !== "unconscious" && condition !== "dying"),
+        deathSaves: undefined
     };
     return syncConditionInstancesWithConditions(healed);
 }
@@ -3674,7 +3677,9 @@ export function syncCombatantToCharacter(character, combatant) {
         resources: combatant.resources.map((resource) => ({ ...resource })),
         spellcasting: syncSpellcastingSlotsFromCombatantResources(character, combatant),
         saveActions: combatant.saveActions?.map((action) => cloneSavingThrowAction(action)),
-        deathSaves: combatant.deathSaves ? { ...combatant.deathSaves } : character.deathSaves
+        deathSaves: combatant.deathSaves ? { ...combatant.deathSaves }
+          : combatant.hp.current > 0 && !combatant.conditions.includes('dead') && !character.conditions.includes('dead') && !character.deathSaves?.dead
+            ? undefined : character.deathSaves
     };
 }
 function syncSpellcastingSlotsFromCombatantResources(character, combatant) {

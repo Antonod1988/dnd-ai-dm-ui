@@ -74,6 +74,7 @@ import {
 import {
   advanceTurn,
   applyDamage,
+  applyHealing,
   areHostileCombatants,
   combatDistanceStepMovementCost,
   combatantStatusFlags,
@@ -631,6 +632,14 @@ export class SceneRunner {
     if (!useEffect) {
       return this.result(false, `This item has no modeled use effect: ${item.name}`, state);
     }
+    const targetCombatant = state.combat?.participants.find(
+      (participant) => participant.id === targetId || participant.sourceCharacterId === targetId
+    );
+    if(useEffect.type==='healing'){
+      const patient=targetCombatant||actor;
+      if(actor.conditions.includes('dead')||actor.deathSaves?.dead||applyHealing(patient,1).hp.current<=patient.hp.current)
+        return this.result(false,`${actor.name} cannot benefit from this healing right now.`,state);
+    }
 
     const chargeSpend = canSpendInventoryItemUse(item);
     if (!chargeSpend.ok) {
@@ -642,10 +651,6 @@ export class SceneRunner {
     const setBonusText = useEffect.setBonus
       ? ` ${useEffect.setBonus.setName} set bonus (${useEffect.setBonus.tierLabel}) is active.`
       : "";
-    const targetCombatant = state.combat?.participants.find(
-      (participant) => participant.id === targetId || participant.sourceCharacterId === targetId
-    );
-
     if (useEffect.type === "remove_condition") {
       if (!actor.conditions.includes(useEffect.condition)) {
         return this.result(false, `${actor.name} is not affected by ${useEffect.condition}.`, state);
@@ -764,6 +769,15 @@ export class SceneRunner {
 
     const roll = rollExpression(useEffect.dice, { rng });
     const rollLog = makeRollLog(targetId, useEffect.label, roll);
+    const healed=useEffect.type==='healing'?applyHealing(targetCombatant||actor,roll.total):null;
+    if(healed){
+      const patient=targetCombatant||actor;
+      if(healed.hp.current<=patient.hp.current)return this.result(false,`${actor.name} receives no healing from ${item.name}.`,state);
+      const life={hp:{...healed.hp},conditions:[...healed.conditions],conditionInstances:healed.conditionInstances?.map(instance=>({...instance})),deathSaves:healed.deathSaves};
+      const partyUpdated=updatePartyMember(state,targetId,character=>({...character,...life,inventory:spendInventoryItemUse(character.inventory,itemId,useEffect.consume)}));
+      const updated={...partyUpdated,combat:state.combat&&targetCombatant?{...state.combat,participants:state.combat.participants.map(p=>p.id===targetCombatant.id?{...p,...life}:p)}:partyUpdated.combat,rollLog:[...state.rollLog,rollLog]};
+      return this.result(true,`${actor.name} uses ${item.name} and restores ${healed.hp.current-patient.hp.current} HP.${setBonusText}${chargeText}`,updated,{roll});
+    }
     const partyUpdated = updatePartyMember(state, targetId, (character) =>
         syncConditionInstancesWithConditions({
           ...character,

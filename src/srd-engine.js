@@ -68,10 +68,15 @@ async function command(input, { seed } = {}) {
       if (state.combat) error('В бою спасброски назначает разрешение действия.');
       if (!abilityNames.includes(input.ability)) error('Неизвестная характеристика.');
       result = await service.savingThrow(id, { ability: input.ability, dc: integer(input.dc, 1, 30, 'DC'), seed }); break;
-    case 'rest':
+    case 'rest': {
       if (state.combat) error('Сначала завершите бой.');
       if (!['short', 'long'].includes(input.kind)) error('Неизвестный вид отдыха.');
-      result = await service.rest(id, input.kind, seed, { hitDiceToSpend: input.hitDiceToSpend === undefined ? 0 : integer(input.hitDiceToSpend, 0, 20, 'кости здоровья') }); break;
+      const before=structuredClone(state),meta=metadata(state);
+      result = await service.rest(id, input.kind, seed, { hitDiceToSpend: input.hitDiceToSpend === undefined ? 0 : integer(input.hitDiceToSpend, 0, 20, 'кости здоровья') });
+      const after=service.loadCampaign(id);
+      const rest=require('./adventure-rest');result.rest=rest.apply(before,after,meta.version===2?meta:{...meta,restBenefits:[]},{kind:input.kind});result.message=rest.describe(result.rest,meta.language||state.campaign.language);
+      await saveMetadata(service,after,meta,'ui_rest_eligibility');break;
+    }
     case 'death_save': {
       const hero=state.party.members.find(m=>m.id===state.party.heroId);
       if(state.combat) error('В бою используйте спасбросок текущего участника через доступные действия.');
@@ -118,7 +123,7 @@ async function command(input, { seed } = {}) {
     default: error('Неизвестная игровая команда.');
   }
   const updated = service.loadCampaign(id);
-  return { ...view(service, updated), resolution: { ok: result.ok !== false, message: result.message || result.effect?.summary || result.spell?.name || 'Действие разрешено.', events: result.events || (result.effect?[result.effect]:[]), check: typeof result.success === 'boolean' ? result : result.check || null } };
+  return { ...view(service, updated), resolution: { ok: result.ok !== false, message: result.message || result.effect?.summary || result.spell?.name || 'Действие разрешено.', events: result.events || (result.effect?[result.effect]:[]), rest:result.rest, check: typeof result.success === 'boolean' ? result : result.check || null } };
 }
 
 async function spellCastingOptions(state,service,{heroOnly=true}={}){

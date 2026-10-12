@@ -48,3 +48,4 @@ button:disabled{cursor:not-allowed}body.is-busy button:disabled{cursor:progress}
 #peopleList{align-items:start}
 
 #partyRoster{align-items:start}.companion-sheet{font-size:12px;line-height:1.6}.companion-sheet ul{padding-left:18px}.world-card [data-party-details],.npc-companion-offer{margin-top:14px}.companion-sheet h4{margin-bottom:8px}.npc-companion-offer p{margin-top:10px}
+.medical-details{border-top:1px solid #564732;margin-top:16px;padding-top:12px}.medical-details button{display:block;margin:8px 0;max-width:100%;text-align:left}.medical-details .medical-warning{color:#e8b58f;font-size:14px;font-weight:600}.medical-details:has(.medical-warning){border:1px solid #95613d;border-radius:9px;background:#302319;padding:12px}.medical-details .medical-stable{color:#9cc7b1;font-size:14px}.medical-details:has(.medical-stable){border-color:#4f7765}.medical-details p{line-height:1.6}

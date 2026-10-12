@@ -30,6 +30,8 @@ The normal context packet includes at most three other party members, within the
 
 ## Evidence and limits
 
+The subsequent medical checkpoint adds actual recipient-specific aid, outside-combat death saves, one saved stable recovery deadline and shared rest eligibility. See [MEDICINE_AND_REST.md](MEDICINE_AND_REST.md). Autonomous companion medical decisions remain open; the historical limits below describe the initial companion release.
+
 The live GPT-6-Luna campaign «Колокол над старой башней» used an unmodified bard and wizard NPC. Initial invitation11/DC14 failed; after a real relationship improvement,16/DC14 succeeded. Travel moved the same NPC. In combat, an enemy reduced her8 HP to0; her natural1 death save recorded two failures. The hero's Healing Word restored7 HP using his bonus action and slot. On her next turn she spent one of her own two slots and dealt12 force damage with Magic Missile. Victory awarded17 XP each. Dismissal and rejoining preserved7/8 HP,1/2 slots,17 XP and the same possessions; a server restart preserved them too.
 
 Early live narration misidentified the healing recipient and one spell target while actual numbers remained correct. Exact party/combat changes and target names/IDs were added to the narration contract and regression coverage. This does not prove all future prose is accurate; presentation quality remains under observation.

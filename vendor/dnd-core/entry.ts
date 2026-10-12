@@ -25,3 +25,7 @@ export { startCombat, runAutomaticTurns } from './src/core/rules/combat.js';
 export { hasPendingDeathSaves, focusNextDeathSaveTurn } from './src/core/rules/combat.js';
 export { createCompanionAutomaticHook, runCompanionAutomaticTurns } from './src/core/narrative/companion-combat-ai.js';
 export { syncCombatantToCharacter } from './src/core/rules/combat.js';
+export { rollDeathSave as rollSrdDeathSave, applyDeathSaveResult, createDeathSaveState, stabilizeDeathSaveState, stabilizeDyingTarget } from './src/core/rulesets/srd5e2014/death-saves.js';
+export { hasSrdHalflingLucky } from './src/core/rules/checks.js';
+export { hasGeneratedFeatPresetOnTarget } from './src/core/homebrew/generated-feats.js';
+export { canSpendInventoryItemUse, spendInventoryItemUse } from './src/core/content/items.js';

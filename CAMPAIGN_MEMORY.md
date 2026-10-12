@@ -6,6 +6,7 @@ Artwork stays outside the text context: no image bytes, gallery labels or bindin
 
 ## What goes to the game master
 
+- Compact current life status, death-save counters and a saved stable recovery deadline. Normal narration receives at most twelve compact medical events with exact patients/transitions, rather than all roll ASTs. Automatic medical time makes no extra model call; the total selected context remains12,000 characters.
 - Up to three actual companions with compact exact HP/conditions/abilities/resources/slots. This is within the same12,000-character total, with no complete per-companion spellbook or extra automatic-turn model request.
 - Current world and hero concept; exact HP, armor class, abilities, resources, spell slots, conditions and combat turn.
 - Relevant unfinished quest objectives, exact delivery recipients, declared alternative check IDs/attempt results and their recorded completion evidence. A compact index covers additional quests when space permits. Previously completed quests can be recalled with their actual status and reward flag.

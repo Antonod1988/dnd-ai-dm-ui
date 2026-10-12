@@ -504,13 +504,19 @@ export function applyLevel(character: Character, xp: number): Character {
     classLevels: updatePrimaryClassLevel(character, level),
     proficiencyBonus,
     hp: {
-      current: character.hp.current + hitPointGain(hitDie, character, gainedLevels),
+      current: character.hp.current <= 0 || character.conditions.includes('dead') || character.deathSaves?.dead ? 0 : character.hp.current + hitPointGain(hitDie, character, gainedLevels),
       max: character.hp.max + hitPointGain(hitDie, character, gainedLevels),
       temp: character.hp.temp
     },
     hitDice: updateHitDice(character, hitDie, level, gainedLevels)
   };
-  return resyncLevelDerivedCharacter(baseCharacter);
+  const updated=resyncLevelDerivedCharacter(baseCharacter);
+  if(character.conditions.includes('dead')||character.deathSaves?.dead){
+    const resources=new Map(character.resources.map(resource=>[resource.id,resource.current]));
+    updated.resources=updated.resources.map(resource=>({...resource,current:Math.min(resource.max,resources.get(resource.id)||0)}));
+    if(updated.spellcasting)for(const [level,slot]of Object.entries(updated.spellcasting.slots))slot.current=Math.min(slot.max,character.spellcasting?.slots[level]?.current||0);
+  }
+  return updated;
 }
 
 export function pendingAbilityScoreImprovements(character: Character): PendingAbilityScoreImprovement[] {

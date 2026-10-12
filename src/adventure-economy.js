@@ -161,10 +161,12 @@ async function apply(service,state,adventure,raw,{seed}={}){
     changeMoney(state,-cost);market.cash+=cost;offer.stock-=1;hero=heroOf(state);
     let effect;
     if(offer.kind==='lodging'){
-      state.party.members=state.party.members.map(core.longRest);hero=heroOf(state);
-      hero.activeEffects=[...(hero.activeEffects||[]).filter(e=>e.id!==`comfortable-rest-${hero.id}`),{id:`comfortable-rest-${hero.id}`,label:en?'Comfortable rest':'Уютный отдых',sourceId:hero.id,abilityCheckBonus:'1d4',expiresOnAbilityCheck:true,expiresAtRestEnd:true}];
-      effect=en?'Restored resources; +1d4 to the next ability check, until the next rest.':'Восстановлены ресурсы; +1d4 к следующей проверке до следующего отдыха.';outcome.elapsedSeconds=28800;
-      if(offer.targetId&&offer.targetId!==adventure.currentLocationId){const place=adventure.locations.find(l=>l.id===offer.targetId);outcome.elapsedSeconds+=3600*routeDistance(adventure.locations,adventure.currentLocationId,offer.targetId);adventure.currentLocationId=place.id;place.visited=true;state.openWorld.location=place.name;model().processQuestEvent(adventure,model().addEvent(adventure,'visit',place.id,`${en?'Arrived at':'Прибытие'}: ${place.name}.`));}
+      const beforeRest=structuredClone(state),rest=require('./adventure-rest');
+      outcome.elapsedSeconds=28800+(offer.targetId&&offer.targetId!==adventure.currentLocationId?3600*routeDistance(adventure.locations,adventure.currentLocationId,offer.targetId):0);
+      state.party.members=state.party.members.map(core.longRest);outcome.rest=rest.apply(beforeRest,state,adventure,{kind:'long',seconds:outcome.elapsedSeconds});hero=heroOf(state);
+      if(outcome.rest.beneficiaries.some(member=>member.id===hero.id))hero.activeEffects=[...(hero.activeEffects||[]).filter(e=>e.id!==`comfortable-rest-${hero.id}`),{id:`comfortable-rest-${hero.id}`,label:en?'Comfortable rest':'Уютный отдых',sourceId:hero.id,abilityCheckBonus:'1d4',expiresOnAbilityCheck:true,expiresAtRestEnd:true}];
+      effect=rest.describe(outcome.rest,adventure.language)+(outcome.rest.beneficiaries.some(member=>member.id===hero.id)?(en?' +1d4 to the next ability check, until the next rest.':' +1d4 к следующей проверке до следующего отдыха.'):'');
+      if(offer.targetId&&offer.targetId!==adventure.currentLocationId){const place=adventure.locations.find(l=>l.id===offer.targetId);adventure.currentLocationId=place.id;place.visited=true;state.openWorld.location=place.name;model().processQuestEvent(adventure,model().addEvent(adventure,'visit',place.id,`${en?'Arrived at':'Прибытие'}: ${place.name}.`));}
       model().addEvent(adventure,'rest',adventure.currentLocationId,effect);
     }else if(offer.kind==='healing'){
       const healed=core.applyHealing(hero,8);if(healed.hp.current===hero.hp.current)bad('Это лечение не может сейчас помочь.');

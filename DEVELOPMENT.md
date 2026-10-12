@@ -1,5 +1,7 @@
 # Active development contract
 
+Latest medical checkpoint,2026-10-12:305 passing tests,86 JS syntax checks and isolated smoke. Actual recipient-specific aid, saved medical deadlines, NPC death saves outside combat and shared free/paid rest eligibility are integrated. Live treatment, isolated urgent UI and the limits are recorded in [MEDICINE_AND_REST.md](MEDICINE_AND_REST.md) and [VERIFICATION.md](VERIFICATION.md). The full objective remains active.
+
 Latest checkpoint,2026-10-12:265 passing tests,78 JavaScript syntax checks and isolated smoke. Persistent NPC companions now recruit through actual relationship checks, travel, fight with their own resources, dismiss/rejoin and survive reopening. Explicit dialogue continuation responds to an interjection with one bounded batch; heard history and withdrawn proposals persist. Live evidence and remaining limits are in [COMPANIONS.md](COMPANIONS.md), [DIALOGUE_AND_COOP.md](DIALOGUE_AND_COOP.md) and [VERIFICATION.md](VERIFICATION.md). Earlier checkpoint counts below are historical. The full objective remains active.
 
 User objective: a working, attractive D&D-style game UI, with reliable mechanics, AI-created adventures and economical long-campaign memory. The objective remains active until all requirements below have runtime evidence.
