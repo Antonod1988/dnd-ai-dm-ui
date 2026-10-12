@@ -1,4 +1,5 @@
 const spellbooks=require('./adventure-spellbooks');
+const prose=require('./adventure-prose');
 const {recall,relevance}=require('./context-memory');
 const social=require('./adventure-social');
 const medicine=require('./adventure-medicine');
@@ -33,7 +34,7 @@ function contextFor(state,adventure,query='') {
   const pinnedIds=new Set(adventure.pinnedFactIds||[]);
   const bookmarks=[...(adventure.notes||[]).filter(n=>n.pinned).map(n=>({...n,kind:'player_note'})),
     ...state.facts.filter(f=>f.pinned||pinnedIds.has(f.id)).map(f=>({...f,pinned:true,kind:f.tags?.includes('rumor')?'reported_information':'confirmed_fact'}))];
-  const packet={version:2,language:adventure.language||'ru',
+  const packet={version:2,language:adventure.language||'ru',narration:prose.normalize(adventure.narration),
     world:{premise:clip(adventure.worldIdea,1200),tone:clip(adventure.tone,100),heroConcept:clip(adventure.heroConcept,800)},
     hero:{id:hero.id,name:clip(hero.name,80),className:clip(hero.className,100),ancestry:clip(hero.ancestry,80),level:hero.level,hp:hero.hp,ac:hero.ac+(hero.activeEffects||[]).reduce((sum,e)=>sum+(e.armorClassBonus||0),0),
       life:life(state,adventure,hero.id),rest:rest.status(hero,adventure),conditions:hero.conditions,abilities:hero.abilities,skills:hero.skillProficiencies,resources:hero.resources.slice(0,12),slots:hero.spellcasting?.slots,

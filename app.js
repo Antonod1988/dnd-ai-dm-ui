@@ -9,6 +9,22 @@ let imageTarget=null;
 let pendingTargetCommand = null;
 let creatingNew = false;
 let intentMode='action';
+let storyStyleDraft=null;
+const narrationStyles=[['classic','Классический'],['cinematic','Кинематографичный'],['literary','Литературный'],['grim','Мрачный'],['fairytale','Сказочный'],['wry','Ироничный']];
+const narrationDetails=[['concise','Кратко'],['balanced','Сбалансированно'],['rich','Подробно']];
+const narrationHints={classic:'Ясный рассказ, выразительные персонажи и открытия.',cinematic:'Движение, звук и напряжение — словно сцена в кино.',literary:'Точные детали, атмосфера и выразительный язык.',grim:'Сдержанная тревога и ощутимая цена решений.',fairytale:'Чудеса, образный язык и сказочная интонация.',wry:'Лёгкая ирония и остроумные реплики без превращения героев в шутку.'};
+function initNarrationOptions(options){
+  const styles=options?.styles?.map(o=>[o.id,o.label])||narrationStyles,details=options?.details?.map(o=>[o.id,o.label])||narrationDetails;
+  for(const id of ['#createNarrationStyle','#narrationStyle']){const previous=$(id).value||'classic';$(id).replaceChildren(...styles.map(([value,text])=>new Option(T(text),value)));$(id).value=styles.some(([value])=>value===previous)?previous:'classic';}
+  for(const id of ['#createNarrationDetail','#narrationDetail']){const previous=$(id).value||'balanced';$(id).replaceChildren(...details.map(([value,text])=>new Option(T(text),value)));$(id).value=details.some(([value])=>value===previous)?previous:'balanced';}
+}
+function openStorySettings(){
+  if(busy||!currentView?.ready)return;
+  const prefs=currentView.campaign.narration||{style:'classic',detail:'balanced',notes:''};
+  storyStyleDraft={campaignId:currentView.campaign.id,expectedRevision:currentView.campaign.revision,operationId:crypto.randomUUID()};
+  $('#narrationStyle').value=prefs.style;$('#narrationDetail').value=prefs.detail;$('#narrationNotes').value=prefs.notes||'';
+  $('#narrationStyleHint').textContent=T(narrationHints[prefs.style]||narrationHints.classic);$('#storySettingsStatus').textContent='';$('#sectionMenu').open=false;$('#storySettings').showModal();
+}
 let historyPage=null,historyVersion='',historyRequest=0,historyTimer;
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
@@ -125,7 +141,9 @@ function spellCaption(spell) {
   return `${level?`${T('Уровень')} ${level}`:T('Заговор')}${spell.rangeFeet!==undefined?` · ${spell.rangeFeet} ${T('фт.')}`:''}${spell.concentration?` · ${T('Концентрация')}`:''}`;
 }
 function renderMessages(view) {
-  const feed=$('#storyFeed'),previous=feed.lastElementChild?.dataset.messageId,scroll=feed.scrollTop; feed.innerHTML=view.messages.map(m=>`<article class="message ${esc(m.role)}" data-message-id="${esc(m.id)}"><div class="message-meta"><span>${esc(m.author)}</span><time>ХОД ${m.turn}</time></div>${m.text.split(/\n\s*\n/).filter(Boolean).map(p=>`<p>${storyText(p)}</p>`).join('')}</article>`).join(''); if(previous!==view.messages.at(-1)?.id)requestAnimationFrame(()=>{if(currentSection==='story')feed.scrollTop=feed.scrollHeight;});else feed.scrollTop=scroll;
+  const feed=$('#storyFeed'),previous=feed.lastElementChild?.dataset.messageId,scroll=feed.scrollTop,expanded=new Set([...feed.querySelectorAll('[data-system-note][open]')].map(note=>note.dataset.systemNote));
+  feed.innerHTML=view.messages.map(message=>StoryPresentation.renderMessage(message,{translate:T,formatText:storyText,expanded:expanded.has(message.id)})).join('');
+  if(previous!==view.messages.at(-1)?.id)requestAnimationFrame(()=>{if(currentSection==='story')feed.scrollTop=feed.scrollHeight;});else feed.scrollTop=scroll;
 }
 function label(v) {
   if(uiLanguage==='en')return T(v);
@@ -360,7 +378,11 @@ async function init() {
   $('#journalNoteForm').addEventListener('submit',async event=>{event.preventDefault();if(await memoryChange('note',{text:$('#journalNote').value,pinned:$('#pinNewNote').checked})){$('#journalNote').value='';$('#noteStatus').textContent=T('Запись сохранена.');}});
   $('#newCampaign').addEventListener('click',()=>{if(busy)return;creatingNew=true;document.body.classList.remove('has-campaign','is-story-view');$('#welcome').hidden=false;$('#game').hidden=true;$('#worldSubtitle').textContent='Новое приключение — предыдущие кампании сохранены';});
   $('#campaignPicker').addEventListener('change',async()=>{if(busy)return;try{creatingNew=false;render(await request('select',{campaignId:$('#campaignPicker').value}));}catch(e){toast(e.message);}});
-  $('#createForm').addEventListener('submit',async event=>{event.preventDefault();if(busy)return;const values=Object.fromEntries(new FormData(event.target));values.survival=Boolean(values.survival);values.language=uiLanguage;setBusy(true,'Рождается новый мир…');$('#creationStatus').textContent=T('Мастер создаёт первую сцену и её обитателей…');try{const view=await request('create',values);creatingNew=false;render(view);showSection('story');}catch(e){$('#creationStatus').textContent=e.message;}finally{setBusy(false);}});
+  $('#createForm').addEventListener('submit',async event=>{event.preventDefault();if(busy)return;const values=Object.fromEntries(new FormData(event.target));values.narration={style:values.narrationStyle,detail:values.narrationDetail,notes:values.narrationNotes.trim()};delete values.narrationStyle;delete values.narrationDetail;delete values.narrationNotes;values.survival=Boolean(values.survival);values.language=uiLanguage;setBusy(true,'Рождается новый мир…');$('#creationStatus').textContent=T('Мастер создаёт первую сцену и её обитателей…');try{const view=await request('create',values);creatingNew=false;render(view);showSection('story');}catch(e){$('#creationStatus').textContent=e.message;}finally{setBusy(false);}});
+  initNarrationOptions();
+  $('#openStorySettings').addEventListener('click',openStorySettings);$('#closeStorySettings').addEventListener('click',()=>$('#storySettings').close());
+  $('#narrationStyle').addEventListener('change',()=>{$('#narrationStyleHint').textContent=T(narrationHints[$('#narrationStyle').value]||narrationHints.classic);});
+  $('#storySettingsForm').addEventListener('submit',async event=>{event.preventDefault();if(busy||!storyStyleDraft)return;const button=event.target.querySelector('[type=submit]');button.disabled=true;setBusy(true,'Сохраняем голос истории…');try{render(await request('style',{...storyStyleDraft,narration:{style:$('#narrationStyle').value,detail:$('#narrationDetail').value,notes:$('#narrationNotes').value.trim()}}));$('#storySettings').close();toast(T('Стиль сохранён. Следующие сцены прозвучат по-новому.'));}catch(error){$('#storySettingsStatus').textContent=error.message;if(error.status===409){await refreshState();if(currentView?.campaign?.id===storyStyleDraft.campaignId){storyStyleDraft={...storyStyleDraft,expectedRevision:currentView.campaign.revision,operationId:crypto.randomUUID()};$('#storySettingsStatus').textContent=T('Сцена обновилась. Проверь стиль и сохрани ещё раз.');}else{$('#storySettings').close();storyStyleDraft=null;toast(T('Открой настройки нужной истории заново.'));}}}finally{button.disabled=false;setBusy(false);}});
   document.querySelectorAll('[data-intent-mode]').forEach(button=>button.addEventListener('click',()=>{intentMode=button.dataset.intentMode;document.querySelectorAll('[data-intent-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.intentMode===intentMode)));$('#playerIntent').placeholder=T(intentMode==='question'?'Спроси о мире, правилах или прошлых событиях…':'Что делает твой герой?');$('#playerIntent').setAttribute('aria-label',T(intentMode==='question'?'Вопрос мастеру':'Действие героя'));$('#intentForm button').setAttribute('aria-label',T(intentMode==='question'?'Отправить вопрос':'Отправить действие'));}));
   for(const container of ['#peopleList','#partyRoster'])$(container).addEventListener('change',event=>{const form=event.target.closest('[data-social-npc]');if(!form)return;if(event.target.name==='propIds'){const npc=currentView.npcs.find(n=>n.id===form.dataset.socialNpc);form.elements.coins.value=Math.min(20,(npc.relationship.dueCoins||0)+[...form.querySelectorAll('[name=propIds]:checked')].reduce((n,p)=>n+Number(p.dataset.claimCoins),0));return;}if(event.target.name!=='approach')return;const paying=event.target.value==='restitution';form.querySelector('.social-payment').hidden=!paying;form.querySelector('.social-claims').hidden=!paying||!form.querySelectorAll('[name=propIds]').length;form.elements.coins.disabled=!paying;form.querySelectorAll('[name=propIds]').forEach(input=>input.disabled=!paying);});
   for(const container of ['#peopleList','#partyRoster'])$(container).addEventListener('submit',async event=>{const form=event.target.closest('[data-social-npc]');if(!form)return;event.preventDefault();if(busy)return;const formData=new FormData(form),values=Object.fromEntries(formData),npc=currentView.npcs.find(n=>n.id===form.dataset.socialNpc);const command={type:'social',npcId:npc.id,goal:values.goal,approach:values.approach,statement:values.statement.trim(),...(values.approach==='restitution'?{coins:Number(values.coins),...(formData.getAll('propIds').length?{propIds:formData.getAll('propIds')}:{})}:{})};await act({command,input:command.statement||[T('Подход'),npc.name,T(({persuasion:'Убеждение',deception:'Обман',intimidation:'Запугивание',restitution:'Возмещение ущерба'})[command.approach])].join(': ')},{stay:true});});
@@ -407,7 +429,7 @@ async function init() {
   const storyFeed=$('#storyFeed');let followStoryEnd=true;
   storyFeed.addEventListener('scroll',()=>{followStoryEnd=storyFeed.scrollHeight-storyFeed.clientHeight-storyFeed.scrollTop<32;},{passive:true});
   new ResizeObserver(()=>{if(followStoryEnd)requestAnimationFrame(()=>{storyFeed.scrollTop=storyFeed.scrollHeight;});}).observe(storyFeed);
-  try{const options=await request('setup');for(const [selector,key]of[['#classSelect','classes'],['#raceSelect','races'],['#backgroundSelect','backgrounds']])$(selector).replaceChildren(...options[key].map(o=>new Option(T(o.label),o.id)));$('#classSelect').value='wizard';$('#raceSelect').value='human';$('#backgroundSelect').value='sage';}catch(e){$('#creationStatus').textContent=e.message;}
+  try{const options=await request('setup');for(const [selector,key]of[['#classSelect','classes'],['#raceSelect','races'],['#backgroundSelect','backgrounds']])$(selector).replaceChildren(...options[key].map(o=>new Option(T(o.label),o.id)));$('#classSelect').value='wizard';$('#raceSelect').value='human';$('#backgroundSelect').value='sage';initNarrationOptions(options.narrationOptions);}catch(e){$('#creationStatus').textContent=e.message;}
   await refreshState(); localizeUi();
 }
 init();

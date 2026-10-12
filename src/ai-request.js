@@ -1,8 +1,8 @@
 const BASIC_INSTRUCTIONS='You are an AI Dungeon Master helper. Follow JSON contracts exactly when asked.';
 const STRUCTURED_INSTRUCTION='Return JSON only. Draft flavour is allowed, but mechanics will be validated and clamped by the engine.';
 const RULE_FIELDS=Object.freeze(['lootRules','questRules','accessRules','economyRules','companionRules','environmentRules','socialRules']);
-const SECTION_FIELDS=Object.freeze(['instruction',...RULE_FIELDS,'context','input','outcome','correction','idea','rejectedDraft','errors','knownSpells','availableActions','companionSpellOrders','dialogue','heard','topic','actors','actions','responseTarget','world','hero','tone','startingPlace','caster','maxSpellLevel','questionOnly']);
-const CONTEXT_FIELDS=Object.freeze(['version','language','world','hero','time','scene','survival','combat','party','partyInventory','bookmarks','quests','checks','objects','sceneProps','questIndex','questHistory','activeFacts','recollections','pastEvents','npcs','inventory','createdSpells','nearbyPlaces','recentDialogue','recentEvents','markets','transactions','omitted']);
+const SECTION_FIELDS=Object.freeze(['instruction',...RULE_FIELDS,'context','narrationPreferences','input','outcome','correction','idea','rejectedDraft','errors','knownSpells','availableActions','companionSpellOrders','dialogue','heard','topic','actors','actions','responseTarget','world','hero','tone','startingPlace','caster','maxSpellLevel','questionOnly']);
+const CONTEXT_FIELDS=Object.freeze(['version','language','narration','world','hero','time','scene','survival','combat','party','partyInventory','bookmarks','quests','checks','objects','sceneProps','questIndex','questHistory','activeFacts','recollections','pastEvents','npcs','inventory','createdSpells','nearbyPlaces','recentDialogue','recentEvents','markets','transactions','omitted']);
 const isObject=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const jsonChars=value=>{const rendered=JSON.stringify(value);return rendered===undefined?0:rendered.length;};
 const wireClone=value=>JSON.parse(JSON.stringify(value));

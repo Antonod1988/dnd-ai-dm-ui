@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const prose=require('./adventure-prose');
 const crypto = require('node:crypto');
 const loot=require('./adventure-loot');
 const economy=require('./adventure-economy');
@@ -88,7 +89,7 @@ function validateDevelopments(draft, adventure) {
 function makeAdventure(seed, input) {
   const adventure = {
     version: 2, revision: 1, turn: 1, day: 1, hours: 8, title: seed.title, worldIdea: input.worldIdea, heroConcept: input.heroConcept || '', tone: input.tone || '',
-    language: input.language || 'ru', currentLocationId: seed.startLocationId,
+    language: input.language || 'ru', narration:prose.normalize(input.narration), currentLocationId: seed.startLocationId,
     locations: seed.locations.map((node, i) => ({ ...node, x: i === 0 ? 50 : 50 + Math.cos(i * 2.4) * 34, y: i === 0 ? 50 : 50 + Math.sin(i * 2.4) * 34, visited: node.id === seed.startLocationId })),
     npcs: seed.npcs.map(n => ({ ...n, trust: 0, familiarity: 0 })), items: seed.items.map(i => ({ ...i, collected: false })),
     quests: seed.quests.map(q => makeQuest(q)), loreDefinitions: seed.checks,

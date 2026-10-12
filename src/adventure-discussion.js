@@ -2,6 +2,7 @@ const adventure = require('./adventure-engine');
 const model = require('./adventure-model');
 const dialogue = require('./dialogue');
 const narration = require('./adventure-narration');
+const prose=require('./adventure-prose');
 const { contextFor } = require('./adventure-context');
 const measuredAi = require('./adventure-usage');
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
@@ -61,10 +62,10 @@ async function start(id, topic = '') {
   const { service, state, adventure: meta } = await adventure.loaded(id);
   if (!state) fail('Создайте приключение.');
   const packet = narration.scenePacket(state, meta, (await adventure.publicView(service, state, meta)).actions);
-  const batch = await measuredAi.generate(meta, 'adventure_discussion', {
+  const batch = await measuredAi.generate(meta, 'adventure_discussion', prose.apply({
     instruction: `Write a short ${meta.language === 'en' ? 'English' : 'Russian'} conversation with 2-5 lines. Return {lines:[{speakerId,text,interruptsSpeakerId?,proposal?:{actionId,label}}]}. Use exact supplied actor ids and only exact supplied action ids for proposals. Give different personalities different viewpoints. Never speak for the human player. No mechanics or actions are executed by speech. Leave the final decision to the player. A specific plan should include a proposal referencing a supplied action id. Keep every line under 650 characters. An interruption references another supplied actor only.`,
     topic: String(topic).slice(0, 1000), actors: packet.actors, actions: packet.actions, context: contextFor(state, meta, topic).packet
-  }, () => ({ lines: [{ speakerId: packet.actors[1]?.id || 'dm', text: meta.language === 'en' ? 'Let us discuss our next step. What do you want to do?' : 'Давай обсудим следующий шаг. Как ты хочешь поступить?' }] }));
+  },meta.narration,{mode:'dialogue'}), () => ({ lines: [{ speakerId: packet.actors[1]?.id || 'dm', text: meta.language === 'en' ? 'Let us discuss our next step. What do you want to do?' : 'Давай обсудим следующий шаг. Как ты хочешь поступить?' }] }));
   meta.dialogue = dialogue.createDialogue(batch, packet.actors, packet.actions.map(a => a.id), meta.turn, { sceneId: meta.currentLocationId });
   append(meta, dialogue.nextLine(meta.dialogue)); meta.revision += 1;
   await adventure.save(service, state, meta, 'adventure_discussion'); return publicState(meta,state);

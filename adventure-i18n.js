@@ -1,6 +1,14 @@
 // UI labels are translated locally. Story content is generated in the campaign's language.
 const uiLanguage = new URLSearchParams(location.search).get('lang') === 'en' ? 'en' : 'ru';
 const englishLabels = {
+  'Как звучит история':'The voice of the story','Стиль рассказа':'Narrative style','Подробность':'Detail','Твои пожелания к рассказу':'Your storytelling preferences','Закрыть настройки рассказа':'Close storytelling settings','Сохранить стиль':'Save style',
+  'Выбери голос рассказа. Герои сохранят свои характеры, а события — свои последствия.':'Choose the voice of the story. Characters keep their personalities, and events keep their consequences.',
+  'Новый голос появится в следующих сценах. Прежние главы останутся как были.':'The new voice applies to future scenes. Earlier chapters stay as they are.',
+  'Больше живых диалогов, короткие сцены, меньше пафоса…':'More lively dialogue, shorter scenes, less grandstanding…','Сохраняем голос истории…':'Saving the story voice…','Стиль сохранён. Следующие сцены прозвучат по-новому.':'Style saved. The next scenes will use the new voice.',
+  'Классический':'Classic','Кратко':'Concise','Подробно':'Detailed','Приключенческий':'Adventure','Кинематографичный':'Cinematic','Литературный':'Literary','Мрачный':'Grim','Сказочный':'Fairytale','Ироничный':'Wry','Короткие сцены':'Short scenes','Сбалансированно':'Balanced','Больше деталей':'More detail',
+  'Ясный рассказ, выразительные персонажи и открытия.':'Clear storytelling, vivid characters and discoveries.','Движение, звук и напряжение — словно сцена в кино.':'Movement, sound and tension, like a scene in a film.','Точные детали, атмосфера и выразительный язык.':'Precise details, atmosphere and expressive language.','Сдержанная тревога и ощутимая цена решений.':'Quiet unease and the tangible cost of decisions.','Чудеса, образный язык и сказочная интонация.':'Wonders, imagery and a fairytale voice.','Лёгкая ирония и остроумные реплики без превращения героев в шутку.':'Gentle irony and witty dialogue without turning the characters into a joke.',
+  'Рассказ и связь':'Narration and connection','Поручение спутнику':'Companion instruction','Припасы и дорога':'Supplies and travel','Покупки и обмен':'Purchases and exchanges','Дела отряда':'Party updates','Находки и награды':'Finds and rewards','Детали хода':'Turn details',
+  'Сцена обновилась. Проверь стиль и сохрани ещё раз.':'The scene changed. Review the style and save again.','Открой настройки нужной истории заново.':'Reopen the settings for the intended story.',
   'Описание места':'Location description',
   'Выборка для последнего отчёта провайдера':'Context in the last provider usage report',
   'Расход последних запросов':'Recent request usage','Последний текст запроса':'Last request text','Постоянные инструкции':'Stable instructions','Данные сцены':'Scene data',
@@ -94,7 +102,7 @@ const englishLabels = {
 };
 function T(value) {
   const text = String(value ?? ''); if (uiLanguage !== 'en') return text;
-  const trimmed = text.trim(); if (englishLabels[trimmed]) return text.replace(trimmed, englishLabels[trimmed]);
+  const trimmed = text.trim(); if (Object.hasOwn(englishLabels,trimmed)) return text.replace(trimmed, englishLabels[trimmed]);
   const patterns = [
     [/^День (\d+) · (.+)$/, 'Day $1 · $2'], [/^(\d+) ур\.$/, 'Level $1'], [/^ХОД (\d+)$/, 'TURN $1'],
     [/^Ячейки (\d+) уровня$/, 'Level $1 slots'], [/^Контекст мастера: ([\d\s,]+) символов$/, 'GM context: $1 characters'],

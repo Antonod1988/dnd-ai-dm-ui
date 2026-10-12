@@ -1,4 +1,5 @@
 const measuredAi=require('./adventure-usage');
+const prose=require('./adventure-prose');
 const dialogue=require('./dialogue');
 const crypto=require('node:crypto');
 const clip=(value,max)=>String(value||'').slice(0,max);
@@ -43,6 +44,7 @@ function feedback(error,report){
   return {reason:issues?undefined:String(error.message).slice(0,300),...(error.providerFailure?{providerFailure:error.providerFailure}:{}),issues,rejectedText:error.draftText?.slice(0,4000),rejectedNarration:report?.narration?.slice?.(0,900),rejectedLines:report?.lines?JSON.stringify(report.lines).slice(0,2500):undefined,rejectedDevelopments:report?.developments?JSON.stringify(report.developments).slice(0,3000):undefined};
 }
 async function generate(adventure,payload,fallback,validate,{task='adventure_narration',resolved=true}={}){
+  if(['adventure_world','adventure_narration','adventure_dialogue_response'].includes(task))payload=prose.apply(payload,adventure.narration,{mode:task==='adventure_world'?'opening':task==='adventure_dialogue_response'?'dialogue':'story'});
   let first,generated=false;
   try{first=await measuredAi.generate(adventure,task,payload,fallback);generated=true;return validate(first);}catch(error){
     if(!generated&&error.code!=='INVALID_AI_DRAFT')throw error;
